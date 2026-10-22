@@ -154,7 +154,7 @@ func (s *Service) SaveExamIntegrityDecision(ctx context.Context, invocation invo
 	stored, err := s.deps.Persistence.SaveDecision(ctx, &store.ExamIntegrityReviewDecisionMutation{
 		SubmissionID: command.SubmissionID, ReviewID: reviewID, DecisionID: decisionID, FlagID: command.FlagID,
 		ActorUserID: principal.UserID, ManagerOverride: override, ExpectedReviewRevision: command.ExpectedReviewRevision,
-		ExpectedDecisionRevision: command.ExpectedDecisionRevision, Outcome: command.Outcome,
+		ExpectedRevision: command.ExpectedDecisionRevision, Outcome: command.Outcome,
 		PrivateRationale: command.PrivateRationale, ChangedAt: at, AuditEventID: auditID, AuditAt: at,
 	}, idempotency)
 	if err != nil {
@@ -222,7 +222,7 @@ func (s *Service) UpdateExamIntegrityReview(ctx context.Context, invocation invo
 	}
 	stored, err := s.deps.Persistence.UpdateDraft(ctx, &store.ExamIntegrityReviewDraftMutation{
 		SubmissionID: command.SubmissionID, ReviewID: reviewID, ActorUserID: principal.UserID, ManagerOverride: override,
-		ExpectedReviewRevision: command.ExpectedReviewRevision, ManagerNotes: command.ManagerNotes,
+		ExpectedRevision: command.ExpectedReviewRevision, ManagerNotes: command.ManagerNotes,
 		StudentRemarksMarkdown: command.StudentRemarksMarkdown, ChangedAt: at, AuditEventID: auditID,
 		AuditAt: at,
 	}, idempotency)
@@ -349,13 +349,13 @@ func (s *Service) terminalMutation(ctx context.Context, invocation invocation.In
 		}
 		stored, err = s.deps.Persistence.Release(ctx, &store.ExamIntegrityReviewRelease{SubmissionID: submissionID,
 			ReviewID: reviewID, ActorUserID: principal.UserID, ManagerOverride: override,
-			ExpectedReviewRevision: expectedRevision, ChangedAt: at, AuditEventID: auditID, AuditAt: at,
+			ExpectedRevision: expectedRevision, ChangedAt: at, AuditEventID: auditID, AuditAt: at,
 			CandidateUserID: authorization.CandidateUserID, Notice: notice,
 			ExpectedRecipientRevision: expectedRecipientRevision}, idempotency)
 	} else {
 		stored, err = s.deps.Persistence.Finalize(ctx, &store.ExamIntegrityReviewFinalize{SubmissionID: submissionID,
 			ReviewID: reviewID, ActorUserID: principal.UserID, ManagerOverride: override,
-			ExpectedReviewRevision: expectedRevision, ChangedAt: at, AuditEventID: auditID, AuditAt: at}, idempotency)
+			ExpectedRevision: expectedRevision, ChangedAt: at, AuditEventID: auditID, AuditAt: at}, idempotency)
 	}
 	if err != nil {
 		return Result{}, s.failAudit(ctx, auditID, err)

@@ -23,7 +23,7 @@ import (
 func attachResultReleaseMail(t *testing.T, candidate *model.User, input *store.ExamIntegrityReviewRelease) {
 	t.Helper()
 	at := input.ChangedAt
-	occurrenceID, err := model.ResultReleaseOccurrenceID(input.ReviewID, input.ExpectedReviewRevision)
+	occurrenceID, err := model.ResultReleaseOccurrenceID(input.ReviewID, input.ExpectedRevision)
 	require.NoError(t, err)
 	deliveryID, jobID := model.NewMailDeliveryID(), model.NewJobID()
 	command, err := model.EncodeMailDeliveryCommand(model.MailDeliveryCommand{DeliveryID: deliveryID})
@@ -150,7 +150,7 @@ func TestExamIntegrityReviewStore(t *testing.T, ss store.Store, reviews store.Ex
 	decisionInput := &store.ExamIntegrityReviewDecisionMutation{
 		SubmissionID: sealed.Receipt.SubmissionID, ReviewID: reviewID,
 		DecisionID: model.NewIntegrityReviewDecisionID(), FlagID: flagged.Flag.ID,
-		ActorUserID: fixture.manager.ID, ExpectedReviewRevision: 0, ExpectedDecisionRevision: 0,
+		ActorUserID: fixture.manager.ID, ExpectedReviewRevision: 0, ExpectedRevision: 0,
 		Outcome: model.IntegrityReviewConfirmed, PrivateRationale: "server evidence is internally consistent",
 		ChangedAt: model.NowUTC(), AuditEventID: saveIntegrityReviewAudit(t, ctx, ss, fixture,
 			sealed.Receipt.SubmissionID, model.ActionSubmissionReview).ID, AuditAt: model.NowUTC(),
@@ -189,7 +189,7 @@ func TestExamIntegrityReviewStore(t *testing.T, ss store.Store, reviews store.Ex
 
 	draftInput := &store.ExamIntegrityReviewDraftMutation{
 		SubmissionID: sealed.Receipt.SubmissionID, ReviewID: reviewID, ActorUserID: fixture.manager.ID,
-		ExpectedReviewRevision: decided.Review.Revision, ManagerNotes: "private operational context",
+		ExpectedRevision: decided.Review.Revision, ManagerNotes: "private operational context",
 		StudentRemarksMarkdown: "Your submission was reviewed. **No action is required.**",
 		ChangedAt:              model.NowUTC().Add(time.Millisecond), AuditEventID: saveIntegrityReviewAudit(t, ctx, ss, fixture,
 			sealed.Receipt.SubmissionID, model.ActionSubmissionReview).ID, AuditAt: model.NowUTC(),
@@ -206,7 +206,7 @@ func TestExamIntegrityReviewStore(t *testing.T, ss store.Store, reviews store.Ex
 
 	finalizeInput := &store.ExamIntegrityReviewFinalize{
 		SubmissionID: sealed.Receipt.SubmissionID, ReviewID: reviewID, ActorUserID: fixture.manager.ID,
-		ExpectedReviewRevision: drafted.Review.Revision, ChangedAt: model.NowUTC().Add(2 * time.Millisecond),
+		ExpectedRevision: drafted.Review.Revision, ChangedAt: model.NowUTC().Add(2 * time.Millisecond),
 		AuditEventID: saveIntegrityReviewAudit(t, ctx, ss, fixture,
 			sealed.Receipt.SubmissionID, model.ActionSubmissionReview).ID, AuditAt: model.NowUTC(),
 	}
@@ -225,7 +225,7 @@ func TestExamIntegrityReviewStore(t *testing.T, ss store.Store, reviews store.Ex
 
 	lateDecision := *decisionInput
 	lateDecision.ExpectedReviewRevision = finalized.Review.Revision
-	lateDecision.ExpectedDecisionRevision = decided.Decision.Revision
+	lateDecision.ExpectedRevision = decided.Decision.Revision
 	lateDecision.Outcome = model.IntegrityReviewDismissed
 	lateDecision.PrivateRationale = "must not change a frozen Review"
 	lateDecision.ChangedAt = model.NowUTC().Add(3 * time.Millisecond)
@@ -249,7 +249,7 @@ func TestExamIntegrityReviewStore(t *testing.T, ss store.Store, reviews store.Ex
 	require.True(t, retriedReleasePreparation.ReleaseAt.Equal(releasePreparation.ReleaseAt), "PrepareRelease(fresh retry)")
 	releaseInput := &store.ExamIntegrityReviewRelease{
 		SubmissionID: sealed.Receipt.SubmissionID, ReviewID: reviewID, ActorUserID: fixture.manager.ID,
-		ExpectedReviewRevision: finalized.Review.Revision, ChangedAt: releasePreparation.ReleaseAt,
+		ExpectedRevision: finalized.Review.Revision, ChangedAt: releasePreparation.ReleaseAt,
 		AuditEventID: saveIntegrityReviewAudit(t, ctx, ss, fixture,
 			sealed.Receipt.SubmissionID, model.ActionSubmissionRelease).ID,
 		AuditAt: releasePreparation.ReleaseAt,
@@ -502,7 +502,7 @@ func testEndedFocusLossAfterAutomaticSeal(t *testing.T, ctx context.Context, ss 
 		fixture, suspended, oldAccess := newSuspended(t, "review-automatic-selector")
 		reallow := &store.ExamAttemptReallow{ExamID: fixture.examID, SittingID: fixture.sitting.ID,
 			AttemptID: suspended.Attempt.ID, SuspensionID: suspended.Suspension.ID, ActorUserID: fixture.manager.ID,
-			ExpectedAttemptRevision: suspended.Attempt.Revision, PrivateReason: "resume exact retained generation",
+			ExpectedRevision: suspended.Attempt.Revision, PrivateReason: "resume exact retained generation",
 			AuditEventID: saveExamAttemptReallowAudit(t, ctx, ss, fixture).ID,
 			AuditAt:      model.NowUTC()}
 		_, err := ss.ExamAttempt().ReallowAttempt(ctx, reallow, examCommand(fixture.manager.ID,
@@ -586,7 +586,7 @@ func testIntegrityReviewGappedFinalization(t *testing.T, ctx context.Context, ss
 		store.ExamIntegrityReviewDecisionOperation, "review-gapped-decision", "review-gapped-decision"))
 	require.NoError(t, err)
 	finalize := &store.ExamIntegrityReviewFinalize{SubmissionID: sealed.Receipt.SubmissionID, ReviewID: reviewID,
-		ActorUserID: fixture.manager.ID, ExpectedReviewRevision: decided.Review.Revision, ChangedAt: model.NowUTC(),
+		ActorUserID: fixture.manager.ID, ExpectedRevision: decided.Review.Revision, ChangedAt: model.NowUTC(),
 		AuditEventID: saveIntegrityReviewAudit(t, ctx, ss, fixture, sealed.Receipt.SubmissionID,
 			model.ActionSubmissionReview).ID, AuditAt: model.NowUTC()}
 	finalized, err := reviews.Finalize(ctx, finalize, examCommand(fixture.manager.ID,
@@ -602,14 +602,14 @@ func testIntegrityReviewIncomplete(t *testing.T, ctx context.Context, ss store.S
 	fixture, _, _, sealed, _ := newIntegrityReviewFixture(t, ctx, ss, "review-incomplete")
 	reviewID := model.NewSubmissionReviewID()
 	draft := &store.ExamIntegrityReviewDraftMutation{SubmissionID: sealed.Receipt.SubmissionID, ReviewID: reviewID,
-		ActorUserID: fixture.manager.ID, ExpectedReviewRevision: 0, ManagerNotes: "awaiting evidence decision",
+		ActorUserID: fixture.manager.ID, ExpectedRevision: 0, ManagerNotes: "awaiting evidence decision",
 		ChangedAt: model.NowUTC(), AuditEventID: saveIntegrityReviewAudit(t, ctx, ss, fixture,
 			sealed.Receipt.SubmissionID, model.ActionSubmissionReview).ID, AuditAt: model.NowUTC()}
 	created, err := reviews.UpdateDraft(ctx, draft, examCommand(fixture.manager.ID,
 		store.ExamIntegrityReviewDraftOperation, "review-incomplete-draft", "review-incomplete-draft"))
 	require.NoError(t, err)
 	finalize := &store.ExamIntegrityReviewFinalize{SubmissionID: sealed.Receipt.SubmissionID, ReviewID: reviewID,
-		ActorUserID: fixture.manager.ID, ExpectedReviewRevision: created.Review.Revision, ChangedAt: model.NowUTC(),
+		ActorUserID: fixture.manager.ID, ExpectedRevision: created.Review.Revision, ChangedAt: model.NowUTC(),
 		AuditEventID: saveIntegrityReviewAudit(t, ctx, ss, fixture,
 			sealed.Receipt.SubmissionID, model.ActionSubmissionReview).ID, AuditAt: model.NowUTC()}
 	_, err = reviews.Finalize(ctx, finalize, examCommand(fixture.manager.ID,

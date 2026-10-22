@@ -146,7 +146,7 @@ func TestNativeDeliveryAppendStore(t *testing.T, ss store.Store, probes ...Nativ
 	}
 	draft, err := ss.ExamIntegrityReview().UpdateDraft(ctx, &store.ExamIntegrityReviewDraftMutation{SubmissionID: sub, ReviewID: model.NewSubmissionReviewID(), ActorUserID: fixture.manager.ID, ChangedAt: model.NowUTC(), AuditEventID: audit(), AuditAt: model.NowUTC()}, examCommand(fixture.manager.ID, store.ExamIntegrityReviewDraftOperation, "native-review-draft", "native-review-draft"))
 	require.NoError(t, err)
-	final, err := ss.ExamIntegrityReview().Finalize(ctx, &store.ExamIntegrityReviewFinalize{SubmissionID: sub, ReviewID: draft.Review.ID, ExpectedReviewRevision: draft.Review.Revision, ActorUserID: fixture.manager.ID, ChangedAt: model.NowUTC(), AuditEventID: audit(), AuditAt: model.NowUTC()}, examCommand(fixture.manager.ID, store.ExamIntegrityReviewFinalizeOperation, "native-review-finalize", "native-review-finalize"))
+	final, err := ss.ExamIntegrityReview().Finalize(ctx, &store.ExamIntegrityReviewFinalize{SubmissionID: sub, ReviewID: draft.Review.ID, ExpectedRevision: draft.Review.Revision, ActorUserID: fixture.manager.ID, ChangedAt: model.NowUTC(), AuditEventID: audit(), AuditAt: model.NowUTC()}, examCommand(fixture.manager.ID, store.ExamIntegrityReviewFinalizeOperation, "native-review-finalize", "native-review-finalize"))
 	require.NoError(t, err)
 	before, err := ss.ExamIntegrityReview().Get(ctx, sub)
 	require.NoError(t, err)

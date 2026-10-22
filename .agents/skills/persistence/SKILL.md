@@ -38,8 +38,11 @@ operation as a noun (`ClassUpdate`, `RoleBindingEnd`, `SessionRevocation`) and
 returns a domain model or a `*XResult`; list, search, and visibility reads take
 a value `XListOptions` or scope struct. Inside inputs, audit is the field pair
 `AuditEventID` and `AuditAt` for an attempt, or the field `AuditEvent` for a
-draft; optimistic concurrency is `ExpectedRevision`, qualified as
-`Expected<Entity>Revision` only when the operation fences more than one; and a
+draft; optimistic concurrency on the entity the operation acts on is
+`ExpectedRevision`, and a fence on a different resource (the recipient User,
+the Exam draft, the Sitting) is `Expected<Resource>Revision`; the architecture
+test `TestStoreRevisionFencesNameTheirResource` rejects a qualifier that
+repeats the input's own entity or says `Current`; and a
 retryable operation takes a trailing `*CommandIdempotency` parameter. The older
 identity and membership operations that still carry `Command` and replay flags
 inside their input follow the same rule when next changed.

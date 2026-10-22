@@ -42,7 +42,7 @@ func (s *SQLExamAttemptStore) SuspendAttempt(ctx context.Context, input *store.E
 	command *store.CommandIdempotency,
 ) (*store.ExamAttemptManualSuspensionResult, error) {
 	if input == nil || command == nil || command.Operation != store.ExamAttemptSuspendOperation || command.UserID != input.ActorUserID || !input.ExamID.IsValid() || !input.SittingID.IsValid() || !input.AttemptID.IsValid() ||
-		!input.SuspensionID.IsValid() || !input.ActorUserID.IsValid() || input.ExpectedAttemptRevision < 1 ||
+		!input.SuspensionID.IsValid() || !input.ActorUserID.IsValid() || input.ExpectedRevision < 1 ||
 		!model.IsValidAttemptSuspensionPrivateReason(input.PrivateReason) || !input.AuditEventID.IsValid() || input.AuditAt.IsZero() {
 		return nil, store.NewErrInvalidInput("exam_attempt", "manual_suspension", nil)
 	}
@@ -178,7 +178,7 @@ func suspendExamAttemptByManager(ctx context.Context, tx *sqlxTxWrapper,
 	if err := tx.Get(ctx, &attemptRow, manualSuspensionAttemptSelect, input.AttemptID.String()); err != nil {
 		return zero, translateError("exam_attempt", input.AttemptID.String(), err)
 	}
-	if attemptRow.Revision != input.ExpectedAttemptRevision {
+	if attemptRow.Revision != input.ExpectedRevision {
 		return zero, store.NewErrConflict("exam_attempt", "exam_attempt_revision", nil)
 	}
 	if attemptRow.State != string(model.ExamAttemptActive) {
@@ -238,7 +238,7 @@ func suspendExamAttemptByManager(ctx context.Context, tx *sqlxTxWrapper,
 		return zero, store.NewErrInvalidInput("attempt_suspension", "private_reason", nil)
 	}
 	if _, err = tx.Exec(ctx, `UPDATE exam_attempts SET state=?,updated_at=?,revision=? WHERE id=? AND revision=? AND state='active'`,
-		attempt.State, attempt.UpdatedAt, attempt.Revision, attempt.ID.String(), input.ExpectedAttemptRevision); err != nil {
+		attempt.State, attempt.UpdatedAt, attempt.Revision, attempt.ID.String(), input.ExpectedRevision); err != nil {
 		return zero, fmt.Errorf("suspend kicked Exam Attempt: %w", err)
 	}
 	if _, err = tx.Exec(ctx, `UPDATE exam_attempt_participations SET state=?,updated_at=?,ended_at=?,end_reason=?

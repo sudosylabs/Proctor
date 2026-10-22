@@ -821,7 +821,7 @@ func testInvitationAdministrationRevokeAndReplaceAreRevisionFenced(t *testing.T,
 		model.MailTemplateAccessStudentClassInvitation, model.JobTypeMailDeliverCredential, model.NowUTC(), changed.ExpiresAt)
 	supersedeAudit := saveInvitationLifecycleAuditAttempt(t, ctx, ss, inviter.ID, class.ID.String(), "invitation.supersede")
 	replacementAudit := saveInvitationLifecycleAuditAttempt(t, ctx, ss, inviter.ID, class.ID.String(), "invitation.replacement_issue")
-	replacement := &store.InvitationReplacement{CurrentID: current.ID, ExpectedCurrentRevision: current.Revision,
+	replacement := &store.InvitationReplacement{CurrentID: current.ID, ExpectedRevision: current.Revision,
 		Replacement: changed, Lifetime: model.InvitationLifetime, Occurrence: replacementOccurrence,
 		Delivery: replacementDelivery, DeliveryJob: replacementJob, ActorUserID: inviter.ID,
 		CurrentAuditEventID: supersedeAudit.ID, ReplacementAuditEventID: replacementAudit.ID,
@@ -1041,7 +1041,7 @@ func testInvitationAdministrationLifecycle(t *testing.T, ss store.Store) {
 	sameCurrentAudit := saveInvitationLifecycleAuditAttempt(t, ctx, ss, replacementInviter.ID, replacementClass.ID.String(), "invitation.supersede")
 	sameReplacementAudit := saveInvitationLifecycleAuditAttempt(t, ctx, ss, replacementInviter.ID, replacementClass.ID.String(), "invitation.replacement_issue")
 	_, err = ss.Invitation().Replace(ctx, &store.InvitationReplacement{CurrentID: current.ID,
-		ExpectedCurrentRevision: current.Revision, Replacement: &samePackage, Lifetime: model.InvitationLifetime,
+		ExpectedRevision: current.Revision, Replacement: &samePackage, Lifetime: model.InvitationLifetime,
 		Occurrence: sameOccurrence, Delivery: sameDelivery, DeliveryJob: sameJob, ActorUserID: replacementInviter.ID,
 		CurrentAuditEventID: sameCurrentAudit.ID, ReplacementAuditEventID: sameReplacementAudit.ID,
 		AuditAt: model.NowUTC()})
@@ -1067,7 +1067,7 @@ func testInvitationAdministrationLifecycle(t *testing.T, ss store.Store) {
 	supersedeAudit := saveInvitationLifecycleAuditAttempt(t, ctx, ss, replacementInviter.ID, replacementClass.ID.String(), "invitation.supersede")
 	replacementAudit := saveInvitationLifecycleAuditAttempt(t, ctx, ss, replacementInviter.ID, replacementTargetClass.ID.String(), "invitation.replacement_issue")
 	replaced, err := ss.Invitation().Replace(ctx, &store.InvitationReplacement{CurrentID: current.ID,
-		ExpectedCurrentRevision: current.Revision, Replacement: candidate, Lifetime: model.InvitationLifetime,
+		ExpectedRevision: current.Revision, Replacement: candidate, Lifetime: model.InvitationLifetime,
 		Occurrence: replacementOccurrence, Delivery: replacementDelivery, DeliveryJob: replacementJob, ActorUserID: replacementInviter.ID,
 		CurrentAuditEventID: supersedeAudit.ID, ReplacementAuditEventID: replacementAudit.ID,
 		AuditAt: model.NowUTC()})

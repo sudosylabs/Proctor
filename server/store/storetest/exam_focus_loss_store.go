@@ -280,7 +280,7 @@ func testExamAttemptFocusLossPolicies(t *testing.T, ctx context.Context, ss stor
 		requireConflictConstraint(t, err, "exam_attempt_state")
 
 		reallow := &store.ExamAttemptReallow{ExamID: fixture.examID, SittingID: fixture.sitting.ID, AttemptID: connected.Attempt.ID,
-			SuspensionID: crossed.Suspension.ID, ActorUserID: fixture.manager.ID, ExpectedAttemptRevision: crossed.Attempt.Revision,
+			SuspensionID: crossed.Suspension.ID, ActorUserID: fixture.manager.ID, ExpectedRevision: crossed.Attempt.Revision,
 			PrivateReason: "reviewed the focus policy episode",
 			AuditEventID:  saveExamAttemptReallowAudit(t, ctx, ss, fixture).ID, AuditAt: model.NowUTC()}
 		reallowed, err := ss.ExamAttempt().ReallowAttempt(ctx, reallow,
@@ -370,7 +370,7 @@ func testExamAttemptFocusLossPolicies(t *testing.T, ctx context.Context, ss stor
 			AuditEventID: saveExamAttemptSystemAudit(t, ctx, ss, fixture).ID, AuditAt: model.NowUTC()})
 		require.NoError(t, err)
 		reallow := &store.ExamAttemptReallow{ExamID: fixture.examID, SittingID: fixture.sitting.ID, AttemptID: connected.Attempt.ID,
-			SuspensionID: expired.Suspension.ID, ActorUserID: fixture.manager.ID, ExpectedAttemptRevision: expired.Attempt.Revision,
+			SuspensionID: expired.Suspension.ID, ActorUserID: fixture.manager.ID, ExpectedRevision: expired.Attempt.Revision,
 			PrivateReason: "connectivity was restored",
 			AuditEventID:  saveExamAttemptReallowAudit(t, ctx, ss, fixture).ID, AuditAt: model.NowUTC()}
 		reallowed, err := ss.ExamAttempt().ReallowAttempt(ctx, reallow,

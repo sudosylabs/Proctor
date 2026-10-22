@@ -583,9 +583,9 @@ func TestSessionRevocationAttemptFence(t *testing.T, ss store.Store) {
 	reallowed, err := ss.ExamAttempt().ReallowAttempt(ctx, &store.ExamAttemptReallow{
 		ExamID: fixture.examID, SittingID: fixture.sitting.ID, AttemptID: connected.Attempt.ID,
 		SuspensionID: statuses.Items[0].Suspension.ID, ActorUserID: fixture.manager.ID,
-		ExpectedAttemptRevision: statuses.Items[0].Attempt.Revision,
-		PrivateReason:           "verified Session revocation recovery",
-		AuditEventID:            reallowAudit.ID, AuditAt: model.NowUTC(),
+		ExpectedRevision: statuses.Items[0].Attempt.Revision,
+		PrivateReason:    "verified Session revocation recovery",
+		AuditEventID:     reallowAudit.ID, AuditAt: model.NowUTC(),
 	}, examCommand(fixture.manager.ID, store.ExamAttemptReallowOperation, "session-fence-reallow", "session-fence-reallow"))
 	require.NoError(t, err)
 	require.Equal(t, model.ExamAttemptReady, reallowed.Attempt.State)
@@ -815,7 +815,7 @@ func testExamAttemptParticipationExpiry(t *testing.T, ctx context.Context, ss st
 	reallowAudit := saveExamAttemptReallowAudit(t, ctx, ss, fixture)
 	reallowInput := &store.ExamAttemptReallow{ExamID: fixture.examID, SittingID: fixture.sitting.ID,
 		AttemptID: expired.Attempt.ID, SuspensionID: expired.Suspension.ID, ActorUserID: fixture.manager.ID,
-		ExpectedAttemptRevision: expired.Attempt.Revision, PrivateReason: "verified connectivity recovery",
+		ExpectedRevision: expired.Attempt.Revision, PrivateReason: "verified connectivity recovery",
 		AuditEventID: reallowAudit.ID, AuditAt: model.NowUTC()}
 	selfReallow := *reallowInput
 	selfReallow.ActorUserID = expired.CandidateUserID

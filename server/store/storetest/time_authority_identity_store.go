@@ -137,7 +137,7 @@ func RunTimeAuthorityInvitationTransitions(t *testing.T, ss store.Store, probe T
 		currentAudit := saveInvitationLifecycleAuditAttempt(t, ctx, ss, inviter.ID, class.ID.String(), "invitation.supersede")
 		replacementAudit := saveInvitationLifecycleAuditAttempt(t, ctx, ss, inviter.ID, class.ID.String(), "invitation.replacement_issue")
 		_, err := ss.Invitation().Replace(ctx, &store.InvitationReplacement{CurrentID: invitation.ID,
-			ExpectedCurrentRevision: invitation.Revision, Replacement: &candidate, Lifetime: model.InvitationLifetime,
+			ExpectedRevision: invitation.Revision, Replacement: &candidate, Lifetime: model.InvitationLifetime,
 			Occurrence: occurrence, Delivery: delivery, DeliveryJob: job, ActorUserID: inviter.ID,
 			CurrentAuditEventID: currentAudit.ID, ReplacementAuditEventID: replacementAudit.ID, AuditAt: model.NowUTC()})
 		require.NoError(t, err)

@@ -339,16 +339,16 @@ type ExamAttemptParticipationExpiryResult struct {
 // must not enter ordinary audit data, command outcomes, logs, or realtime.
 // PostgreSQL statement time stamps the closed episode and resumed Attempt.
 type ExamAttemptReallow struct {
-	ExamID                  model.ExamID
-	SittingID               model.ExamSittingID
-	AttemptID               model.ExamAttemptID
-	SuspensionID            model.AttemptSuspensionID
-	ActorUserID             model.UserID
-	ManagerOverride         bool
-	ExpectedAttemptRevision int64
-	PrivateReason           string
-	AuditEventID            model.AuditEventID
-	AuditAt                 time.Time
+	ExamID           model.ExamID
+	SittingID        model.ExamSittingID
+	AttemptID        model.ExamAttemptID
+	SuspensionID     model.AttemptSuspensionID
+	ActorUserID      model.UserID
+	ManagerOverride  bool
+	ExpectedRevision int64
+	PrivateReason    string
+	AuditEventID     model.AuditEventID
+	AuditAt          time.Time
 }
 
 // ExamAttemptReallowResult deliberately uses the private-reason-free
@@ -374,16 +374,16 @@ type ExamAttemptReallowResult struct {
 // the Suspension episode; it must not enter ordinary audit data, command
 // outcomes, logs, or realtime. PostgreSQL statement time stamps the episode.
 type ExamAttemptManualSuspension struct {
-	ExamID                  model.ExamID
-	SittingID               model.ExamSittingID
-	AttemptID               model.ExamAttemptID
-	SuspensionID            model.AttemptSuspensionID
-	ActorUserID             model.UserID
-	ManagerOverride         bool
-	ExpectedAttemptRevision int64
-	PrivateReason           string
-	AuditEventID            model.AuditEventID
-	AuditAt                 time.Time
+	ExamID           model.ExamID
+	SittingID        model.ExamSittingID
+	AttemptID        model.ExamAttemptID
+	SuspensionID     model.AttemptSuspensionID
+	ActorUserID      model.UserID
+	ManagerOverride  bool
+	ExpectedRevision int64
+	PrivateReason    string
+	AuditEventID     model.AuditEventID
+	AuditAt          time.Time
 }
 
 // ExamAttemptManualSuspensionResult is the committed, private-reason-free

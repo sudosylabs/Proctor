@@ -48,7 +48,7 @@ func TestBrowserExhaustionSettlement(t *testing.T, ss store.Store, mode string, 
 	sub := sealed.Receipt.SubmissionID
 	draft, err := ss.ExamIntegrityReview().UpdateDraft(ctx, &store.ExamIntegrityReviewDraftMutation{SubmissionID: sub, ReviewID: model.NewSubmissionReviewID(), ActorUserID: f.manager.ID, ChangedAt: model.NowUTC(), AuditEventID: saveIntegrityReviewAudit(t, ctx, ss, f, sub, model.ActionSubmissionReview).ID, AuditAt: model.NowUTC()}, examCommand(f.manager.ID, store.ExamIntegrityReviewDraftOperation, "exhaustion-review", "exhaustion-review"))
 	require.NoError(t, err)
-	final, err := ss.ExamIntegrityReview().Finalize(ctx, &store.ExamIntegrityReviewFinalize{SubmissionID: sub, ReviewID: draft.Review.ID, ExpectedReviewRevision: draft.Review.Revision, ActorUserID: f.manager.ID, ChangedAt: model.NowUTC(), AuditEventID: saveIntegrityReviewAudit(t, ctx, ss, f, sub, model.ActionSubmissionReview).ID, AuditAt: model.NowUTC()}, examCommand(f.manager.ID, store.ExamIntegrityReviewFinalizeOperation, "exhaustion-finalize", "exhaustion-finalize"))
+	final, err := ss.ExamIntegrityReview().Finalize(ctx, &store.ExamIntegrityReviewFinalize{SubmissionID: sub, ReviewID: draft.Review.ID, ExpectedRevision: draft.Review.Revision, ActorUserID: f.manager.ID, ChangedAt: model.NowUTC(), AuditEventID: saveIntegrityReviewAudit(t, ctx, ss, f, sub, model.ActionSubmissionReview).ID, AuditAt: model.NowUTC()}, examCommand(f.manager.ID, store.ExamIntegrityReviewFinalizeOperation, "exhaustion-finalize", "exhaustion-finalize"))
 	require.NoError(t, err)
 	before, err := ss.ExamSubmission().Get(ctx, sub)
 	require.NoError(t, err)

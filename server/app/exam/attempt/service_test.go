@@ -721,7 +721,7 @@ func TestReallowRequiresExactSuspensionAndKeepsPrivateReasonOutOfEffects(t *test
 	input := f.persistence.reallow
 	require.NotNil(t, input, "result=%#v input=%#v effects=%#v order=%v", result, input, f.effects, f.order)
 	require.Equal(t, suspensionID, input.SuspensionID, "result=%#v input=%#v effects=%#v order=%v", result, input, f.effects, f.order)
-	require.Equal(t, int64(2), input.ExpectedAttemptRevision, "result=%#v input=%#v effects=%#v order=%v", result, input, f.effects, f.order)
+	require.Equal(t, int64(2), input.ExpectedRevision, "result=%#v input=%#v effects=%#v order=%v", result, input, f.effects, f.order)
 	require.Equal(t, reason, input.PrivateReason, "result=%#v input=%#v effects=%#v order=%v", result, input, f.effects, f.order)
 	require.Equal(t, managerID, input.ActorUserID, "result=%#v input=%#v effects=%#v order=%v", result, input, f.effects, f.order)
 	require.False(t, input.ManagerOverride, "result=%#v input=%#v effects=%#v order=%v", result, input, f.effects, f.order)

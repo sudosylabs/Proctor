@@ -775,7 +775,7 @@ func (s *SQLExamAttemptStore) ReallowAttempt(ctx context.Context, input *store.E
 	command *store.CommandIdempotency,
 ) (*store.ExamAttemptReallowResult, error) {
 	if input == nil || command == nil || command.Operation != store.ExamAttemptReallowOperation || command.UserID != input.ActorUserID || !input.ExamID.IsValid() || !input.SittingID.IsValid() || !input.AttemptID.IsValid() ||
-		!input.SuspensionID.IsValid() || !input.ActorUserID.IsValid() || input.ExpectedAttemptRevision < 1 ||
+		!input.SuspensionID.IsValid() || !input.ActorUserID.IsValid() || input.ExpectedRevision < 1 ||
 		!input.AuditEventID.IsValid() || input.AuditAt.IsZero() {
 		return nil, store.NewErrInvalidInput("exam_attempt", "reallow", nil)
 	}
@@ -892,7 +892,7 @@ func reallowExamAttempt(ctx context.Context, tx *sqlxTxWrapper, input *store.Exa
 	if row.SuspensionState != string(model.AttemptSuspensionActive) {
 		return zero, store.NewErrConflict("attempt_suspension", "attempt_suspension_active", nil)
 	}
-	if row.AttemptRevision != input.ExpectedAttemptRevision {
+	if row.AttemptRevision != input.ExpectedRevision {
 		return zero, store.NewErrConflict("exam_attempt", "exam_attempt_revision", nil)
 	}
 	if row.AttemptState != string(model.ExamAttemptSuspended) {

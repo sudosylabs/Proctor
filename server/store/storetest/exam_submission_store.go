@@ -1028,7 +1028,7 @@ func testExamSubmissionHistoricalIntegrityGap(t *testing.T, ctx context.Context,
 	require.Equal(t, model.ExamAttemptSuspended, crossed.Attempt.State)
 	reallowed, err := ss.ExamAttempt().ReallowAttempt(ctx, &store.ExamAttemptReallow{ExamID: fixture.examID,
 		SittingID: fixture.sitting.ID, AttemptID: connected.Attempt.ID, SuspensionID: crossed.Suspension.ID,
-		ActorUserID: fixture.manager.ID, ExpectedAttemptRevision: crossed.Attempt.Revision,
+		ActorUserID: fixture.manager.ID, ExpectedRevision: crossed.Attempt.Revision,
 		PrivateReason: "verify Submission retains uncertainty across Participation generations",
 		AuditEventID:  saveExamAttemptReallowAudit(t, ctx, ss, fixture).ID, AuditAt: model.NowUTC()},
 		examCommand(fixture.manager.ID, store.ExamAttemptReallowOperation, "submission-history-reallow", "submission-history-reallow"))

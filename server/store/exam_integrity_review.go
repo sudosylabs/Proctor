@@ -94,19 +94,19 @@ type ExamSubmissionReviewSnapshot struct {
 }
 
 type ExamIntegrityReviewDecisionMutation struct {
-	SubmissionID             model.SubmissionID
-	ReviewID                 model.SubmissionReviewID
-	DecisionID               model.IntegrityReviewDecisionID
-	FlagID                   model.IntegrityFlagID
-	ActorUserID              model.UserID
-	ManagerOverride          bool
-	ExpectedReviewRevision   int64
-	ExpectedDecisionRevision int64
-	Outcome                  model.IntegrityReviewOutcome
-	PrivateRationale         string
-	ChangedAt                time.Time
-	AuditEventID             model.AuditEventID
-	AuditAt                  time.Time
+	SubmissionID           model.SubmissionID
+	ReviewID               model.SubmissionReviewID
+	DecisionID             model.IntegrityReviewDecisionID
+	FlagID                 model.IntegrityFlagID
+	ActorUserID            model.UserID
+	ManagerOverride        bool
+	ExpectedReviewRevision int64
+	ExpectedRevision       int64
+	Outcome                model.IntegrityReviewOutcome
+	PrivateRationale       string
+	ChangedAt              time.Time
+	AuditEventID           model.AuditEventID
+	AuditAt                time.Time
 }
 
 type ExamIntegrityReviewDraftMutation struct {
@@ -114,7 +114,7 @@ type ExamIntegrityReviewDraftMutation struct {
 	ReviewID               model.SubmissionReviewID
 	ActorUserID            model.UserID
 	ManagerOverride        bool
-	ExpectedReviewRevision int64
+	ExpectedRevision       int64
 	ManagerNotes           string
 	StudentRemarksMarkdown string
 	ChangedAt              time.Time
@@ -123,14 +123,14 @@ type ExamIntegrityReviewDraftMutation struct {
 }
 
 type ExamIntegrityReviewFinalize struct {
-	SubmissionID           model.SubmissionID
-	ReviewID               model.SubmissionReviewID
-	ActorUserID            model.UserID
-	ManagerOverride        bool
-	ExpectedReviewRevision int64
-	ChangedAt              time.Time
-	AuditEventID           model.AuditEventID
-	AuditAt                time.Time
+	SubmissionID     model.SubmissionID
+	ReviewID         model.SubmissionReviewID
+	ActorUserID      model.UserID
+	ManagerOverride  bool
+	ExpectedRevision int64
+	ChangedAt        time.Time
+	AuditEventID     model.AuditEventID
+	AuditAt          time.Time
 }
 
 type ExamIntegrityReviewRelease struct {
@@ -138,7 +138,7 @@ type ExamIntegrityReviewRelease struct {
 	ReviewID                  model.SubmissionReviewID
 	ActorUserID               model.UserID
 	ManagerOverride           bool
-	ExpectedReviewRevision    int64
+	ExpectedRevision          int64
 	ChangedAt                 time.Time
 	AuditEventID              model.AuditEventID
 	AuditAt                   time.Time

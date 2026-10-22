@@ -99,7 +99,7 @@ func TestExamRecordsStore(t *testing.T, ss store.Store, probes ...ExamRecordsSQL
 	unchanged, err := records.CompleteRecords(ctx, &noOp, examCommand(f.manager.ID, store.ExamRecordsCompleteOperation, "records-noop", "records-noop"))
 	require.NoError(t, err)
 	require.Equal(t, first, *unchanged.Completion, "current completion restarted clock")
-	draft := &store.ExamIntegrityReviewDraftMutation{SubmissionID: submissionScope.SubmissionID, ReviewID: decided.Review.ID, ActorUserID: f.manager.ID, ExpectedReviewRevision: decided.Review.Revision,
+	draft := &store.ExamIntegrityReviewDraftMutation{SubmissionID: submissionScope.SubmissionID, ReviewID: decided.Review.ID, ActorUserID: f.manager.ID, ExpectedRevision: decided.Review.Revision,
 		ManagerNotes: "New private draft material.", ChangedAt: model.NowUTC(), AuditEventID: saveIntegrityReviewAudit(t, ctx, ss, f, submissionScope.SubmissionID, model.ActionSubmissionReview).ID, AuditAt: model.NowUTC()}
 	draftResult, err := ss.ExamIntegrityReview().UpdateDraft(ctx, draft, examCommand(f.manager.ID, store.ExamIntegrityReviewDraftOperation, "records-draft", "records-draft"))
 	require.NoError(t, err)

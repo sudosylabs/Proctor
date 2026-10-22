@@ -246,7 +246,7 @@ func (f *reviewStoreFake) SaveDecision(_ context.Context, input *store.ExamInteg
 func (f *reviewStoreFake) UpdateDraft(_ context.Context, input *store.ExamIntegrityReviewDraftMutation, command *store.CommandIdempotency) (*store.ExamIntegrityReviewMutationResult, error) {
 	f.draft, f.idempotency = input, command
 	review, _ := model.NewSubmissionReview(f.f.reviewID, f.f.submissionID, f.f.userID, f.f.at.Add(-time.Minute))
-	_ = review.UpdateDraft(input.ExpectedReviewRevision, input.ManagerNotes, input.StudentRemarksMarkdown, f.f.at)
+	_ = review.UpdateDraft(input.ExpectedRevision, input.ManagerNotes, input.StudentRemarksMarkdown, f.f.at)
 	return &store.ExamIntegrityReviewMutationResult{Authorization: *mustReviewAuthorization(f), Review: review}, nil
 }
 func (f *reviewStoreFake) Finalize(_ context.Context, _ *store.ExamIntegrityReviewFinalize, command *store.CommandIdempotency) (*store.ExamIntegrityReviewMutationResult, error) {

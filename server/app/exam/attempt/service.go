@@ -606,7 +606,7 @@ func (s *Service) ReallowExamAttempt(ctx context.Context, invocation invocation.
 	at := model.TimeUTC(s.deps.Now())
 	stored, err := s.deps.Persistence.ReallowAttempt(ctx, &store.ExamAttemptReallow{
 		ExamID: command.ExamID, SittingID: command.SittingID, AttemptID: command.AttemptID, SuspensionID: command.SuspensionID,
-		ActorUserID: principal.UserID, ManagerOverride: override, ExpectedAttemptRevision: command.ExpectedAttemptRevision,
+		ActorUserID: principal.UserID, ManagerOverride: override, ExpectedRevision: command.ExpectedAttemptRevision,
 		PrivateReason: command.PrivateReason, AuditEventID: auditID, AuditAt: at,
 	}, idempotency)
 	if err != nil {

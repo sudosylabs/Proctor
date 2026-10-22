@@ -1037,7 +1037,7 @@ func (s *invitationService) ReplaceInvitation(ctx context.Context, invocation in
 			return runAuditedMutation(ctx, s.deps.Audit, replacementAttempt,
 				func() time.Time { return model.TimeUTC(currentReference.MutationAt) },
 				func(ctx context.Context, replacementReference mutationAttemptReference) (*store.InvitationAdministrationRecord, error) {
-					return s.deps.Store.Replace(ctx, &store.InvitationReplacement{CurrentID: id, ExpectedCurrentRevision: command.ExpectedRevision,
+					return s.deps.Store.Replace(ctx, &store.InvitationReplacement{CurrentID: id, ExpectedRevision: command.ExpectedRevision,
 						Replacement: replacement, Lifetime: model.InvitationLifetime, Occurrence: prepared.Occurrence,
 						Delivery: prepared.Delivery, DeliveryJob: prepared.Job, ActorUserID: invocation.Principal().UserID,
 						CurrentAuditEventID: currentReference.ID, ReplacementAuditEventID: replacementReference.ID,

@@ -109,7 +109,7 @@ func (s *Service) SuspendExamAttempt(ctx context.Context, invocation invocation.
 	}
 	stored, err := s.deps.Persistence.SuspendAttempt(ctx, &store.ExamAttemptManualSuspension{
 		ExamID: command.ExamID, SittingID: command.SittingID, AttemptID: command.AttemptID, SuspensionID: suspensionID,
-		ActorUserID: principal.UserID, ManagerOverride: override, ExpectedAttemptRevision: command.ExpectedAttemptRevision,
+		ActorUserID: principal.UserID, ManagerOverride: override, ExpectedRevision: command.ExpectedAttemptRevision,
 		PrivateReason: command.PrivateReason, AuditEventID: auditID, AuditAt: s.deps.Now(),
 	}, idempotency)
 	var conflict *store.ErrConflict

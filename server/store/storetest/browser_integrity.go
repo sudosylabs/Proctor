@@ -103,13 +103,13 @@ func TestBrowserIntegrityStore(t *testing.T, ss store.Store) {
 	decision := &store.ExamIntegrityReviewDecisionMutation{SubmissionID: sub, ReviewID: reviewID, DecisionID: model.NewIntegrityReviewDecisionID(), FlagID: flags.Items[0].Flag.ID, ActorUserID: f.manager.ID, Outcome: model.IntegrityReviewInconclusive, PrivateRationale: "Review the verified browser event inventory.", ChangedAt: model.NowUTC(), AuditEventID: audit(), AuditAt: model.NowUTC()}
 	decided, err := reviews.SaveDecision(ctx, decision, examCommand(f.manager.ID, store.ExamIntegrityReviewDecisionOperation, "browser-decision", "browser-decision"))
 	require.NoError(t, err)
-	finalize := &store.ExamIntegrityReviewFinalize{SubmissionID: sub, ReviewID: reviewID, ActorUserID: f.manager.ID, ExpectedReviewRevision: decided.Review.Revision, ChangedAt: model.NowUTC(), AuditEventID: audit(), AuditAt: model.NowUTC()}
+	finalize := &store.ExamIntegrityReviewFinalize{SubmissionID: sub, ReviewID: reviewID, ActorUserID: f.manager.ID, ExpectedRevision: decided.Review.Revision, ChangedAt: model.NowUTC(), AuditEventID: audit(), AuditAt: model.NowUTC()}
 	finalized, err := reviews.Finalize(ctx, finalize, examCommand(f.manager.ID, store.ExamIntegrityReviewFinalizeOperation, "browser-finalize", "browser-finalize"))
 	require.NoError(t, err)
 	release := func(revision int64, key string) {
 		prepared, err := reviews.PrepareRelease(ctx, sub, reviewID, revision)
 		require.NoError(t, err)
-		input := &store.ExamIntegrityReviewRelease{SubmissionID: sub, ReviewID: reviewID, ActorUserID: f.manager.ID, ExpectedReviewRevision: revision, ChangedAt: prepared.ReleaseAt, AuditEventID: saveIntegrityReviewAudit(t, ctx, ss, f, sub, model.ActionSubmissionRelease).ID, AuditAt: prepared.ReleaseAt}
+		input := &store.ExamIntegrityReviewRelease{SubmissionID: sub, ReviewID: reviewID, ActorUserID: f.manager.ID, ExpectedRevision: revision, ChangedAt: prepared.ReleaseAt, AuditEventID: saveIntegrityReviewAudit(t, ctx, ss, f, sub, model.ActionSubmissionRelease).ID, AuditAt: prepared.ReleaseAt}
 		attachResultReleaseMail(t, f.candidate, input)
 		_, err = reviews.Release(ctx, input, examCommand(f.manager.ID, store.ExamIntegrityReviewReleaseOperation, key, key))
 		require.NoError(t, err)
@@ -153,18 +153,18 @@ func TestBrowserIntegrityStore(t *testing.T, ss store.Store) {
 	current, err = reviews.Get(ctx, sub)
 	require.NoError(t, err)
 	require.Equal(t, revision, current.Review.Revision, "exact receipt replay invalidated review again")
-	finalize.ExpectedReviewRevision = revision
+	finalize.ExpectedRevision = revision
 	finalize.ChangedAt = model.NowUTC()
 	finalize.AuditEventID = audit()
 	_, err = reviews.Finalize(ctx, finalize, examCommand(f.manager.ID, store.ExamIntegrityReviewFinalizeOperation, "browser-stale-finalize", "browser-stale-finalize"))
 	require.Error(t, err, "stale evidence decision finalized")
 	decision.ExpectedReviewRevision = revision
-	decision.ExpectedDecisionRevision = 1
+	decision.ExpectedRevision = 1
 	decision.ChangedAt = model.NowUTC()
 	decision.AuditEventID = audit()
 	decided, err = reviews.SaveDecision(ctx, decision, examCommand(f.manager.ID, store.ExamIntegrityReviewDecisionOperation, "browser-redecision", "browser-redecision"))
 	require.NoError(t, err)
-	finalize.ExpectedReviewRevision = decided.Review.Revision
+	finalize.ExpectedRevision = decided.Review.Revision
 	finalize.ChangedAt = model.NowUTC()
 	finalize.AuditEventID = audit()
 	refinalized, err := reviews.Finalize(ctx, finalize, examCommand(f.manager.ID, store.ExamIntegrityReviewFinalizeOperation, "browser-refinalize", "browser-refinalize"))
@@ -336,7 +336,7 @@ func TestBrowserIntegrityCopyBoundaries(t *testing.T, ss store.Store, seed func(
 			require.Equal(t, 2-copies, flags.Items[0].OverflowCount)
 			decision, err := ss.ExamIntegrityReview().SaveDecision(ctx, &store.ExamIntegrityReviewDecisionMutation{SubmissionID: sub, ReviewID: model.NewSubmissionReviewID(), DecisionID: model.NewIntegrityReviewDecisionID(), FlagID: flags.Items[0].Flag.ID, ActorUserID: f.manager.ID, Outcome: model.IntegrityReviewInconclusive, PrivateRationale: "Explicitly acknowledge bounded count-only evidence", ChangedAt: model.NowUTC(), AuditEventID: saveIntegrityReviewAudit(t, ctx, ss, f, sub, model.ActionSubmissionReview).ID, AuditAt: model.NowUTC()}, examCommand(f.manager.ID, store.ExamIntegrityReviewDecisionOperation, "copy-decision", "copy-decision"))
 			require.NoError(t, err)
-			_, err = ss.ExamIntegrityReview().Finalize(ctx, &store.ExamIntegrityReviewFinalize{SubmissionID: sub, ReviewID: decision.Review.ID, ActorUserID: f.manager.ID, ExpectedReviewRevision: decision.Review.Revision, ChangedAt: model.NowUTC(), AuditEventID: saveIntegrityReviewAudit(t, ctx, ss, f, sub, model.ActionSubmissionReview).ID, AuditAt: model.NowUTC()}, examCommand(f.manager.ID, store.ExamIntegrityReviewFinalizeOperation, "copy-finalize", "copy-finalize"))
+			_, err = ss.ExamIntegrityReview().Finalize(ctx, &store.ExamIntegrityReviewFinalize{SubmissionID: sub, ReviewID: decision.Review.ID, ActorUserID: f.manager.ID, ExpectedRevision: decision.Review.Revision, ChangedAt: model.NowUTC(), AuditEventID: saveIntegrityReviewAudit(t, ctx, ss, f, sub, model.ActionSubmissionReview).ID, AuditAt: model.NowUTC()}, examCommand(f.manager.ID, store.ExamIntegrityReviewFinalizeOperation, "copy-finalize", "copy-finalize"))
 			require.NoError(t, err)
 		})
 	}

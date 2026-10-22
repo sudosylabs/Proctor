@@ -42,7 +42,7 @@ func TestExamAttemptManualSuspensionStore(t *testing.T, ss store.Store) {
 	kick := func(actor model.UserID, override bool, revision int64) *store.ExamAttemptManualSuspension {
 		return &store.ExamAttemptManualSuspension{ExamID: fixture.examID, SittingID: fixture.sitting.ID,
 			AttemptID: connected.Attempt.ID, SuspensionID: model.NewAttemptSuspensionID(), ActorUserID: actor,
-			ManagerOverride: override, ExpectedAttemptRevision: revision, PrivateReason: privateReason,
+			ManagerOverride: override, ExpectedRevision: revision, PrivateReason: privateReason,
 			AuditEventID: saveExamAttemptReallowAudit(t, ctx, ss, fixture).ID, AuditAt: model.NowUTC()}
 	}
 
@@ -113,7 +113,7 @@ func TestExamAttemptManualSuspensionStore(t *testing.T, ss store.Store) {
 
 	reallowed, err := ss.ExamAttempt().ReallowAttempt(ctx, &store.ExamAttemptReallow{ExamID: fixture.examID,
 		SittingID: fixture.sitting.ID, AttemptID: connected.Attempt.ID, SuspensionID: first.SuspensionID,
-		ActorUserID: fixture.manager.ID, ExpectedAttemptRevision: kicked.Attempt.Revision, PrivateReason: "candidate returned",
+		ActorUserID: fixture.manager.ID, ExpectedRevision: kicked.Attempt.Revision, PrivateReason: "candidate returned",
 		AuditEventID: saveExamAttemptReallowAudit(t, ctx, ss, fixture).ID, AuditAt: model.NowUTC()},
 		examCommand(fixture.manager.ID, store.ExamAttemptReallowOperation, "kick-reallow", "kick-reallow"))
 	require.NoError(t, err)
@@ -175,7 +175,7 @@ func TestExamAttemptManualSuspensionBounds(t *testing.T, ss store.Store, probe E
 	kick := func(fixture examAttemptFixture, connected *store.ExamAttemptConnectResult, key string) error {
 		_, err := ss.ExamAttempt().SuspendAttempt(ctx, &store.ExamAttemptManualSuspension{ExamID: fixture.examID,
 			SittingID: fixture.sitting.ID, AttemptID: connected.Attempt.ID, SuspensionID: model.NewAttemptSuspensionID(),
-			ActorUserID: fixture.manager.ID, ExpectedAttemptRevision: connected.Attempt.Revision,
+			ActorUserID: fixture.manager.ID, ExpectedRevision: connected.Attempt.Revision,
 			PrivateReason: "candidate left the examination room",
 			AuditEventID:  saveExamAttemptReallowAudit(t, ctx, ss, fixture).ID, AuditAt: model.NowUTC()},
 			examCommand(fixture.manager.ID, store.ExamAttemptSuspendOperation, key, key))

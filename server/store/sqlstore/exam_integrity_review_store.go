@@ -673,7 +673,7 @@ func (s *SQLExamIntegrityReviewStore) Release(ctx context.Context, input *store.
 	if input == nil || !input.CandidateUserID.IsValid() {
 		return nil, store.NewErrInvalidInput("submission_review", "release", nil)
 	}
-	probe := &store.ExamIntegrityReviewFinalize{SubmissionID: input.SubmissionID, ReviewID: input.ReviewID, ActorUserID: input.ActorUserID, ManagerOverride: input.ManagerOverride, ExpectedReviewRevision: input.ExpectedReviewRevision, ChangedAt: input.ChangedAt, AuditEventID: input.AuditEventID, AuditAt: input.AuditAt}
+	probe := &store.ExamIntegrityReviewFinalize{SubmissionID: input.SubmissionID, ReviewID: input.ReviewID, ActorUserID: input.ActorUserID, ManagerOverride: input.ManagerOverride, ExpectedRevision: input.ExpectedRevision, ChangedAt: input.ChangedAt, AuditEventID: input.AuditEventID, AuditAt: input.AuditAt}
 	if err := validateReviewFinalizeInput(probe, command, store.ExamIntegrityReviewReleaseOperation); err != nil {
 		return nil, err
 	}
@@ -761,7 +761,7 @@ func (s *SQLExamIntegrityReviewStore) runReviewMutation(ctx context.Context, nam
 }
 
 func validateReviewDecisionInput(input *store.ExamIntegrityReviewDecisionMutation, command *store.CommandIdempotency) error {
-	if input == nil || command == nil || command.Operation != store.ExamIntegrityReviewDecisionOperation || !input.SubmissionID.IsValid() || !input.ReviewID.IsValid() || !input.DecisionID.IsValid() || !input.FlagID.IsValid() || !input.ActorUserID.IsValid() || input.ExpectedReviewRevision < 0 || input.ExpectedDecisionRevision < 0 || input.ChangedAt.IsZero() || !input.AuditEventID.IsValid() || input.AuditAt.IsZero() {
+	if input == nil || command == nil || command.Operation != store.ExamIntegrityReviewDecisionOperation || !input.SubmissionID.IsValid() || !input.ReviewID.IsValid() || !input.DecisionID.IsValid() || !input.FlagID.IsValid() || !input.ActorUserID.IsValid() || input.ExpectedReviewRevision < 0 || input.ExpectedRevision < 0 || input.ChangedAt.IsZero() || !input.AuditEventID.IsValid() || input.AuditAt.IsZero() {
 		return store.NewErrInvalidInput("submission_review", "decision", nil)
 	}
 	_, err := model.NewIntegrityReviewDecision(input.DecisionID, input.ReviewID, input.FlagID, input.Outcome, input.ActorUserID, input.PrivateRationale, input.ChangedAt)
@@ -772,7 +772,7 @@ func validateReviewDecisionInput(input *store.ExamIntegrityReviewDecisionMutatio
 }
 
 func validateReviewDraftInput(input *store.ExamIntegrityReviewDraftMutation, command *store.CommandIdempotency) error {
-	if input == nil || command == nil || command.Operation != store.ExamIntegrityReviewDraftOperation || !input.SubmissionID.IsValid() || !input.ReviewID.IsValid() || !input.ActorUserID.IsValid() || input.ExpectedReviewRevision < 0 || input.ChangedAt.IsZero() || !input.AuditEventID.IsValid() || input.AuditAt.IsZero() {
+	if input == nil || command == nil || command.Operation != store.ExamIntegrityReviewDraftOperation || !input.SubmissionID.IsValid() || !input.ReviewID.IsValid() || !input.ActorUserID.IsValid() || input.ExpectedRevision < 0 || input.ChangedAt.IsZero() || !input.AuditEventID.IsValid() || input.AuditAt.IsZero() {
 		return store.NewErrInvalidInput("submission_review", "draft", nil)
 	}
 	review, err := model.NewSubmissionReview(input.ReviewID, input.SubmissionID, input.ActorUserID, input.ChangedAt)
@@ -786,7 +786,7 @@ func validateReviewDraftInput(input *store.ExamIntegrityReviewDraftMutation, com
 }
 
 func validateReviewFinalizeInput(input *store.ExamIntegrityReviewFinalize, command *store.CommandIdempotency, operation string) error {
-	if input == nil || command == nil || command.Operation != operation || !input.SubmissionID.IsValid() || !input.ReviewID.IsValid() || !input.ActorUserID.IsValid() || input.ExpectedReviewRevision < 1 || input.ChangedAt.IsZero() || !input.AuditEventID.IsValid() || input.AuditAt.IsZero() {
+	if input == nil || command == nil || command.Operation != operation || !input.SubmissionID.IsValid() || !input.ReviewID.IsValid() || !input.ActorUserID.IsValid() || input.ExpectedRevision < 1 || input.ChangedAt.IsZero() || !input.AuditEventID.IsValid() || input.AuditAt.IsZero() {
 		return store.NewErrInvalidInput("submission_review", "terminal", nil)
 	}
 	return nil
@@ -911,7 +911,7 @@ func saveReviewDecision(ctx context.Context, tx *sqlxTxWrapper, input *store.Exa
 		return examIntegrityReviewOutcome{}, store.NewErrNotFound("integrity_flag", input.FlagID.String())
 	}
 	var decision *model.IntegrityReviewDecision
-	if input.ExpectedDecisionRevision == 0 {
+	if input.ExpectedRevision == 0 {
 		var exists bool
 		if err = tx.Get(ctx, &exists, `SELECT EXISTS(SELECT 1 FROM integrity_review_decisions WHERE submission_review_id=? AND integrity_flag_id=?)`, review.ID.String(), input.FlagID.String()); err != nil {
 			return examIntegrityReviewOutcome{}, err
@@ -930,11 +930,11 @@ func saveReviewDecision(ctx context.Context, tx *sqlxTxWrapper, input *store.Exa
 			decision, err = row.value()
 		}
 		if err == nil {
-			err = decision.Revise(input.ExpectedDecisionRevision, input.Outcome, input.ActorUserID, input.PrivateRationale, input.ChangedAt)
+			err = decision.Revise(input.ExpectedRevision, input.Outcome, input.ActorUserID, input.PrivateRationale, input.ChangedAt)
 		}
 		if err == nil {
 			var result sql.Result
-			result, err = tx.Exec(ctx, `UPDATE integrity_review_decisions SET inventory_stale=false,outcome=?,revision=?,actor_user_id=?,private_rationale=?,decided_at=? WHERE id=? AND revision=?`, string(decision.Outcome), decision.Revision, decision.ActorUserID.String(), decision.PrivateRationale, decision.DecidedAt, decision.ID.String(), input.ExpectedDecisionRevision)
+			result, err = tx.Exec(ctx, `UPDATE integrity_review_decisions SET inventory_stale=false,outcome=?,revision=?,actor_user_id=?,private_rationale=?,decided_at=? WHERE id=? AND revision=?`, string(decision.Outcome), decision.Revision, decision.ActorUserID.String(), decision.PrivateRationale, decision.DecidedAt, decision.ID.String(), input.ExpectedRevision)
 			if err == nil {
 				affected, e := result.RowsAffected()
 				if e != nil || affected != 1 {
@@ -970,7 +970,7 @@ func updateReviewDraft(ctx context.Context, tx *sqlxTxWrapper, input *store.Exam
 		return examIntegrityReviewOutcome{}, err
 	}
 	var review *model.SubmissionReview
-	if input.ExpectedReviewRevision == 0 {
+	if input.ExpectedRevision == 0 {
 		review, err = model.NewSubmissionReview(input.ReviewID, input.SubmissionID, input.ActorUserID, input.ChangedAt)
 		if err == nil {
 			review.ManagerNotes = input.ManagerNotes
@@ -982,14 +982,14 @@ func updateReviewDraft(ctx context.Context, tx *sqlxTxWrapper, input *store.Exam
 		}
 	} else {
 		review, err = loadReviewForMutation(ctx, tx, input.SubmissionID)
-		if err == nil && (review.ID != input.ReviewID || review.Revision != input.ExpectedReviewRevision) {
+		if err == nil && (review.ID != input.ReviewID || review.Revision != input.ExpectedRevision) {
 			err = store.NewErrConflict("submission_review", "integrity_review_revision", nil)
 		}
 		if err == nil {
-			err = review.UpdateDraft(input.ExpectedReviewRevision, input.ManagerNotes, input.StudentRemarksMarkdown, input.ChangedAt)
+			err = review.UpdateDraft(input.ExpectedRevision, input.ManagerNotes, input.StudentRemarksMarkdown, input.ChangedAt)
 		}
 		if err == nil {
-			err = persistReview(ctx, tx, review, input.ExpectedReviewRevision)
+			err = persistReview(ctx, tx, review, input.ExpectedRevision)
 		}
 	}
 	if err != nil {
@@ -1014,7 +1014,7 @@ func finalizeReview(ctx context.Context, tx *sqlxTxWrapper, input *store.ExamInt
 	if err != nil {
 		return examIntegrityReviewOutcome{}, err
 	}
-	if review.ID != input.ReviewID || review.Revision != input.ExpectedReviewRevision {
+	if review.ID != input.ReviewID || review.Revision != input.ExpectedRevision {
 		return examIntegrityReviewOutcome{}, store.NewErrConflict("submission_review", "integrity_review_revision", nil)
 	}
 	var submissionState string
@@ -1133,10 +1133,10 @@ func finalizeReview(ctx context.Context, tx *sqlxTxWrapper, input *store.ExamInt
 			return examIntegrityReviewOutcome{}, err
 		}
 	}
-	if err = review.Finalize(input.ExpectedReviewRevision, input.ActorUserID, len(flagItems), len(evidenceItems), len(discrepancyItems), digest, input.ChangedAt); err != nil {
+	if err = review.Finalize(input.ExpectedRevision, input.ActorUserID, len(flagItems), len(evidenceItems), len(discrepancyItems), digest, input.ChangedAt); err != nil {
 		return examIntegrityReviewOutcome{}, err
 	}
-	if err = persistReview(ctx, tx, review, input.ExpectedReviewRevision); err != nil {
+	if err = persistReview(ctx, tx, review, input.ExpectedRevision); err != nil {
 		return examIntegrityReviewOutcome{}, err
 	}
 	var decisionRows []examIntegrityReviewDecisionRow
@@ -1194,7 +1194,7 @@ func releaseReview(ctx context.Context, tx *sqlxTxWrapper, input *store.ExamInte
 	if err != nil {
 		return examIntegrityReviewOutcome{}, err
 	}
-	if review.ID != input.ReviewID || review.Revision != input.ExpectedReviewRevision {
+	if review.ID != input.ReviewID || review.Revision != input.ExpectedRevision {
 		return examIntegrityReviewOutcome{}, store.NewErrConflict("submission_review", "integrity_review_revision", nil)
 	}
 	preparation, err := lockResultReleasePreparation(ctx, tx, input.ReviewID)
@@ -1207,7 +1207,7 @@ func releaseReview(ctx context.Context, tx *sqlxTxWrapper, input *store.ExamInte
 	}
 	releaseAt := model.TimeUTC(preparation.ReleaseAt)
 	if preparation.SubmissionID != input.SubmissionID.String() ||
-		preparation.ExpectedReviewRevision != input.ExpectedReviewRevision ||
+		preparation.ExpectedReviewRevision != input.ExpectedRevision ||
 		!releaseAt.Equal(model.TimeUTC(input.AuditAt)) || !releaseAt.Equal(input.ChangedAt) ||
 		releaseAt.After(resultReleaseInstant(databaseNow, review)) {
 		return examIntegrityReviewOutcome{}, store.NewErrConflict("submission_review", "result_release_time", nil)
@@ -1215,7 +1215,7 @@ func releaseReview(ctx context.Context, tx *sqlxTxWrapper, input *store.ExamInte
 	if auth.CandidateUserID != input.CandidateUserID || recipient.Revision != input.ExpectedRecipientRevision {
 		return examIntegrityReviewOutcome{}, store.NewErrConflict("submission_review", "result_release_recipient_changed", nil)
 	}
-	payloadKeyID, err := validateResultReleaseMail(input.Notice, recipient, input.ReviewID, input.ExpectedReviewRevision, releaseAt)
+	payloadKeyID, err := validateResultReleaseMail(input.Notice, recipient, input.ReviewID, input.ExpectedRevision, releaseAt)
 	if err != nil {
 		return examIntegrityReviewOutcome{}, err
 	}
@@ -1224,10 +1224,10 @@ func releaseReview(ctx context.Context, tx *sqlxTxWrapper, input *store.ExamInte
 			return examIntegrityReviewOutcome{}, err
 		}
 	}
-	if err = review.Release(input.ExpectedReviewRevision, input.ActorUserID, releaseAt); err != nil {
+	if err = review.Release(input.ExpectedRevision, input.ActorUserID, releaseAt); err != nil {
 		return examIntegrityReviewOutcome{}, store.NewErrConflict("submission_review", "integrity_review_state", err)
 	}
-	if err = persistReview(ctx, tx, review, input.ExpectedReviewRevision); err != nil {
+	if err = persistReview(ctx, tx, review, input.ExpectedRevision); err != nil {
 		return examIntegrityReviewOutcome{}, err
 	}
 	out := examIntegrityReviewOutcome{Authorization: *auth, Review: *review}

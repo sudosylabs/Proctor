@@ -41,7 +41,7 @@ func TestDeliveryExpiryStore(t *testing.T, ss store.Store, age func(*testing.T, 
 	subID := sealed.Receipt.SubmissionID
 	draft, err := ss.ExamIntegrityReview().UpdateDraft(ctx, &store.ExamIntegrityReviewDraftMutation{SubmissionID: subID, ReviewID: model.NewSubmissionReviewID(), ActorUserID: f.manager.ID, ChangedAt: model.NowUTC(), AuditEventID: saveIntegrityReviewAudit(t, ctx, ss, f, subID, model.ActionSubmissionReview).ID, AuditAt: model.NowUTC()}, examCommand(f.manager.ID, store.ExamIntegrityReviewDraftOperation, "expiry-review", "expiry-review"))
 	require.NoError(t, err)
-	finalized, err := ss.ExamIntegrityReview().Finalize(ctx, &store.ExamIntegrityReviewFinalize{SubmissionID: subID, ReviewID: draft.Review.ID, ExpectedReviewRevision: draft.Review.Revision, ActorUserID: f.manager.ID, ChangedAt: model.NowUTC(), AuditEventID: saveIntegrityReviewAudit(t, ctx, ss, f, subID, model.ActionSubmissionReview).ID, AuditAt: model.NowUTC()}, examCommand(f.manager.ID, store.ExamIntegrityReviewFinalizeOperation, "expiry-review-final", "expiry-review-final"))
+	finalized, err := ss.ExamIntegrityReview().Finalize(ctx, &store.ExamIntegrityReviewFinalize{SubmissionID: subID, ReviewID: draft.Review.ID, ExpectedRevision: draft.Review.Revision, ActorUserID: f.manager.ID, ChangedAt: model.NowUTC(), AuditEventID: saveIntegrityReviewAudit(t, ctx, ss, f, subID, model.ActionSubmissionReview).ID, AuditAt: model.NowUTC()}, examCommand(f.manager.ID, store.ExamIntegrityReviewFinalizeOperation, "expiry-review-final", "expiry-review-final"))
 	require.NoError(t, err)
 	age(t, ctx, connected.Attempt.ID)
 	readAccess := access

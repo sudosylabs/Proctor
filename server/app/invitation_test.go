@@ -857,7 +857,7 @@ func TestInvitationReplacementReauthorizesAndBuildsANewImmutablePackage(t *testi
 	require.Equal(t, class.ID, persistence.replaced.Replacement.ClassID, "Invitation replacement = %#v / %#v", result, persistence.replaced)
 	require.Equal(t, period.ID, persistence.replaced.Replacement.AcademicPeriodID, "Invitation replacement = %#v / %#v", result, persistence.replaced)
 	require.NotEqual(t, invitation.ClaimHash, persistence.replaced.Replacement.ClaimHash, "Invitation replacement = %#v / %#v", result, persistence.replaced)
-	require.Equal(t, invitation.Revision, persistence.replaced.ExpectedCurrentRevision, "Invitation replacement = %#v / %#v", result, persistence.replaced)
+	require.Equal(t, invitation.Revision, persistence.replaced.ExpectedRevision, "Invitation replacement = %#v / %#v", result, persistence.replaced)
 	require.Equal(t, model.AuditEventID(auditIDs[0]), persistence.replaced.CurrentAuditEventID, "Invitation replacement = %#v / %#v", result, persistence.replaced)
 	require.Equal(t, model.AuditEventID(auditIDs[1]), persistence.replaced.ReplacementAuditEventID, "Invitation replacement = %#v / %#v", result, persistence.replaced)
 	require.Contains(t, mail.issueURL, "/join#token=", "Invitation replacement = %#v / %#v", result, persistence.replaced)

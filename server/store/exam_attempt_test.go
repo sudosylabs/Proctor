@@ -97,11 +97,11 @@ func TestExamAttemptReallowContractIsRevisionFencedAndPrivateReasonSafe(t *testi
 	t.Parallel()
 	input := ExamAttemptReallow{ExamID: model.NewExamID(), SittingID: model.NewExamSittingID(), AttemptID: model.NewExamAttemptID(),
 		SuspensionID: model.NewAttemptSuspensionID(), ActorUserID: model.NewUserID(), ManagerOverride: true,
-		ExpectedAttemptRevision: 7, PrivateReason: "manager verified secure continuity",
+		ExpectedRevision: 7, PrivateReason: "manager verified secure continuity",
 		AuditEventID: model.NewAuditEventID(), AuditAt: model.NowUTC()}
 	result := ExamAttemptReallowResult{ExamID: input.ExamID, SittingID: input.SittingID, ClassID: model.NewClassID(),
 		CandidateUserID: model.NewUserID(), Replayed: true}
-	require.Equal(t, int64(7), input.ExpectedAttemptRevision, "re-allow contract = %#v / %#v", input, result)
+	require.Equal(t, int64(7), input.ExpectedRevision, "re-allow contract = %#v / %#v", input, result)
 	require.NotEmpty(t, input.PrivateReason, "re-allow contract = %#v / %#v", input, result)
 	require.True(t, result.Replayed, "re-allow contract = %#v / %#v", input, result)
 	for _, target := range []any{ExamAttemptSuspensionView{}, result} {

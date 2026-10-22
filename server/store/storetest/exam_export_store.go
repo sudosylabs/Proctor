@@ -212,7 +212,7 @@ func TestExamExportStore(t *testing.T, ss store.Store, probe ExamExportSQLProbe)
 	decision, err := ss.ExamIntegrityReview().SaveDecision(ctx, &store.ExamIntegrityReviewDecisionMutation{SubmissionID: scope.SubmissionID, ReviewID: model.NewSubmissionReviewID(), DecisionID: model.NewIntegrityReviewDecisionID(), FlagID: flagged.Flag.ID,
 		ActorUserID: f.manager.ID, Outcome: model.IntegrityReviewInconclusive, PrivateRationale: "Retained review rationale.", ChangedAt: model.NowUTC(), AuditEventID: saveIntegrityReviewAudit(t, ctx, ss, f, scope.SubmissionID, model.ActionSubmissionReview).ID, AuditAt: model.NowUTC()}, examCommand(f.manager.ID, store.ExamIntegrityReviewDecisionOperation, "export-decision", "export-decision"))
 	require.NoError(t, err)
-	_, err = ss.ExamIntegrityReview().Finalize(ctx, &store.ExamIntegrityReviewFinalize{SubmissionID: scope.SubmissionID, ReviewID: decision.Review.ID, ActorUserID: f.manager.ID, ExpectedReviewRevision: decision.Review.Revision, ChangedAt: model.NowUTC(),
+	_, err = ss.ExamIntegrityReview().Finalize(ctx, &store.ExamIntegrityReviewFinalize{SubmissionID: scope.SubmissionID, ReviewID: decision.Review.ID, ActorUserID: f.manager.ID, ExpectedRevision: decision.Review.Revision, ChangedAt: model.NowUTC(),
 		AuditEventID: saveIntegrityReviewAudit(t, ctx, ss, f, scope.SubmissionID, model.ActionSubmissionReview).ID, AuditAt: model.NowUTC()}, examCommand(f.manager.ID, store.ExamIntegrityReviewFinalizeOperation, "export-finalize", "export-finalize"))
 	require.NoError(t, err)
 	integrityInput := makeInput(model.RetentionCategoryIntegrity)

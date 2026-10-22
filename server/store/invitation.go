@@ -288,7 +288,7 @@ type InvitationRevocation struct {
 // initial delivery in one authoritative transaction.
 type InvitationReplacement struct {
 	CurrentID               model.InvitationID
-	ExpectedCurrentRevision int64
+	ExpectedRevision        int64
 	Replacement             *model.Invitation
 	Lifetime                time.Duration
 	Occurrence              *model.MailOccurrence

@@ -160,7 +160,7 @@ func testRetentionSubmissionPrivacy(t *testing.T, ss store.Store, probe Retentio
 		drafted.Review = decided.Review
 	}
 	_, err = ss.ExamIntegrityReview().Finalize(ctx, &store.ExamIntegrityReviewFinalize{SubmissionID: subID,
-		ReviewID: drafted.Review.ID, ActorUserID: f.manager.ID, ExpectedReviewRevision: drafted.Review.Revision,
+		ReviewID: drafted.Review.ID, ActorUserID: f.manager.ID, ExpectedRevision: drafted.Review.Revision,
 		ChangedAt: model.NowUTC(), AuditEventID: saveIntegrityReviewAudit(t, ctx, ss, f, subID, model.ActionSubmissionReview).ID, AuditAt: model.NowUTC()},
 		examCommand(f.manager.ID, store.ExamIntegrityReviewFinalizeOperation, "privacy-finalize", "privacy-finalize"))
 	require.NoError(t, err)

@@ -64,7 +64,7 @@ func TestSuspendByManagerAuthorizesFirstAndKeepsPrivateReasonOutOfAuditAndEffect
 	input := f.persistence.manualSuspension
 	require.NotNil(t, input, "result=%#v input=%#v order=%v", result, input, f.order)
 	require.Equal(t, managerID, input.ActorUserID, "result=%#v input=%#v order=%v", result, input, f.order)
-	require.Equal(t, int64(3), input.ExpectedAttemptRevision, "result=%#v input=%#v order=%v", result, input, f.order)
+	require.Equal(t, int64(3), input.ExpectedRevision, "result=%#v input=%#v order=%v", result, input, f.order)
 	require.Equal(t, reason, input.PrivateReason, "result=%#v input=%#v order=%v", result, input, f.order)
 	require.False(t, input.ManagerOverride, "result=%#v input=%#v order=%v", result, input, f.order)
 	require.True(t, input.SuspensionID.IsValid(), "result=%#v input=%#v order=%v", result, input, f.order)

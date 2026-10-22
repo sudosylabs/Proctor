@@ -1370,7 +1370,7 @@ func (s SQLInvitationStore) Replace(ctx context.Context, input *store.Invitation
 		if err != nil {
 			return nil, err
 		}
-		if current.Revision != input.ExpectedCurrentRevision || current.State != model.InvitationPending {
+		if current.Revision != input.ExpectedRevision || current.State != model.InvitationPending {
 			return nil, store.NewErrConflict("invitation", "invitation_revision", nil)
 		}
 		at, err := jobDatabaseNow(ctx, tx)
@@ -1518,7 +1518,7 @@ func validateInvitationRevocationNotice(prepared *store.PreparedMail, invitation
 }
 
 func validateInvitationReplacement(input *store.InvitationReplacement) error {
-	if input == nil || !input.CurrentID.IsValid() || input.ExpectedCurrentRevision < 1 || input.Replacement == nil ||
+	if input == nil || !input.CurrentID.IsValid() || input.ExpectedRevision < 1 || input.Replacement == nil ||
 		input.Lifetime != model.InvitationLifetime || !input.ActorUserID.IsValid() ||
 		input.Replacement.InviterUserID != input.ActorUserID || input.Replacement.ID == input.CurrentID ||
 		!input.CurrentAuditEventID.IsValid() || !input.ReplacementAuditEventID.IsValid() ||
