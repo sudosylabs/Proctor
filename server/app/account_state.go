@@ -94,7 +94,7 @@ func (s *accountStateService) SetUserEnabled(ctx context.Context, invocation inv
 	if alreadySatisfied && idempotency == nil {
 		return current, nil
 	}
-	now := model.TimeFromMillis(s.deps.Now().UnixMilli())
+	now := model.TimeUTC(s.deps.Now())
 	recipient := *current
 	// Preparation freezes recipient fields only. SQL remains authoritative for
 	// whether the state change is a no-op, so make the snapshot mail-eligible
@@ -124,8 +124,8 @@ func (s *accountStateService) SetUserEnabled(ctx context.Context, invocation inv
 				ID: userID, ExpectedRevision: current.Revision, Disabled: disabled,
 				Capabilities: accessDeploymentCapabilities(s.deps.Capabilities.Snapshot()),
 				Occurrence:   prepared.Occurrence, Delivery: prepared.Delivery, DeliveryJob: prepared.Job,
-				ChangedAt: reference.MutationAtMillis, RevocationReason: model.SessionRevocationAccountDisabled,
-				AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis, Command: idempotency,
+				ChangedAt: reference.MutationAt, RevocationReason: model.SessionRevocationAccountDisabled,
+				AuditEventID: reference.ID, AuditAt: reference.MutationAt, Command: idempotency,
 			}
 			value, storeErr := s.deps.Users.SetDisabled(ctx, input)
 			if command.batchReplayed != nil {

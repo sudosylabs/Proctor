@@ -275,7 +275,7 @@ func lockExamRecordsAuthority(ctx context.Context, tx *sqlxTxWrapper, input stor
 
 func validExamRecordsMutation(input store.ExamRecordsMutation, command *store.CommandIdempotency, operation string, actions ...model.Action) bool {
 	if input.Scope.Validate() != nil || input.Principal.Validate() != nil || input.Principal.CredentialType != model.CredentialSessionAccess ||
-		!input.AuditEventID.IsValid() || input.AuditAt <= 0 || command == nil || command.Operation != operation || command.UserID != input.Principal.UserID || command.Authorization != nil || command.Batch != nil {
+		!input.AuditEventID.IsValid() || input.AuditAt.IsZero() || command == nil || command.Operation != operation || command.UserID != input.Principal.UserID || command.Authorization != nil || command.Batch != nil {
 		return false
 	}
 	for _, action := range actions {

@@ -18,9 +18,9 @@ import (
 const examSubmissionReceiptMailLifetime = 72 * time.Hour
 
 func validateExamSubmissionReceiptMail(prepared *store.PreparedMail, recipient *model.User,
-	submissionID model.SubmissionID, at int64, key model.MailTemplateKey,
+	submissionID model.SubmissionID, at time.Time, key model.MailTemplateKey,
 ) (string, error) {
-	when := model.TimeFromMillis(at)
+	when := model.TimeUTC(at)
 	if prepared == nil || prepared.Occurrence == nil || prepared.Delivery == nil || prepared.Job == nil ||
 		recipient == nil || recipient.Validate() != nil || !submissionID.IsValid() ||
 		prepared.Occurrence.ID != model.MailOccurrenceID(submissionID.String()) ||

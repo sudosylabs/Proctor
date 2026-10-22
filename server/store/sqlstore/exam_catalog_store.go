@@ -249,7 +249,7 @@ func validateExamListOptions(options store.ExamListOptions) error {
 
 func prepareExamArchive(input *store.ExamArchive) (*store.ExamArchive, error) {
 	if input == nil || !input.ExamID.IsValid() || !input.ActorUserID.IsValid() || input.ExpectedRevision < 1 ||
-		input.ArchivedAt <= 0 || !input.AuditEventID.IsValid() || input.AuditAt <= 0 {
+		input.ArchivedAt.IsZero() || !input.AuditEventID.IsValid() || input.AuditAt.IsZero() {
 		return nil, store.NewErrInvalidInput("exam", "archive", nil)
 	}
 	prepared := *input
@@ -274,7 +274,7 @@ func archiveExam(ctx context.Context, tx *sqlxTxWrapper, input *store.ExamArchiv
 	if exam.Revision != input.ExpectedRevision {
 		return nil, store.NewErrConflict("exam", "exam_revision", nil)
 	}
-	if err := exam.Archive(model.TimeFromMillis(input.ArchivedAt)); err != nil {
+	if err = exam.Archive(model.TimeUTC(input.ArchivedAt)); err != nil {
 		return nil, store.NewErrInvalidInput("exam", "archive", nil).Wrap(err)
 	}
 	result, err := tx.Exec(ctx, `UPDATE exams SET updated_at = ?, archived_at = ?, revision = ? WHERE id = ? AND revision = ? AND archived_at IS NULL`,

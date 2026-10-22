@@ -120,7 +120,7 @@ func (s SQLMFAStore) SavePending(ctx context.Context, input *store.MFAPendingEnr
 		if err != nil {
 			return nil, err
 		}
-		if _, err := completeAuditEvent(ctx, tx, input.AuditEventID, model.AuditStatusSuccess, "", encoded, at.UnixMilli()); err != nil {
+		if _, err := completeAuditEvent(ctx, tx, input.AuditEventID, model.AuditStatusSuccess, "", encoded, at); err != nil {
 			return nil, err
 		}
 		return &candidate, nil
@@ -161,7 +161,7 @@ func (s SQLMFAStore) Challenge(ctx context.Context, input *store.MFAChallenge) (
 		if err != nil {
 			return nil, err
 		}
-		if _, err := completeAuditEvent(ctx, tx, input.AuditEventID, model.AuditStatusSuccess, "", encoded, at.UnixMilli()); err != nil {
+		if _, err := completeAuditEvent(ctx, tx, input.AuditEventID, model.AuditStatusSuccess, "", encoded, at); err != nil {
 			return nil, err
 		}
 		return &store.SessionReauthenticationResult{Session: session, AccessTokenHashes: hashes}, nil

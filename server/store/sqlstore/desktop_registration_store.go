@@ -172,7 +172,7 @@ func (s SQLDesktopRegistrationStore) Revoke(
 	input *store.DesktopRegistrationRevocation,
 ) (*store.DesktopRegistrationRevocationResult, error) {
 	if input == nil || !input.RegistrationID.IsValid() || !input.UserID.IsValid() ||
-		input.RevokedAt <= 0 || !input.AuditEventID.IsValid() || input.AuditAt <= 0 {
+		input.RevokedAt.IsZero() || !input.AuditEventID.IsValid() || input.AuditAt.IsZero() {
 		return nil, store.NewErrInvalidInput("desktop_registration", "revocation", nil)
 	}
 	return runSQLTransaction(ctx, s.GetMaster().Begin, "revoke Desktop Registration", func(
@@ -192,7 +192,7 @@ func (s SQLDesktopRegistrationStore) Revoke(
 		if err != nil {
 			return nil, err
 		}
-		at := model.TimeFromMillis(input.RevokedAt)
+		at := model.TimeUTC(input.RevokedAt)
 		alreadyRevoked := registration.RevokedAt.Valid
 		sessionRows := []sessionRow{}
 		hashes := []string{}

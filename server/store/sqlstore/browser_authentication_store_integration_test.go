@@ -63,7 +63,7 @@ func TestDesktopAuthorizationAuthenticationClock(t *testing.T) {
 			input := &store.DesktopAuthorizationAuthentication{
 				BindingHash: model.HashToken(binding), UserID: user.ID, AuthenticationMethod: "password",
 				PasswordProof: password, AuthenticationStrength: model.AuthenticationSingleFactor,
-				AuthenticatedAt: before.Add(test.authOffset).UnixMilli(), Capabilities: capabilities,
+				AuthenticatedAt: before.Add(test.authOffset), Capabilities: capabilities,
 			}
 			if test.external {
 				input.AuthenticationMethod, input.AuthenticationProviderID, input.ExternalIdentityID = "oidc", "campus-oidc", identity.ID
@@ -71,7 +71,7 @@ func TestDesktopAuthorizationAuthenticationClock(t *testing.T) {
 			}
 			if test.mfa {
 				input.AuthenticationStrength = model.AuthenticationMultiFactor
-				input.MFACompletedAt = before.Add(test.mfaOffset).UnixMilli()
+				input.MFACompletedAt = model.OptionalTimeFrom(before.Add(test.mfaOffset))
 			}
 			result, err := persistence.BrowserAuthentication().AuthenticateDesktopAuthorization(ctx, input)
 			require.NoError(t, err, "AuthenticateDesktopAuthorization()")
@@ -90,13 +90,13 @@ func TestDesktopAuthorizationAuthenticationClock(t *testing.T) {
 			require.True(t, authenticated.ExpiresAt.Equal(created.ExpiresAt), "authentication moved the database transition time or transaction deadline")
 			wantAuth := authenticated.UpdatedAt
 			wantMFA := model.OptionalTime{}
-			if test.external && model.TimeFromMillis(input.AuthenticatedAt).Before(wantAuth) {
-				wantAuth = model.TimeFromMillis(input.AuthenticatedAt)
+			if test.external && model.TimeUTC(input.AuthenticatedAt).Before(wantAuth) {
+				wantAuth = model.TimeUTC(input.AuthenticatedAt)
 			}
 			if test.mfa {
 				wantMFA = model.OptionalTimeFrom(authenticated.UpdatedAt)
-				if test.external && model.TimeFromMillis(input.MFACompletedAt).Before(wantMFA.Time) {
-					wantMFA = model.OptionalTimeFromMillis(input.MFACompletedAt)
+				if test.external && input.MFACompletedAt.Time.Before(wantMFA.Time) {
+					wantMFA = input.MFACompletedAt
 				}
 			}
 			require.True(t, authenticated.AuthenticatedAt.Time.Equal(wantAuth), "authentication provenance = %s", authenticated.AuthenticatedAt.Time)
@@ -105,7 +105,7 @@ func TestDesktopAuthorizationAuthenticationClock(t *testing.T) {
 			issued, err := persistence.BrowserAuthentication().IssueCode(ctx, &store.DesktopAuthorizationCodeIssue{
 				BindingHash: model.HashToken(binding), StateHash: model.HashToken(state), CodeHash: model.HashToken(model.NewCredentialToken()),
 				ExpectedUserID: user.ID, CodeLifetime: 45 * time.Second, Capabilities: capabilities,
-				AuditEventID: audit.ID, AuditAt: model.GetMillis(),
+				AuditEventID: audit.ID, AuditAt: model.NowUTC(),
 			})
 			require.NoError(t, err, "IssueCode()")
 			require.NotNil(t, issued, "IssueCode()")

@@ -496,7 +496,7 @@ func TestCASExternalAuthenticationIntegration(t *testing.T) {
 	require.Equal(t, http.StatusSeeOther, restoredResponse.Code, "restored-provider callback status = %d: %s", restoredResponse.Code, restoredResponse.Body.String())
 	currentUser, err := persistence.User().Get(context.Background(), user.ID)
 	require.NoError(t, err)
-	disabledAt := model.GetMillis()
+	disabledAt := model.NowUTC()
 	auditAttempt, err := persistence.Audit().Save(context.Background(), &model.AuditEvent{
 		Action: string(model.ActionUserManage),
 		Resource: model.Resource{

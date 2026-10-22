@@ -107,7 +107,7 @@ func getRetentionPreview(ctx context.Context, executor sqlxExecutor, id model.Re
 
 func validRetentionMutation(input store.RetentionMutation, command *store.CommandIdempotency, operation string) bool {
 	return input.Principal.Validate() == nil && input.Principal.CredentialType == model.CredentialSessionAccess &&
-		input.AuditEventID.IsValid() && input.AuditAt > 0 && command != nil &&
+		input.AuditEventID.IsValid() && !input.AuditAt.IsZero() && command != nil &&
 		command.UserID == input.Principal.UserID && command.Operation == operation &&
 		command.Authorization == nil && command.Batch == nil
 }

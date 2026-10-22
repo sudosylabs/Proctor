@@ -59,7 +59,7 @@ func TestExamAttemptWorkspaceStore(t *testing.T, ss store.Store, workspace store
 		DPoPKeyThumbprint: fixture.session.DPoPKeyThumbprint, AttemptID: model.NewExamAttemptID(), WorkspaceID: model.NewExamAttemptWorkspaceID(),
 		ParticipationID: model.NewAttemptParticipationID(), ConnectionID: model.NewAttemptConnectionID(),
 		ContinuityCredentialHash: credentialHash,
-		AuditEventID:             saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.GetMillis()}
+		AuditEventID:             saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.NowUTC()}
 	prepareExamAttemptConnect(t, ctx, ss, connect)
 	connected, err := ss.ExamAttempt().Connect(ctx, connect,
 		examCommand(fixture.candidate.ID, store.ExamAttemptConnectOperation, "workspace-connect", "workspace-connect"))
@@ -142,7 +142,7 @@ func TestExamAttemptWorkspaceStore(t *testing.T, ss store.Store, workspace store
 	entryID := model.NewAttemptWorkspaceEntryID()
 	mutation := &store.ExamAttemptWorkspaceMutation{Access: access, Operation: model.AttemptWorkspaceMutationCreateFile,
 		EntryID: entryID, DestinationPath: "notes.go", ObjectID: ready.ID,
-		AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.GetMillis()}
+		AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.NowUTC()}
 	command := examCommand(fixture.candidate.ID, store.ExamAttemptWorkspaceMutationOperation,
 		"workspace-create-file", "workspace-create-file")
 	created, err := workspace.ApplyMutation(ctx, mutation, command)
@@ -173,7 +173,7 @@ func TestExamAttemptWorkspaceStore(t *testing.T, ss store.Store, workspace store
 	requireSuccessfulAudit(t, ctx, ss, replayMutation.AuditEventID)
 	closed, err := ss.ExamAttempt().CloseConnection(ctx, &store.ExamAttemptConnectionClose{
 		ConnectionID: access.ConnectionID, CandidateUserID: fixture.candidate.ID, SessionID: fixture.session.ID,
-		Reason: model.AttemptConnectionCloseTransport, AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.GetMillis(),
+		Reason: model.AttemptConnectionCloseTransport, AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.NowUTC(),
 	})
 	require.NoError(t, err)
 	require.NotNil(t, closed)
@@ -188,7 +188,7 @@ func TestExamAttemptWorkspaceStore(t *testing.T, ss store.Store, workspace store
 		SessionID: fixture.session.ID, DesktopRegistrationID: fixture.session.DesktopRegistrationID,
 		DPoPKeyThumbprint: fixture.session.DPoPKeyThumbprint, AttemptID: model.NewExamAttemptID(), WorkspaceID: model.NewExamAttemptWorkspaceID(),
 		ParticipationID: model.NewAttemptParticipationID(), ConnectionID: model.NewAttemptConnectionID(),
-		ContinuityCredentialHash: credentialHash, AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.GetMillis()}
+		ContinuityCredentialHash: credentialHash, AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.NowUTC()}
 	prepareExamAttemptConnect(t, ctx, ss, reconnect)
 	reconnected, err := ss.ExamAttempt().Connect(ctx, reconnect,
 		examCommand(fixture.candidate.ID, store.ExamAttemptConnectOperation, "workspace-reconnect", "workspace-reconnect"))
@@ -249,7 +249,7 @@ func TestExamAttemptWorkspaceStore(t *testing.T, ss store.Store, workspace store
 		mutations[i] = &store.ExamAttemptWorkspaceMutation{Access: access,
 			Operation: model.AttemptWorkspaceMutationCreateDirectory, EntryID: model.NewAttemptWorkspaceEntryID(),
 			DestinationPath: "race-" + string(rune('a'+i)), AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID,
-			AuditAt: model.GetMillis()}
+			AuditAt: model.NowUTC()}
 		commands[i] = examCommand(fixture.candidate.ID, store.ExamAttemptWorkspaceMutationOperation,
 			"workspace-race-"+string(rune('a'+i)), "workspace-race-"+string(rune('a'+i)))
 	}
@@ -300,7 +300,7 @@ writesComplete:
 	apply := func(operation model.AttemptWorkspaceMutationKind, label string, configure func(*store.ExamAttemptWorkspaceMutation)) (*store.ExamAttemptWorkspaceMutationResult, error) {
 		t.Helper()
 		input := &store.ExamAttemptWorkspaceMutation{Access: access, Operation: operation,
-			EntryID: model.NewAttemptWorkspaceEntryID(), AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.GetMillis()}
+			EntryID: model.NewAttemptWorkspaceEntryID(), AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.NowUTC()}
 		configure(input)
 		return workspace.ApplyMutation(ctx, input, examCommand(fixture.candidate.ID,
 			store.ExamAttemptWorkspaceMutationOperation, "workspace-"+label, "workspace-"+label))
@@ -409,7 +409,7 @@ writesComplete:
 	for i, destination := range []string{"race-winner-a", "race-winner-b"} {
 		input := &store.ExamAttemptWorkspaceMutation{Access: access, Operation: model.AttemptWorkspaceMutationMoveEntry,
 			EntryID: mutations[3].EntryID, ExpectedPath: "race-d", DestinationPath: destination,
-			AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.GetMillis()}
+			AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.NowUTC()}
 		command := examCommand(fixture.candidate.ID, store.ExamAttemptWorkspaceMutationOperation,
 			"workspace-move-race-"+string(rune('a'+i)), "workspace-move-race-"+string(rune('a'+i)))
 		go func() {
@@ -509,7 +509,7 @@ writesComplete:
 		require.Empty(t, journal.Entries)
 	}
 
-	endedAt := model.GetMillis()
+	endedAt := model.NowUTC()
 	ended, err := ss.ClassMember().SeedEnd(ctx, fixture.membership.ID, fixture.membership.Revision, endedAt)
 	require.NoError(t, err)
 	// Membership timestamps have millisecond precision while PostgreSQL decides
@@ -519,7 +519,7 @@ writesComplete:
 	_, err = workspace.ResolveMutationTarget(ctx, access)
 	require.True(t, store.IsNotFound(err), "ResolveMutationTarget(after membership revoke) error")
 	restored, err := ss.ClassMember().SeedEnroll(ctx, &model.ClassMember{ClassID: fixture.class.ID,
-		UserID: fixture.candidate.ID, StartsAt: model.TimeFromMillis(endedAt)})
+		UserID: fixture.candidate.ID, StartsAt: model.TimeUTC(endedAt)})
 	require.NoError(t, err)
 	target, err = workspace.ResolveMutationTarget(ctx, access)
 	require.NoError(t, err)
@@ -544,7 +544,7 @@ func testExamAttemptWorkspaceSuspensionAndMultiNodeReplay(t *testing.T, ctx cont
 		DPoPKeyThumbprint: fixture.session.DPoPKeyThumbprint, AttemptID: model.NewExamAttemptID(), WorkspaceID: model.NewExamAttemptWorkspaceID(),
 		ParticipationID: model.NewAttemptParticipationID(), ConnectionID: model.NewAttemptConnectionID(),
 		ContinuityCredentialHash: credentialHash,
-		AuditEventID:             saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.GetMillis()}
+		AuditEventID:             saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.NowUTC()}
 	prepareExamAttemptConnect(t, ctx, ss, connect)
 	connected, err := ss.ExamAttempt().Connect(ctx, connect,
 		examCommand(fixture.candidate.ID, store.ExamAttemptConnectOperation, "workspace-fence-connect", "workspace-fence-connect"))
@@ -561,7 +561,7 @@ func testExamAttemptWorkspaceSuspensionAndMultiNodeReplay(t *testing.T, ctx cont
 		for index := range inputs {
 			inputs[index] = &store.ExamAttemptWorkspaceMutation{Access: access,
 				Operation: model.AttemptWorkspaceMutationCreateDirectory, EntryID: entryID, DestinationPath: "multi-node",
-				AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.GetMillis()}
+				AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.NowUTC()}
 		}
 		command := examCommand(fixture.candidate.ID, store.ExamAttemptWorkspaceMutationOperation,
 			"workspace-multi-node", "workspace-multi-node")
@@ -611,7 +611,7 @@ func testExamAttemptWorkspaceSuspensionAndMultiNodeReplay(t *testing.T, ctx cont
 		AttemptID: connected.Attempt.ID, ParticipationID: connected.Participation.ID,
 		Generation: connected.Participation.Generation, EvidenceID: model.NewIntegrityEvidenceID(),
 		FlagID: model.NewIntegrityFlagID(), SuspensionID: model.NewAttemptSuspensionID(),
-		AuditEventID: audit.ID, AuditAt: model.GetMillis(),
+		AuditEventID: audit.ID, AuditAt: model.NowUTC(),
 	})
 	require.NoError(t, err)
 	require.NotNil(t, expired)

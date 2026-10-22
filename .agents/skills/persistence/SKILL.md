@@ -110,7 +110,13 @@ interception is prohibited.
 SQL uses plural `snake_case` tables, `id` primary keys, `<entity>_id` foreign keys, meaning-specific `_at` columns, and deterministic constraint/index names. Identifiers fit PostgreSQL's 63-byte limit, which otherwise truncates them with only a notice; a canonical-ID check whose `<table>_<column>_canonical_check` name would exceed it keeps the first 38 bytes of `<table>_<column>`, then `_` and the first eight hex digits of its SHA-256. Vocabulary follows the repository `glossary` skill.
 
 Go uses UTC `time.Time` truncated to microsecond precision, PostgreSQL uses
-`timestamptz`, and HTTP uses RFC 3339. Normalize domain clock input with
+`timestamptz`, and HTTP uses RFC 3339. Store contracts carry every instant
+(`AuditAt`, `ChangedAt`, `EndAt`, a `now` or `at` parameter) as `time.Time`, or
+`model.OptionalTime` when absence is meaningful, never Unix milliseconds; the
+architecture test `TestStoreInstantsAreTimes` rejects an integer instant in
+package `store`. Milliseconds remain only in application commands and model
+documents that still define them (Desktop delivery agreements), converted at
+that edge. Normalize domain clock input with
 `model.TimeUTC` and optional lifecycle instants with `model.OptionalTimeFrom`
 before comparisons and persistence so a database round trip preserves the
 instant; truncation never extends a deadline. Optional lifecycle events are
@@ -193,8 +199,10 @@ Store mutation follows one rule:
    `updated_at = GREATEST(updated_at, ?)` or `x_at = GREATEST(created_at, ?)`;
    when a model transition method or several rows, audit, and mail share the
    instant, decide validity at the raw database time first, then raise it with
-   `latestTime` or `transitionInstant` (millisecond-exact). The returned model
-   always equals the stored row.
+   `latestTime` or `transitionInstant` (microsecond, like every Store instant;
+   `deliveryTransitionInstant` only for a Desktop delivery document whose
+   instants are whole milliseconds). The returned model always equals the
+   stored row.
 3. Caller-requested effective instants (`start_at`, `end_at`, schedules,
    policy expiry) are stored as requested; only modification and transition
    stamps are raised.

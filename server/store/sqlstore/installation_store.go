@@ -184,7 +184,7 @@ func (s SQLInstallationStore) ReconcileSystemAdministratorRole(
 		}
 		candidate := role.Clone()
 		candidate.Permissions = permissions
-		at := model.TimeFromMillis(input.ReconciledAt)
+		at := model.TimeUTC(input.ReconciledAt)
 		if !at.After(candidate.UpdatedAt) {
 			at = candidate.UpdatedAt.Add(time.Microsecond)
 		}
@@ -226,7 +226,7 @@ func (s SQLInstallationStore) ReconcileSystemAdministratorRole(
 }
 
 func validateSystemAdministratorRoleReconciliation(input *store.SystemAdministratorRoleReconciliation) error {
-	if input == nil || input.ReconciledAt <= 0 || input.AuditEvent == nil ||
+	if input == nil || input.ReconciledAt.IsZero() || input.AuditEvent == nil ||
 		!input.AuditEvent.ID.IsZero() || input.AuditEvent.Action != string(model.ActionRoleSystemAdminReconcile) ||
 		input.AuditEvent.Status != model.AuditStatusSuccess || input.AuditEvent.NodeID == "" ||
 		!input.AuditEvent.ActorID.IsZero() || !input.AuditEvent.SessionID.IsZero() ||

@@ -654,12 +654,12 @@ func (f *authoringStoreFake) managerResult(input *store.ExamManagerMutation, com
 	if f.err != nil {
 		return nil, f.err
 	}
-	exam, _ := model.NewExam(input.ExamID, f.unitID, f.actorID, model.TimeFromMillis(input.ChangedAt).Add(-time.Minute))
+	exam, _ := model.NewExam(input.ExamID, f.unitID, f.actorID, model.TimeUTC(input.ChangedAt).Add(-time.Minute))
 	if transfer {
 		exam.OwnerUserID = input.TargetUserID
 	}
 	exam.Revision = input.ExpectedRevision + 1
-	manager, _ := model.NewExamManager(input.ExamID, input.TargetUserID, input.ActorUserID, model.TimeFromMillis(input.ChangedAt))
+	manager, _ := model.NewExamManager(input.ExamID, input.TargetUserID, input.ActorUserID, model.TimeUTC(input.ChangedAt))
 	if !present && manager == nil {
 		return nil, errors.New("manager result")
 	}
@@ -677,9 +677,9 @@ func (f *authoringStoreFake) Archive(_ context.Context, input *store.ExamArchive
 	if f.err != nil {
 		return nil, f.err
 	}
-	exam, _ := model.NewExam(input.ExamID, f.unitID, f.actorID, model.TimeFromMillis(input.ArchivedAt).Add(-time.Minute))
+	exam, _ := model.NewExam(input.ExamID, f.unitID, f.actorID, model.TimeUTC(input.ArchivedAt).Add(-time.Minute))
 	if f.replayed {
-		_ = exam.Archive(model.TimeFromMillis(input.ArchivedAt))
+		_ = exam.Archive(model.TimeUTC(input.ArchivedAt))
 		return &store.ExamArchiveCommandResult{Value: exam, Replayed: true}, nil
 	}
 	if !f.actorIsManager && !input.ManagerOverride {
@@ -691,7 +691,7 @@ func (f *authoringStoreFake) Archive(_ context.Context, input *store.ExamArchive
 	if input.ExpectedRevision != 1 {
 		return nil, store.NewErrConflict("exam", "exam_revision", nil)
 	}
-	_ = exam.Archive(model.TimeFromMillis(input.ArchivedAt))
+	_ = exam.Archive(model.TimeUTC(input.ArchivedAt))
 	return &store.ExamArchiveCommandResult{Value: exam}, nil
 }
 
@@ -726,7 +726,7 @@ func (f *authoringStoreFake) UpdateDraftText(_ context.Context, input *store.Exa
 	if snapshot.Draft.Revision != input.ExpectedRevision {
 		return nil, store.NewErrConflict("exam_draft", "exam_draft_revision", nil)
 	}
-	if _, err := snapshot.Draft.ApplyTextPatch(input.Title, input.InstructionsMarkdown, model.TimeFromMillis(input.UpdatedAt)); err != nil {
+	if _, err := snapshot.Draft.ApplyTextPatch(input.Title, input.InstructionsMarkdown, model.TimeUTC(input.UpdatedAt)); err != nil {
 		return nil, err
 	}
 	return &store.ExamAuthoringCommandResult{Value: snapshot, Replayed: f.replayed}, nil
@@ -754,7 +754,7 @@ func (f *authoringStoreFake) UpdateDraftFocusLoss(_ context.Context, input *stor
 	if snapshot.Draft.Revision != input.ExpectedRevision {
 		return nil, store.NewErrConflict("exam_draft", "exam_draft_revision", nil)
 	}
-	if _, err := snapshot.Draft.ApplyFocusLossPolicy(input.FocusLoss, model.TimeFromMillis(input.UpdatedAt)); err != nil {
+	if _, err := snapshot.Draft.ApplyFocusLossPolicy(input.FocusLoss, model.TimeUTC(input.UpdatedAt)); err != nil {
 		return nil, err
 	}
 	return &store.ExamAuthoringCommandResult{Value: snapshot}, nil
@@ -773,7 +773,7 @@ func (f *authoringStoreFake) UpdateDraftBrowserPolicy(_ context.Context, input *
 	if f.replayed {
 		return &store.ExamAuthoringCommandResult{Value: snapshot, Replayed: true}, nil
 	}
-	if _, err = snapshot.Draft.ApplyBrowserPolicy(input.Policy, model.TimeFromMillis(input.UpdatedAt)); err != nil {
+	if _, err = snapshot.Draft.ApplyBrowserPolicy(input.Policy, model.TimeUTC(input.UpdatedAt)); err != nil {
 		return nil, err
 	}
 	return &store.ExamAuthoringCommandResult{Value: snapshot}, nil
@@ -864,7 +864,7 @@ func (f *authoringStoreFake) UpdateDraftNativePolicy(_ context.Context, input *s
 	if snapshot.Draft.Revision != input.ExpectedRevision {
 		return nil, store.NewErrConflict("exam_draft", "exam_draft_revision", nil)
 	}
-	if _, err := snapshot.Draft.ApplyNativePolicy(input.NativePolicy, model.TimeFromMillis(input.UpdatedAt)); err != nil {
+	if _, err := snapshot.Draft.ApplyNativePolicy(input.NativePolicy, model.TimeUTC(input.UpdatedAt)); err != nil {
 		return nil, err
 	}
 	return &store.ExamAuthoringCommandResult{Value: snapshot}, nil

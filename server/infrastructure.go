@@ -666,13 +666,13 @@ func (s storeClusterDiscovery) Upsert(ctx context.Context, node cluster.Discover
 		ServerVersion:    node.ServerVersion,
 		ProtocolMin:      node.ProtocolMin,
 		ProtocolMax:      node.ProtocolMax,
-		ExpiresAt:        node.ExpiresAt.UTC().UnixMilli(),
-		UpdatedAt:        node.UpdatedAt.UTC().UnixMilli(),
+		ExpiresAt:        node.ExpiresAt.UTC(),
+		UpdatedAt:        node.UpdatedAt.UTC(),
 	})
 }
 
 func (s storeClusterDiscovery) ListLive(ctx context.Context, now time.Time) ([]cluster.DiscoveryNode, error) {
-	rows, err := s.store.ListLive(ctx, now.UTC().UnixMilli())
+	rows, err := s.store.ListLive(ctx, now.UTC())
 	if err != nil {
 		return nil, err
 	}
@@ -687,8 +687,8 @@ func (s storeClusterDiscovery) ListLive(ctx context.Context, now time.Time) ([]c
 			ServerVersion:    row.ServerVersion,
 			ProtocolMin:      row.ProtocolMin,
 			ProtocolMax:      row.ProtocolMax,
-			ExpiresAt:        time.UnixMilli(row.ExpiresAt).UTC(),
-			UpdatedAt:        time.UnixMilli(row.UpdatedAt).UTC(),
+			ExpiresAt:        row.ExpiresAt.UTC(),
+			UpdatedAt:        row.UpdatedAt.UTC(),
 		})
 	}
 	return result, nil
@@ -699,7 +699,7 @@ func (s storeClusterDiscovery) Delete(ctx context.Context, nodeID string) error 
 }
 
 func (s storeClusterDiscovery) DeleteExpired(ctx context.Context, now time.Time) (int64, error) {
-	return s.store.DeleteExpired(ctx, now.UTC().UnixMilli())
+	return s.store.DeleteExpired(ctx, now.UTC())
 }
 
 // loggingClusterLogger adapts logging to cluster.Logger at the composition root.

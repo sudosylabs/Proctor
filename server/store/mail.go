@@ -60,7 +60,7 @@ type MailDeliveryMutation struct {
 	ID               model.MailDeliveryID
 	ExpectedRevision int64
 	AuditEventID     model.AuditEventID
-	AuditAt          int64
+	AuditAt          time.Time
 }
 
 type MailSendClass string

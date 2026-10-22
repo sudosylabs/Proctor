@@ -54,7 +54,7 @@ func (s *academicUnitMemberStoreFake) End(_ context.Context, input *store.Academ
 	*s.events = append(*s.events, "store-end")
 	s.endInput = input
 	ended := *s.current
-	ended.EndsAt = model.OptionalTimeFromMillis(input.EndAt)
+	ended.EndsAt = model.OptionalTimeFrom(input.EndAt)
 	ended.Revision = input.ExpectedRevision + 1
 	return &ended, nil
 }
@@ -78,7 +78,7 @@ func TestAcademicUnitMemberCreateUsesAuthorizationWithoutGrantingPermission(t *t
 	require.False(t, created.EndsAt.Valid)
 	require.False(t, persistence.createInput.Member.EndsAt.Valid)
 	require.Equal(t, 1, clockCalls, "clock calls/creation/audit time")
-	require.Equal(t, model.MillisFromTime(created.CreatedAt), persistence.createInput.AuditAt, "clock calls/creation/audit time")
+	require.True(t, model.TimeUTC(created.CreatedAt).Equal(persistence.createInput.AuditAt), "clock calls/creation/audit time")
 	require.Equal(t, []string{userID}, effects.users)
 	require.NotNil(t, persistence.createInput.Notice, "creation mail = %#v", persistence.createInput)
 	require.Equal(t, int64(1), persistence.createInput.ExpectedRecipientRevision, "creation mail = %#v", persistence.createInput)

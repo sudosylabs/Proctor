@@ -323,13 +323,13 @@ func testTeacherAcademicUnitInvitationAcceptance(t *testing.T, ss store.Store) {
 	independent, err := SaveRoleBinding(ctx, ss, &model.RoleBinding{UserID: accepted.User.ID, RoleID: independentRole.ID,
 		ScopeType: model.RoleScopeAcademicUnit, ScopeID: unit.ID.String(), StartsAt: issuedAt})
 	require.NoError(t, err)
-	endAt := model.MillisFromTime(model.NowUTC().Add(time.Minute))
+	endAt := model.TimeUTC(model.NowUTC().Add(time.Minute))
 	futureRole, err := SaveRole(ctx, ss, &model.Role{Name: "teacher-future-package-" + model.NewID(), DisplayName: "Future Package",
 		Permissions: []string{string(model.ActionAcademicUnitView)}})
 	require.NoError(t, err)
 	futurePackage, err := SaveRoleBinding(ctx, ss, &model.RoleBinding{UserID: accepted.User.ID, RoleID: futureRole.ID,
 		OriginInvitationID: invitation.ID, OriginAcademicUnitMemberID: accepted.AcademicUnitMember.ID,
-		ScopeType: model.RoleScopeAcademicUnit, ScopeID: unit.ID.String(), StartsAt: model.TimeFromMillis(endAt).Add(time.Hour)})
+		ScopeType: model.RoleScopeAcademicUnit, ScopeID: unit.ID.String(), StartsAt: model.TimeUTC(endAt).Add(time.Hour)})
 	require.NoError(t, err)
 	_, err = EndAcademicUnitMember(ctx, ss, accepted.AcademicUnitMember.ID, accepted.AcademicUnitMember.Revision, endAt)
 	require.NoError(t, err)
@@ -339,8 +339,8 @@ func testTeacherAcademicUnitInvitationAcceptance(t *testing.T, ss store.Store) {
 	require.NoError(t, err)
 	retainedIndependent, err := ss.RoleBinding().Get(ctx, independent.ID)
 	require.NoError(t, err)
-	require.Equal(t, endAt, endedPackage.EndsAt.Millis(), "ended packages/independent bindings = %#v / %#v / %#v", endedPackage, endedSecondPackage, retainedIndependent)
-	require.Equal(t, endAt, endedSecondPackage.EndsAt.Millis(), "ended packages/independent bindings = %#v / %#v / %#v", endedPackage, endedSecondPackage, retainedIndependent)
+	require.True(t, endAt.Equal(endedPackage.EndsAt.Time), "ended packages/independent bindings = %#v / %#v / %#v", endedPackage, endedSecondPackage, retainedIndependent)
+	require.True(t, endAt.Equal(endedSecondPackage.EndsAt.Time), "ended packages/independent bindings = %#v / %#v / %#v", endedPackage, endedSecondPackage, retainedIndependent)
 	require.False(t, retainedIndependent.EndsAt.Valid, "ended packages/independent bindings = %#v / %#v / %#v", endedPackage, endedSecondPackage, retainedIndependent)
 	_, err = ss.RoleBinding().Get(ctx, futurePackage.ID)
 	require.True(t, store.IsNotFound(err), "future package binding remained current after membership ended")
@@ -373,7 +373,7 @@ func teacherAcademicUnitInvitationIssueFixture(t *testing.T, ss store.Store, inv
 	return &store.TeacherAcademicUnitInvitationIssue{Invitation: invitation, Lifetime: model.InvitationLifetime,
 		Occurrence: &model.MailOccurrence{ID: occurrenceID, Kind: model.MailOccurrenceInvitation,
 			TemplateKey: model.MailTemplateAccessTeacherAcademicUnitInvitation, ActorUserID: inviter.ID, CreatedAt: issuedAt},
-		Delivery: delivery, DeliveryJob: job, AuditEventID: attempt.ID, AuditAt: model.MillisFromTime(issuedAt)}
+		Delivery: delivery, DeliveryJob: job, AuditEventID: attempt.ID, AuditAt: issuedAt}
 }
 
 func teacherAcademicUnitInvitationAcceptanceFixture(t *testing.T, invitation *model.Invitation, acceptedAt time.Time) *store.TeacherAcademicUnitInvitationAcceptance {

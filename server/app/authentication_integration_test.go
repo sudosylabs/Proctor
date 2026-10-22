@@ -525,7 +525,7 @@ func TestAuthenticationIntegration(t *testing.T) {
 	fourth := decodeAuthenticationResponse(t, loginBeforeDisable)
 	currentUser, err := persistence.User().Get(context.Background(), user.ID)
 	require.NoError(t, err)
-	disabledAt := model.GetMillis()
+	disabledAt := model.NowUTC()
 	auditAttempt, err := persistence.Audit().Save(context.Background(), &model.AuditEvent{
 		Action: string(model.ActionUserManage), Resource: model.Resource{Type: model.ResourceUser, ID: user.ID.String()},
 		ScopeType: model.RoleScopeInstitution, ScopeID: model.NewID(), Status: model.AuditStatusAttempt, NodeID: "authentication-integration",

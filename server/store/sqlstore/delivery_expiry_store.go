@@ -56,7 +56,7 @@ func (s *SQLExamAttemptStore) ListExpiredDeliveries(ctx context.Context, limit i
 // and completes its audit event. It reports whether this call changed the
 // source.
 func (s *SQLExamAttemptStore) ExpireDelivery(ctx context.Context, input *store.DeliveryExpiry) (bool, error) {
-	if input == nil || !input.Due.Valid() || !input.AuditEventID.IsValid() || input.AuditAt <= 0 {
+	if input == nil || !input.Due.Valid() || !input.AuditEventID.IsValid() || input.AuditAt.IsZero() {
 		return false, store.NewErrInvalidInput("delivery_expiry", "input", nil)
 	}
 	d := input.Due

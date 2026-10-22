@@ -14,6 +14,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
 
@@ -31,7 +32,7 @@ func TestClusterDiscoveryStore(t *testing.T, ss store.Store) {
 
 func testClusterDiscoveryUpsertListAndExpire(t *testing.T, ss store.Store) {
 	ctx := context.Background()
-	now := time.Now().UTC().UnixMilli()
+	now := model.TimeUTC(time.Now().UTC())
 	ttl := int64(30_000)
 
 	alpha := &store.ClusterDiscoveryNode{
@@ -41,7 +42,7 @@ func testClusterDiscoveryUpsertListAndExpire(t *testing.T, ss store.Store) {
 		ProtocolMin:      1,
 		ProtocolMax:      1,
 		UpdatedAt:        now,
-		ExpiresAt:        now + ttl,
+		ExpiresAt:        now.Add(time.Duration(ttl) * time.Millisecond),
 	}
 	beta := &store.ClusterDiscoveryNode{
 		NodeID:           "node-beta",
@@ -50,7 +51,7 @@ func testClusterDiscoveryUpsertListAndExpire(t *testing.T, ss store.Store) {
 		ProtocolMin:      1,
 		ProtocolMax:      2,
 		UpdatedAt:        now,
-		ExpiresAt:        now + ttl,
+		ExpiresAt:        now.Add(time.Duration(ttl) * time.Millisecond),
 	}
 	stale := &store.ClusterDiscoveryNode{
 		NodeID:           "node-stale",
@@ -58,8 +59,8 @@ func testClusterDiscoveryUpsertListAndExpire(t *testing.T, ss store.Store) {
 		ServerVersion:    "0.1.0",
 		ProtocolMin:      1,
 		ProtocolMax:      1,
-		UpdatedAt:        now - 60_000,
-		ExpiresAt:        now - 1_000,
+		UpdatedAt:        now.Add(-60_000 * time.Millisecond),
+		ExpiresAt:        now.Add(-1_000 * time.Millisecond),
 	}
 	require.NoError(t, ss.ClusterDiscovery().Upsert(ctx, alpha))
 	require.NoError(t, ss.ClusterDiscovery().Upsert(ctx, beta))
@@ -75,11 +76,11 @@ func testClusterDiscoveryUpsertListAndExpire(t *testing.T, ss store.Store) {
 
 	// Heartbeat replaces the lease window for the same node.
 	refreshed := *alpha
-	refreshed.UpdatedAt = now + 5_000
-	refreshed.ExpiresAt = refreshed.UpdatedAt + ttl
+	refreshed.UpdatedAt = now.Add(5_000 * time.Millisecond)
+	refreshed.ExpiresAt = refreshed.UpdatedAt.Add(time.Duration(ttl) * time.Millisecond)
 	refreshed.AdvertiseAddress = "10.0.0.1:17946"
 	require.NoError(t, ss.ClusterDiscovery().Upsert(ctx, &refreshed))
-	live, err = ss.ClusterDiscovery().ListLive(ctx, now+5_000)
+	live, err = ss.ClusterDiscovery().ListLive(ctx, now.Add(5_000*time.Millisecond))
 	require.NoError(t, err)
 	found := false
 	for _, node := range live {
@@ -102,7 +103,7 @@ func testClusterDiscoveryUpsertListAndExpire(t *testing.T, ss store.Store) {
 
 func testClusterDiscoveryDeleteRemovesNode(t *testing.T, ss store.Store) {
 	ctx := context.Background()
-	now := time.Now().UTC().UnixMilli()
+	now := model.TimeUTC(time.Now().UTC())
 	node := &store.ClusterDiscoveryNode{
 		NodeID:           "node-delete-me",
 		AdvertiseAddress: "10.0.0.9:7946",
@@ -110,7 +111,7 @@ func testClusterDiscoveryDeleteRemovesNode(t *testing.T, ss store.Store) {
 		ProtocolMin:      1,
 		ProtocolMax:      1,
 		UpdatedAt:        now,
-		ExpiresAt:        now + 30_000,
+		ExpiresAt:        now.Add(30_000 * time.Millisecond),
 	}
 	require.NoError(t, ss.ClusterDiscovery().Upsert(ctx, node))
 	require.NoError(t, ss.ClusterDiscovery().Delete(ctx, node.NodeID))
@@ -123,7 +124,7 @@ func testClusterDiscoveryDeleteRemovesNode(t *testing.T, ss store.Store) {
 
 func testClusterDiscoveryRejectsInvalidRecords(t *testing.T, ss store.Store) {
 	ctx := context.Background()
-	now := time.Now().UTC().UnixMilli()
+	now := model.TimeUTC(time.Now().UTC())
 	err := ss.ClusterDiscovery().Upsert(ctx, &store.ClusterDiscoveryNode{
 		NodeID:           "bad id",
 		AdvertiseAddress: "10.0.0.1:7946",
@@ -131,11 +132,11 @@ func testClusterDiscoveryRejectsInvalidRecords(t *testing.T, ss store.Store) {
 		ProtocolMin:      1,
 		ProtocolMax:      1,
 		UpdatedAt:        now,
-		ExpiresAt:        now + 1_000,
+		ExpiresAt:        now.Add(1_000 * time.Millisecond),
 	})
 	require.Error(t, err, "Upsert(invalid node_id) succeeded")
-	_, err = ss.ClusterDiscovery().ListLive(ctx, 0)
-	require.Error(t, err, "ListLive(0) succeeded")
-	_, err = ss.ClusterDiscovery().DeleteExpired(ctx, 0)
-	require.Error(t, err, "DeleteExpired(0) succeeded")
+	_, err = ss.ClusterDiscovery().ListLive(ctx, time.Time{})
+	require.Error(t, err, "ListLive(zero) succeeded")
+	_, err = ss.ClusterDiscovery().DeleteExpired(ctx, time.Time{})
+	require.Error(t, err, "DeleteExpired(zero) succeeded")
 }

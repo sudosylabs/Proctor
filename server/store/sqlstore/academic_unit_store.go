@@ -103,7 +103,7 @@ func (s SQLAcademicUnitStore) Create(
 	if input == nil || input.Unit == nil {
 		return nil, store.NewErrInvalidInput("academic_unit", "creation", nil)
 	}
-	if !input.AuditEventID.IsValid() || input.AuditAt <= 0 {
+	if !input.AuditEventID.IsValid() || input.AuditAt.IsZero() {
 		return nil, store.NewErrInvalidInput("academic_unit", "audit", nil)
 	}
 	if !input.Unit.ID.IsValid() {
@@ -122,7 +122,7 @@ func (s SQLAcademicUnitStore) Create(
 }
 
 func (s SQLAcademicUnitStore) CreateIdempotently(ctx context.Context, input *store.AcademicUnitCreation, command *store.CommandIdempotency) (*store.AcademicUnitCommandResult, error) {
-	if input == nil || input.Unit == nil || command == nil || !input.AuditEventID.IsValid() || input.AuditAt <= 0 {
+	if input == nil || input.Unit == nil || command == nil || !input.AuditEventID.IsValid() || input.AuditAt.IsZero() {
 		return nil, store.NewErrInvalidInput("academic_unit", "idempotent_creation", nil)
 	}
 	candidate := *input.Unit
@@ -323,7 +323,7 @@ func (s SQLAcademicUnitStore) Update(
 	input *store.AcademicUnitUpdate,
 ) (*model.AcademicUnit, error) {
 	if input == nil || input.Unit == nil ||
-		!input.AuditEventID.IsValid() || input.AuditAt <= 0 {
+		!input.AuditEventID.IsValid() || input.AuditAt.IsZero() {
 		return nil, store.NewErrInvalidInput("academic_unit", "update", nil)
 	}
 	candidate := *input.Unit
@@ -395,8 +395,8 @@ func (s SQLAcademicUnitStore) Archive(
 	ctx context.Context,
 	input *store.AcademicUnitArchive,
 ) (*model.AcademicUnit, error) {
-	if input == nil || !input.ID.IsValid() || input.ArchiveAt <= 0 || input.ExpectedRevision < 0 ||
-		!input.AuditEventID.IsValid() || input.AuditAt <= 0 {
+	if input == nil || !input.ID.IsValid() || input.ArchiveAt.IsZero() || input.ExpectedRevision < 0 ||
+		!input.AuditEventID.IsValid() || input.AuditAt.IsZero() {
 		return nil, store.NewErrInvalidInput("academic_unit", "archive", nil)
 	}
 	return s.archiveAcademicUnit(
@@ -408,7 +408,7 @@ func (s SQLAcademicUnitStore) Archive(
 func (s SQLAcademicUnitStore) archiveAcademicUnit(
 	ctx context.Context,
 	id model.AcademicUnitID,
-	archiveAt int64,
+	archiveAt time.Time,
 	expectedRevision int64,
 	audit *academicMutationAudit,
 ) (*model.AcademicUnit, error) {
@@ -441,7 +441,7 @@ func (s SQLAcademicUnitStore) archiveAcademicUnit(
 		}
 		result, err := tx.Exec(ctx, `
 			UPDATE academic_units SET updated_at = GREATEST(updated_at, ?), archived_at = GREATEST(created_at, ?), revision = revision + 1
-			 WHERE id = ? AND archived_at IS NULL AND revision = ?`, model.TimeFromMillis(archiveAt), model.TimeFromMillis(archiveAt), id, current.Revision)
+			 WHERE id = ? AND archived_at IS NULL AND revision = ?`, model.TimeUTC(archiveAt), model.TimeUTC(archiveAt), id, current.Revision)
 		if err != nil {
 			return nil, fmt.Errorf("archive academic unit: %w", err)
 		}

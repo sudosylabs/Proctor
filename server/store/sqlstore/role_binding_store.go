@@ -84,11 +84,11 @@ func (s SQLRoleBindingStore) Save(
 ) (*model.RoleBinding, error) {
 	if input == nil || input.Binding == nil || !input.Binding.ID.IsZero() ||
 		input.ExpectedRoleUpdatedAt.IsZero() ||
-		!input.AuditEventID.IsValid() || input.AuditAt <= 0 {
+		!input.AuditEventID.IsValid() || input.AuditAt.IsZero() {
 		return nil, store.NewErrInvalidInput("role_binding", "creation", nil)
 	}
 	candidate := *input.Binding
-	at := model.TimeFromMillis(input.AuditAt)
+	at := model.TimeUTC(input.AuditAt)
 	if at.IsZero() {
 		at = model.NowUTC()
 	}
@@ -478,8 +478,8 @@ func (s SQLRoleBindingStore) End(
 	ctx context.Context,
 	input *store.RoleBindingEnd,
 ) (*model.RoleBinding, error) {
-	if input == nil || !input.ID.IsValid() || input.EndAt <= 0 ||
-		!input.AuditEventID.IsValid() || input.AuditAt <= 0 ||
+	if input == nil || !input.ID.IsValid() || input.EndAt.IsZero() ||
+		!input.AuditEventID.IsValid() || input.AuditAt.IsZero() ||
 		!validAccessDeploymentCapabilities(input.Capabilities) {
 		return nil, store.NewErrInvalidInput("role_binding", "end", nil)
 	}
@@ -488,7 +488,7 @@ func (s SQLRoleBindingStore) End(
 		if err != nil {
 			return nil, err
 		}
-		if current.EndsAt.Valid && !current.EndsAt.Time.After(model.TimeFromMillis(input.EndAt)) {
+		if current.EndsAt.Valid && !current.EndsAt.Time.After(model.TimeUTC(input.EndAt)) {
 			if input.Command == nil {
 				return nil, store.NewErrConflict("role_binding", "end_at", nil)
 			}
@@ -508,7 +508,7 @@ func (s SQLRoleBindingStore) End(
 				allowedEnded = model.MailTemplateAuthorizationInstitutionRoleEnded
 			}
 			payloadKeyID, err = validateRelationshipTransitionMail("role_binding", input.Notice, current.UserID,
-				model.TimeFromMillis(input.EndAt), allowedEnded)
+				model.TimeUTC(input.EndAt), allowedEnded)
 			if err != nil {
 				return nil, err
 			}
@@ -542,7 +542,7 @@ func (s SQLRoleBindingStore) End(
 		func(replayed, noOp bool) { input.Replayed, input.NoOp = replayed, noOp }, execute)
 }
 
-func (s SQLRoleBindingStore) runRoleBindingMutation(ctx context.Context, operation string, command *store.CommandIdempotency, auditID model.AuditEventID, auditAt int64, setOutput func(bool, bool), execute func(context.Context, *sqlxTxWrapper) (*roleBindingMutationResult, error)) (*model.RoleBinding, error) {
+func (s SQLRoleBindingStore) runRoleBindingMutation(ctx context.Context, operation string, command *store.CommandIdempotency, auditID model.AuditEventID, auditAt time.Time, setOutput func(bool, bool), execute func(context.Context, *sqlxTxWrapper) (*roleBindingMutationResult, error)) (*model.RoleBinding, error) {
 	if command == nil {
 		result, err := runSQLTransaction(ctx, s.GetMaster().Begin, operation, execute)
 		if err != nil {
@@ -620,8 +620,8 @@ func getRoleBindingInTransaction(ctx context.Context, tx sqlxExecutor, id string
 	return row.model()
 }
 
-func endRoleBinding(ctx context.Context, tx *sqlxTxWrapper, id string, endAt int64, capabilities store.AccessDeploymentCapabilities) (*model.RoleBinding, error) {
-	at := model.TimeFromMillis(endAt)
+func endRoleBinding(ctx context.Context, tx *sqlxTxWrapper, id string, endAt time.Time, capabilities store.AccessDeploymentCapabilities) (*model.RoleBinding, error) {
+	at := model.TimeUTC(endAt)
 	if err := lockSystemAdministratorAuthenticationPaths(ctx, tx); err != nil {
 		return nil, err
 	}

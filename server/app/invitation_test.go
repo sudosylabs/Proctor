@@ -141,13 +141,13 @@ func (f *invitationStoreFake) GetByClaimHash(_ context.Context, hash string) (*m
 func (f *invitationStoreFake) AcceptStudentClass(_ context.Context, input *store.StudentClassInvitationAcceptance) (*store.StudentClassInvitationAcceptanceResult, error) {
 	f.accepted = input
 	accepted := *f.invitation
-	_ = accepted.Accept(input.User.ID, input.Affiliation.ID, input.ClassMember.ID, model.TimeFromMillis(input.AcceptedAt))
+	_ = accepted.Accept(input.User.ID, input.Affiliation.ID, input.ClassMember.ID, model.TimeUTC(input.AcceptedAt))
 	return &store.StudentClassInvitationAcceptanceResult{Invitation: &accepted, User: input.User, Affiliation: input.Affiliation, ClassMember: input.ClassMember}, nil
 }
 func (f *invitationStoreFake) AcceptTeacherAcademicUnit(_ context.Context, input *store.TeacherAcademicUnitInvitationAcceptance) (*store.TeacherAcademicUnitInvitationAcceptanceResult, error) {
 	f.teacherAccepted = input
 	accepted := *f.invitation
-	_ = accepted.AcceptTeacherAcademicUnit(input.User.ID, input.Affiliation.ID, input.AcademicUnitMember.ID, input.RoleBinding.ID, model.TimeFromMillis(input.AcceptedAt))
+	_ = accepted.AcceptTeacherAcademicUnit(input.User.ID, input.Affiliation.ID, input.AcademicUnitMember.ID, input.RoleBinding.ID, model.TimeUTC(input.AcceptedAt))
 	return &store.TeacherAcademicUnitInvitationAcceptanceResult{Invitation: &accepted, User: input.User,
 		Affiliation: input.Affiliation, AcademicUnitMember: input.AcademicUnitMember, RoleBinding: input.RoleBinding}, nil
 }
@@ -185,7 +185,7 @@ func (f *invitationStoreFake) GetForAdministration(context.Context, model.Invita
 func (f *invitationStoreFake) Resend(_ context.Context, input *store.InvitationResend) (*store.InvitationAdministrationRecord, error) {
 	f.resent = input
 	result := *f.invitation
-	_ = result.Resend(input.ClaimHash, model.TimeFromMillis(input.AuditAt))
+	_ = result.Resend(input.ClaimHash, model.TimeUTC(input.AuditAt))
 	return &store.InvitationAdministrationRecord{Invitation: &result, Delivery: &store.InvitationDeliverySummary{State: model.MailDeliveryQueued}}, nil
 }
 func (f *invitationStoreFake) ResendIdempotently(ctx context.Context, input *store.InvitationResend, _ *store.CommandIdempotency) (*store.InvitationAdministrationCommandResult, error) {
@@ -195,7 +195,7 @@ func (f *invitationStoreFake) ResendIdempotently(ctx context.Context, input *sto
 func (f *invitationStoreFake) Revoke(_ context.Context, input *store.InvitationRevocation) (*store.InvitationAdministrationRecord, error) {
 	f.revoked = input
 	result := *f.invitation
-	_ = result.Revoke(model.TimeFromMillis(input.AuditAt))
+	_ = result.Revoke(model.TimeUTC(input.AuditAt))
 	return &store.InvitationAdministrationRecord{Invitation: &result}, nil
 }
 func (f *invitationStoreFake) RevokeIdempotently(ctx context.Context, input *store.InvitationRevocation, _ *store.CommandIdempotency) (*store.InvitationAdministrationCommandResult, error) {
@@ -604,7 +604,7 @@ func TestInvitationServiceAcceptsAcademicUnitRoleForAuthenticatedExistingUserWit
 	require.Equal(t, unitID.String(), accepted.RoleBinding.ScopeID, "scoped Role acceptance/result = %#v / %#v", accepted, result)
 	require.Equal(t, invitation.ID, accepted.RoleBinding.OriginInvitationID, "scoped Role acceptance/result = %#v / %#v", accepted, result)
 	require.Equal(t, model.AuditEventID(auditID), accepted.AuditEventID, "scoped Role acceptance/result = %#v / %#v", accepted, result)
-	require.Equal(t, model.MillisFromTime(now.Add(time.Minute)), accepted.AuditAt, "scoped Role acceptance/result = %#v / %#v", accepted, result)
+	require.True(t, model.TimeUTC(now.Add(time.Minute)).Equal(accepted.AuditAt), "scoped Role acceptance/result = %#v / %#v", accepted, result)
 	require.NotNil(t, result.User, "scoped Role acceptance/result = %#v / %#v", accepted, result)
 	require.Equal(t, userID, result.User.ID, "scoped Role acceptance/result = %#v / %#v", accepted, result)
 	require.NotNil(t, result.RoleBinding, "scoped Role acceptance/result = %#v / %#v", accepted, result)

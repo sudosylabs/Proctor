@@ -38,7 +38,7 @@ func TestDeliveryBudgetStore(t *testing.T, ss store.Store) {
 	foreign.Access.CandidateUserID = model.NewUserID()
 	_, err = ss.ExamAttempt().DeliveryBudget(ctx, foreign)
 	require.True(t, store.IsNotFound(err), "foreign quota access")
-	stop := &store.DeliveryDetailsStop{Access: access, Request: model.StopDeliveryDetails{Family: "browser", Reason: model.DeliveryStopLocalLossInventory}, AuditEventID: model.NewAuditEventID(), AuditAt: model.GetMillis()}
+	stop := &store.DeliveryDetailsStop{Access: access, Request: model.StopDeliveryDetails{Family: "browser", Reason: model.DeliveryStopLocalLossInventory}, AuditEventID: model.NewAuditEventID(), AuditAt: model.NowUTC()}
 	key := examCommand(f.candidate.ID, store.DeliveryStopDetailsOperation, "stop-browser", "stop-browser")
 	_, err = ss.ExamAttempt().StopDeliveryDetails(ctx, stop, key)
 	require.Error(t, err, "stop committed without audit")

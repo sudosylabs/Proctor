@@ -48,9 +48,9 @@ func userSessionsRevocationWithNotice(t *testing.T, input *store.UserSessionsRev
 	return input
 }
 
-func securityNoticeMailFixture(t *testing.T, userID model.UserID, key model.MailTemplateKey, atMillis int64) (*model.MailOccurrence, *model.MailDelivery, *model.Job) {
+func securityNoticeMailFixture(t *testing.T, userID model.UserID, key model.MailTemplateKey, at time.Time) (*model.MailOccurrence, *model.MailDelivery, *model.Job) {
 	t.Helper()
-	at := model.TimeFromMillis(atMillis)
+	at = model.TimeUTC(at)
 	return userTokenMailFixture(t, userID, model.NewMailOccurrenceID(), model.MailOccurrenceSecurityNotice, key, model.JobTypeMailDeliver, at, at.Add(24*time.Hour))
 }
 

@@ -102,7 +102,7 @@ func (s *Service) EvaluateExamAttemptFocusLoss(ctx context.Context, invocation i
 		Access: selector, SignalID: s.deps.NewFocusLossSignal(),
 		EvidenceID: s.deps.NewEvidence(), FlagID: s.deps.NewFlag(), SuspensionID: s.deps.NewSuspension(),
 		Sequence: command.Sequence, DurationMilliseconds: command.DurationMilliseconds, Source: command.Source,
-		AuditEventID: auditID, AuditAt: model.MillisFromTime(model.TimeUTC(s.deps.Now())),
+		AuditEventID: auditID, AuditAt: model.TimeUTC(s.deps.Now()),
 	})
 	if err != nil {
 		if endedFocusLossCandidate(err) {
@@ -156,7 +156,7 @@ func (s *Service) evaluateEndedFocusLoss(ctx context.Context, invocation invocat
 	stored, err := s.deps.Persistence.RecordEndedFocusLoss(ctx, &store.ExamAttemptFocusLossDiscrepancy{
 		Access: selector, DiscrepancyID: discrepancyID, SignalID: signalID,
 		Sequence: command.Sequence, DurationMilliseconds: command.DurationMilliseconds, Source: command.Source,
-		AuditEventID: auditID, AuditAt: model.MillisFromTime(model.TimeUTC(s.deps.Now())),
+		AuditEventID: auditID, AuditAt: model.TimeUTC(s.deps.Now()),
 	})
 	if err != nil {
 		return FocusLossEvaluation{}, s.failAudit(ctx, auditID, err)

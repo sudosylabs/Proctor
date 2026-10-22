@@ -67,7 +67,7 @@ func affiliationColumns() []string {
 const affiliationLifecycleLock = "proctor:affiliation-lifecycle"
 
 func (s SQLAffiliationStore) Create(ctx context.Context, input *store.AffiliationCreation) (*model.Affiliation, error) {
-	if input == nil || input.Affiliation == nil || !input.AuditEventID.IsValid() || input.AuditAt <= 0 {
+	if input == nil || input.Affiliation == nil || !input.AuditEventID.IsValid() || input.AuditAt.IsZero() {
 		return nil, store.NewErrInvalidInput("affiliation", "creation", nil)
 	}
 	if !input.Affiliation.ID.IsValid() {
@@ -210,10 +210,9 @@ func (s SQLAffiliationStore) ListByUser(ctx context.Context, userID model.UserID
 	}).OrderBy("affiliations.start_at DESC", "affiliations.id"))
 }
 
-// ListActiveByUser returns the unarchived Affiliations of userID active at at
-// (Unix milliseconds).
-func (s SQLAffiliationStore) ListActiveByUser(ctx context.Context, userID model.UserID, at int64) ([]*model.Affiliation, error) {
-	activeAt := model.TimeFromMillis(at)
+// ListActiveByUser returns the unarchived Affiliations of userID active at at.
+func (s SQLAffiliationStore) ListActiveByUser(ctx context.Context, userID model.UserID, at time.Time) ([]*model.Affiliation, error) {
+	activeAt := model.TimeUTC(at)
 	return s.selectAffiliations(ctx, s.query.Where(sq.Eq{
 		"affiliations.user_id": userID, "affiliations.archived_at": nil,
 	}).Where(sq.LtOrEq{"affiliations.start_at": activeAt}).
@@ -226,7 +225,7 @@ func (s SQLAffiliationStore) ListActiveByUser(ctx context.Context, userID model.
 // without input.Command, and an audited no-op (input.NoOp set) under a command
 // idempotency key.
 func (s SQLAffiliationStore) End(ctx context.Context, input *store.AffiliationEnd) (*model.Affiliation, error) {
-	if input == nil || !input.ID.IsValid() || input.ExpectedRevision <= 0 || input.EndAt <= 0 || !input.AuditEventID.IsValid() || input.AuditAt <= 0 {
+	if input == nil || !input.ID.IsValid() || input.ExpectedRevision <= 0 || input.EndAt.IsZero() || !input.AuditEventID.IsValid() || input.AuditAt.IsZero() {
 		return nil, store.NewErrInvalidInput("affiliation", "end", nil)
 	}
 	execute := func(ctx context.Context, tx *sqlxTxWrapper) (*affiliationMutationResult, error) {
@@ -342,7 +341,7 @@ func (s SQLAffiliationStore) getAffiliationInTransaction(ctx context.Context, tx
 	return row.model()
 }
 
-func (s SQLAffiliationStore) endAffiliation(ctx context.Context, tx sqlxExecutor, id model.AffiliationID, expectedRevision, endAt int64) (*model.Affiliation, error) {
+func (s SQLAffiliationStore) endAffiliation(ctx context.Context, tx sqlxExecutor, id model.AffiliationID, expectedRevision int64, endAt time.Time) (*model.Affiliation, error) {
 	var row affiliationRow
 	if err := tx.GetBuilder(ctx, &row, s.query.Where(sq.Eq{"affiliations.id": id, "affiliations.archived_at": nil})); err != nil {
 		return nil, translateError("affiliation", id.String(), err)
@@ -354,9 +353,8 @@ func (s SQLAffiliationStore) endAffiliation(ctx context.Context, tx sqlxExecutor
 	if current.Revision != expectedRevision {
 		return nil, store.NewErrConflict("affiliation", "affiliation_changed", nil)
 	}
-	startMillis := model.MillisFromTime(current.StartsAt)
-	endMillis := current.EndsAt.Millis()
-	if endAt <= startMillis || (endMillis != 0 && endAt >= endMillis) {
+	endAt = model.TimeUTC(endAt)
+	if !endAt.After(current.StartsAt) || (current.EndsAt.Valid && !endAt.Before(current.EndsAt.Time)) {
 		return nil, store.NewErrConflict("affiliation", "affiliation_end_time", nil)
 	}
 	if current.Kind == model.AffiliationStudent {
@@ -368,7 +366,7 @@ func (s SQLAffiliationStore) endAffiliation(ctx context.Context, tx sqlxExecutor
 			return nil, store.NewErrConflict("affiliation", "affiliation_student_has_active_enrollment", nil)
 		}
 	}
-	at := model.TimeFromMillis(endAt)
+	at := model.TimeUTC(endAt)
 	result, err := tx.Exec(ctx, `UPDATE affiliations SET updated_at = GREATEST(updated_at, ?), end_at = ?, revision = revision + 1 WHERE id = ? AND archived_at IS NULL AND revision = ?`, at, at, id, expectedRevision)
 	if err != nil {
 		return nil, fmt.Errorf("end affiliation: %w", err)
@@ -377,7 +375,7 @@ func (s SQLAffiliationStore) endAffiliation(ctx context.Context, tx sqlxExecutor
 		return nil, err
 	}
 	current.UpdatedAt = latestTime(current.UpdatedAt, at)
-	current.EndsAt = model.OptionalTimeFromMillis(endAt)
+	current.EndsAt = model.OptionalTimeFrom(endAt)
 	current.Revision = expectedRevision + 1
 	return current, nil
 }

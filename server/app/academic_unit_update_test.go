@@ -204,7 +204,7 @@ func TestAcademicUnitArchiveCommitsBeforePublishing(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, persistence.archiveInput)
 	require.Equal(t, model.AcademicUnitID(unitID), persistence.archiveInput.ID)
-	require.Equal(t, int64(500), persistence.archiveInput.ArchiveAt)
+	require.True(t, time.UnixMilli(500).UTC().Equal(persistence.archiveInput.ArchiveAt))
 	require.Equal(t, model.AuditEventID(auditor.beginID), persistence.archiveInput.AuditEventID)
 	assertAcademicUnitCreateEvents(
 		t, events, "authorize", "get", "audit-begin", "store-archive", "effect-archive",

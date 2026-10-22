@@ -125,7 +125,7 @@ func TestInstallationStore(t *testing.T, ss store.Store) {
 	require.Equal(t, winner.State.AdministratorUserID, replayed.State.AdministratorUserID, "Bootstrap(exact replay) = %#v, want identities from %#v", replayed, winner)
 	require.Equal(t, winner.AccessPolicy.ID, replayed.AccessPolicy.ID, "Bootstrap(exact replay) = %#v, want identities from %#v", replayed, winner)
 	require.Equal(t, winner.DesktopCompatibilityPolicy.InstitutionID, replayed.DesktopCompatibilityPolicy.InstitutionID, "Bootstrap(exact replay) = %#v, want identities from %#v", replayed, winner)
-	err = ss.User().UpdateLastLogin(ctx, winner.Administrator.ID, winner.Administrator.CreatedAt.Add(time.Minute).UnixMilli())
+	err = ss.User().UpdateLastLogin(ctx, winner.Administrator.ID, winner.Administrator.CreatedAt.Add(time.Minute))
 	require.NoError(t, err)
 	replayed, err = ss.Installation().Bootstrap(ctx, winnerInput)
 	require.NoError(t, err)
@@ -337,7 +337,7 @@ func testInstallationBootstrap(index int) *store.InstallationBootstrap {
 func testSystemAdministratorRoleReconciliation(index int) *store.SystemAdministratorRoleReconciliation {
 	return &store.SystemAdministratorRoleReconciliation{
 		RequiredPermissions: model.AllActions(),
-		ReconciledAt:        int64(index + 100),
+		ReconciledAt:        time.UnixMilli(int64(index + 100)).UTC(),
 		AuditEvent: &model.AuditEvent{
 			Action: "role.system_admin.reconcile", Status: model.AuditStatusSuccess,
 			NodeID: fmt.Sprintf("store-test-%d", index), ClientType: "system",

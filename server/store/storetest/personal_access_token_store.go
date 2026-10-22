@@ -232,7 +232,7 @@ func testPersonalAccessTokenAtomicSecurityNotices(t *testing.T, ss store.Store) 
 
 func personalAccessTokenNoticeFixture(t *testing.T, userID model.UserID, key model.MailTemplateKey, at, expiresAt time.Time) store.PersonalAccessTokenSecurityNotice {
 	t.Helper()
-	occurrence, delivery, job := securityNoticeMailFixture(t, userID, key, at.UnixMilli())
+	occurrence, delivery, job := securityNoticeMailFixture(t, userID, key, at)
 	return store.PersonalAccessTokenSecurityNotice{Occurrence: occurrence, Delivery: delivery, Job: job, ExpiresAt: expiresAt}
 }
 
@@ -362,7 +362,7 @@ func testPersonalAccessTokenRejectsDisabledAccount(t *testing.T, ss store.Store)
 	raw := model.NewCredentialToken()
 	token, err := createPersonalAccessTokenWithNotice(t, ctx, ss, newPersonalAccessToken(user.ID.String(), raw), 10)
 	require.NoError(t, err)
-	at := model.MillisFromTime(token.CreatedAt) + 10
+	at := model.TimeUTC(token.CreatedAt).Add(10 * time.Millisecond)
 	audit := saveUserProfileAuditAttempt(t, ctx, ss, user.ID.String())
 	_, err = ss.User().SetDisabled(ctx, userDisabledStateChangeWithNotice(t, &store.UserDisabledStateChange{
 		ID: user.ID, ExpectedRevision: user.Revision, Disabled: true,
@@ -374,7 +374,7 @@ func testPersonalAccessTokenRejectsDisabledAccount(t *testing.T, ss store.Store)
 	_, err = ss.PersonalAccessToken().Resolve(
 		ctx,
 		model.HashToken(raw),
-		model.TimeFromMillis(at+1),
+		model.TimeUTC(at.Add(1*time.Millisecond)),
 		time.Second,
 	)
 	require.True(t, store.IsNotFound(err), "disabled-account Resolve() error")

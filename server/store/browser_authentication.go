@@ -90,8 +90,8 @@ type DesktopAuthorizationAuthentication struct {
 	AuthenticationProviderID string
 	ExternalIdentityID       model.ExternalIdentityID
 	AuthenticationStrength   model.AuthenticationStrength
-	AuthenticatedAt          int64
-	MFACompletedAt           int64
+	AuthenticatedAt          time.Time
+	MFACompletedAt           model.OptionalTime
 	Capabilities             AccessDeploymentCapabilities
 }
 

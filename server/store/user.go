@@ -61,7 +61,7 @@ type UserProfileUpdate struct {
 	Changes          model.UserProfileChanges
 	ExpectedRevision int64
 	AuditEventID     model.AuditEventID
-	AuditAt          int64
+	AuditAt          time.Time
 }
 
 // UserDisabledStateChange is the complete durable input for changing whether
@@ -76,10 +76,10 @@ type UserDisabledStateChange struct {
 	Occurrence       *model.MailOccurrence
 	Delivery         *model.MailDelivery
 	DeliveryJob      *model.Job
-	ChangedAt        int64
+	ChangedAt        time.Time
 	RevocationReason model.SessionRevocationReason
 	AuditEventID     model.AuditEventID
-	AuditAt          int64
+	AuditAt          time.Time
 	Command          *CommandIdempotency
 	Replayed         bool
 	NoOp             bool
@@ -148,7 +148,7 @@ type UserStore interface {
 	MatchVisibility(context.Context, model.UserID, UserVisibilityScope) (UserVisibilityMatch, error)
 	UpdateProfile(context.Context, *UserProfileUpdate) (*model.User, error)
 	SetDisabled(context.Context, *UserDisabledStateChange) (*UserDisabledStateResult, error)
-	UpdateLastLogin(context.Context, model.UserID, int64) error
+	UpdateLastLogin(ctx context.Context, userID model.UserID, at time.Time) error
 }
 
 type CurrentUserProductArea string

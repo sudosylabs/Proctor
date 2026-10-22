@@ -169,7 +169,7 @@ func (s *affiliationService) CreateAffiliation(ctx context.Context, invocation i
 		func() time.Time { return at },
 		func(ctx context.Context, reference mutationAttemptReference) (*model.Affiliation, error) {
 			input := &store.AffiliationCreation{Affiliation: candidate, AuditEventID: reference.ID,
-				AuditAt: reference.MutationAtMillis, Command: idempotency}
+				AuditAt: reference.MutationAt, Command: idempotency}
 			value, storeErr := s.deps.Store.Create(ctx, input)
 			if command.batchReplayed != nil {
 				*command.batchReplayed = input.Replayed || input.NoOp
@@ -240,8 +240,8 @@ func (s *affiliationService) EndAffiliation(ctx context.Context, invocation invo
 		s.deps.Now,
 		func(ctx context.Context, reference mutationAttemptReference) (*model.Affiliation, error) {
 			input := &store.AffiliationEnd{
-				ID: id, ExpectedRevision: current.Revision, EndAt: reference.MutationAtMillis,
-				AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis, Command: idempotency,
+				ID: id, ExpectedRevision: current.Revision, EndAt: reference.MutationAt,
+				AuditEventID: reference.ID, AuditAt: reference.MutationAt, Command: idempotency,
 			}
 			value, storeErr := s.deps.Store.End(ctx, input)
 			if command.batchReplayed != nil {

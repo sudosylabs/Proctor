@@ -55,7 +55,7 @@ func TestClassArchiveSerializesWithDependentCreation(t *testing.T) {
 			go func() {
 				defer wait.Done()
 				<-start
-				_, archiveErr = persistence.Class().Archive(ctx, &store.ClassArchive{ID: class.ID, ExpectedAcademicUnitID: unit.ID, ExpectedRevision: class.Revision, ArchiveAt: model.GetMillis(), AuditEventID: attempt.ID, AuditAt: model.GetMillis()})
+				_, archiveErr = persistence.Class().Archive(ctx, &store.ClassArchive{ID: class.ID, ExpectedAcademicUnitID: unit.ID, ExpectedRevision: class.Revision, ArchiveAt: model.NowUTC(), AuditEventID: attempt.ID, AuditAt: model.NowUTC()})
 			}()
 			go func() {
 				defer wait.Done()
@@ -78,7 +78,7 @@ func TestClassArchiveSerializesWithDependentCreation(t *testing.T) {
 			go func() {
 				defer wait.Done()
 				<-start
-				_, archiveErr = persistence.Class().Archive(ctx, &store.ClassArchive{ID: class.ID, ExpectedAcademicUnitID: unit.ID, ExpectedRevision: class.Revision, ArchiveAt: model.GetMillis(), AuditEventID: attempt.ID, AuditAt: model.GetMillis()})
+				_, archiveErr = persistence.Class().Archive(ctx, &store.ClassArchive{ID: class.ID, ExpectedAcademicUnitID: unit.ID, ExpectedRevision: class.Revision, ArchiveAt: model.NowUTC(), AuditEventID: attempt.ID, AuditAt: model.NowUTC()})
 			}()
 			go func() {
 				defer wait.Done()

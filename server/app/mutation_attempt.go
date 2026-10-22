@@ -41,8 +41,8 @@ type scopedMutationAuditor interface {
 // mutationAttemptReference is the complete audit input a named Store mutation
 // needs to commit durable state and successful audit completion atomically.
 type mutationAttemptReference struct {
-	ID               model.AuditEventID
-	MutationAtMillis int64
+	ID         model.AuditEventID
+	MutationAt time.Time
 }
 
 // runAuditedMutation owns the common attempt and failure protocol. Successful
@@ -86,8 +86,8 @@ func runAuditedMutation[T any](
 	}
 
 	result, err := mutate(ctx, mutationAttemptReference{
-		ID:               auditID,
-		MutationAtMillis: model.MillisFromTime(now()),
+		ID:         auditID,
+		MutationAt: model.TimeUTC(now()),
 	})
 	if err == nil {
 		return result, nil

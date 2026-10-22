@@ -45,7 +45,7 @@ func testInstitutionStoreUpdateWithAudit(t *testing.T, ss store.Store) {
 	candidate.DisplayName = "Audited Northbridge"
 	candidate.PrepareUpdate(model.NowUTC())
 	updated, err := ss.Institution().Update(ctx, &store.InstitutionUpdate{
-		Institution: &candidate, AuditEventID: attempt.ID, AuditAt: model.GetMillis(),
+		Institution: &candidate, AuditEventID: attempt.ID, AuditAt: model.NowUTC(),
 	})
 	require.NoError(t, err)
 	require.Equal(t, "Audited Northbridge", updated.DisplayName)
@@ -61,7 +61,7 @@ func testInstitutionStoreUpdateWithAudit(t *testing.T, ss store.Store) {
 	stale.DisplayName = "Stale Northbridge"
 	stale.PrepareUpdate(model.NowUTC())
 	_, err = ss.Institution().Update(ctx, &store.InstitutionUpdate{
-		Institution: &stale, AuditEventID: staleAttempt.ID, AuditAt: model.GetMillis(),
+		Institution: &stale, AuditEventID: staleAttempt.ID, AuditAt: model.NowUTC(),
 	})
 	require.True(t, store.IsConflict(err), "stale Update() error")
 
@@ -69,7 +69,7 @@ func testInstitutionStoreUpdateWithAudit(t *testing.T, ss store.Store) {
 	rolledBack.DisplayName = "Must Roll Back"
 	rolledBack.PrepareUpdate(model.NowUTC())
 	_, err = ss.Institution().Update(ctx, &store.InstitutionUpdate{
-		Institution: &rolledBack, AuditEventID: model.NewAuditEventID(), AuditAt: model.GetMillis(),
+		Institution: &rolledBack, AuditEventID: model.NewAuditEventID(), AuditAt: model.NowUTC(),
 	})
 	require.Error(t, err, "Update() succeeded without its audit attempt")
 	persisted, getErr := ss.Institution().GetSingleton(ctx)
@@ -154,10 +154,10 @@ func testInstitutionStoreArchive(t *testing.T, ss store.Store) {
 	ctx := context.Background()
 	institution := saveInstitution(t, ctx, ss)
 
-	require.NoError(t, ss.Institution().Archive(ctx, institution.ID, model.GetMillis()))
+	require.NoError(t, ss.Institution().Archive(ctx, institution.ID, model.NowUTC()))
 	_, err := ss.Institution().Get(ctx, institution.ID)
 	require.True(t, store.IsNotFound(err), "Get(archived) error")
-	require.True(t, store.IsNotFound(ss.Institution().Archive(ctx, institution.ID, model.GetMillis())), "second Archive() error")
+	require.True(t, store.IsNotFound(ss.Institution().Archive(ctx, institution.ID, model.NowUTC())), "second Archive() error")
 	_, err = ss.Institution().Save(ctx, &model.Institution{
 		Name:        "replacement",
 		DisplayName: "Replacement University",
@@ -184,5 +184,5 @@ func cleanupInstitution(t *testing.T, ctx context.Context, ss store.Store) {
 		return
 	}
 	require.NoError(t, err)
-	require.NoError(t, ss.Institution().Archive(ctx, institution.ID, model.GetMillis()))
+	require.NoError(t, ss.Institution().Archive(ctx, institution.ID, model.NowUTC()))
 }

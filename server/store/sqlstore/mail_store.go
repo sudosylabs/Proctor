@@ -674,7 +674,7 @@ func (s SQLMailStore) RetryDelivery(ctx context.Context, input *store.MailDelive
 }
 
 func (s SQLMailStore) mutateOperatorDelivery(ctx context.Context, input *store.MailDeliveryMutation, operation string, transition func(*model.MailDelivery, *model.Job, time.Time) (*model.MailDelivery, *model.Job, error)) (*model.MailDelivery, error) {
-	if input == nil || !input.ID.IsValid() || input.ExpectedRevision <= 0 || !input.AuditEventID.IsValid() || input.AuditAt <= 0 {
+	if input == nil || !input.ID.IsValid() || input.ExpectedRevision <= 0 || !input.AuditEventID.IsValid() || input.AuditAt.IsZero() {
 		return nil, store.NewErrInvalidInput("mail_delivery", operation, nil)
 	}
 	return executeSQLTransaction(ctx, s.GetMaster().Begin, rawSQLTransactionPolicy[*model.MailDelivery](true, func(_ *model.MailDelivery, err error) error { return err }), func(ctx context.Context, tx *sqlxTxWrapper) (*model.MailDelivery, error) {

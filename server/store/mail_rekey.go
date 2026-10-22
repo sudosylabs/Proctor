@@ -19,7 +19,7 @@ type MailRekeyStart struct {
 	RetiringKeyID string
 	Job           *model.Job
 	AuditEventID  model.AuditEventID
-	AuditAt       int64
+	AuditAt       time.Time
 }
 
 type MailRekeyOperation struct {

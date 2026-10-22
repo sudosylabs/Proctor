@@ -82,7 +82,7 @@ func (s SQLMFAStore) Activate(
 	at := model.TimeUTC(input.At)
 	if !input.CredentialID.IsValid() || !input.UserID.IsValid() ||
 		!input.SessionID.IsValid() || input.TimeStep <= 0 || !at.After(time.Unix(0, 0)) ||
-		!input.AuditEventID.IsValid() || input.AuditAt <= 0 ||
+		!input.AuditEventID.IsValid() || input.AuditAt.IsZero() ||
 		len(input.RecoveryCodes) == 0 || len(input.RecoveryCodes) > model.MFARecoveryCodeMaxCount {
 		return nil, store.NewErrInvalidInput("mfa_credential", "activate", nil)
 	}
@@ -96,7 +96,7 @@ func (s SQLMFAStore) Activate(
 		input.Notice.Delivery,
 		input.Notice.Job,
 		model.MailTemplateIdentityMFAEnabled,
-		input.At.UnixMilli(),
+		input.At,
 	)
 	if err != nil {
 		return nil, err
@@ -202,14 +202,14 @@ func (s SQLMFAStore) Activate(
 // credential: exactly one of a TOTP timeStep later than the last one used or an
 // unconsumed recovery-code hash. A replayed time step or unknown code yields a
 // not-found error.
-func (s SQLMFAStore) ConsumeSecondFactor(ctx context.Context, userID model.UserID, timeStep int64, recoveryCodeHash string, now int64) error {
-	if !userID.IsValid() || now <= 0 ||
+func (s SQLMFAStore) ConsumeSecondFactor(ctx context.Context, userID model.UserID, timeStep int64, recoveryCodeHash string, now time.Time) error {
+	if !userID.IsValid() || now.IsZero() ||
 		((timeStep <= 0) == (recoveryCodeHash == "")) ||
 		(recoveryCodeHash != "" && !model.IsValidTokenHash(recoveryCodeHash)) {
 		return store.NewErrInvalidInput("mfa_credential", "consume", nil)
 	}
 	_, err := runSQLTransaction(ctx, s.GetMaster().Begin, "MFA consumption", func(ctx context.Context, tx *sqlxTxWrapper) (struct{}, error) {
-		at := model.TimeFromMillis(now)
+		at := model.TimeUTC(now)
 		if err := lockMFAUser(ctx, tx, userID.String()); err != nil {
 			return struct{}{}, err
 		}
@@ -276,12 +276,12 @@ func (s SQLMFAStore) ReplaceRecoveryCodes(
 	ctx context.Context,
 	input *store.MFARecoveryCodesRegeneration,
 ) error {
-	if input == nil || !input.UserID.IsValid() || input.At <= 0 ||
-		!input.AuditEventID.IsValid() || input.AuditAt <= 0 ||
+	if input == nil || !input.UserID.IsValid() || input.At.IsZero() ||
+		!input.AuditEventID.IsValid() || input.AuditAt.IsZero() ||
 		len(input.RecoveryCodes) == 0 || len(input.RecoveryCodes) > model.MFARecoveryCodeMaxCount {
 		return store.NewErrInvalidInput("mfa_recovery_code", "replace", nil)
 	}
-	at := model.TimeFromMillis(input.At)
+	at := model.TimeUTC(input.At)
 	prepared, err := prepareMFARecoveryCodes(input.UserID.String(), input.RecoveryCodes, at)
 	if err != nil {
 		return err
@@ -371,11 +371,11 @@ func (s SQLMFAStore) Disable(
 	ctx context.Context,
 	input *store.MFADisablement,
 ) (*store.MFADisableResult, error) {
-	if input == nil || !input.UserID.IsValid() || input.At <= 0 ||
-		!input.AuditEventID.IsValid() || input.AuditAt <= 0 {
+	if input == nil || !input.UserID.IsValid() || input.At.IsZero() ||
+		!input.AuditEventID.IsValid() || input.AuditAt.IsZero() {
 		return nil, store.NewErrInvalidInput("mfa_credential", "disable", nil)
 	}
-	at := model.TimeFromMillis(input.At)
+	at := model.TimeUTC(input.At)
 	payloadKeyID, err := validateSecurityNoticeMail(
 		model.UserID(input.UserID),
 		input.Notice.Occurrence,

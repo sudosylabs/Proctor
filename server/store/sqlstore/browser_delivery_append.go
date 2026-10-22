@@ -160,7 +160,7 @@ func (s *SQLExamAttemptStore) AppendHistoricalBrowserDelivery(ctx context.Contex
 	return s.appendBrowserActivity(ctx, input, command)
 }
 func (s *SQLExamAttemptStore) appendBrowserActivity(ctx context.Context, input *store.BrowserActivityAppend, command *store.CommandIdempotency) (*model.BrowserActivityAcknowledgement, error) {
-	if input == nil || !input.AuditEventID.IsValid() || input.AuditAt <= 0 {
+	if input == nil || !input.AuditEventID.IsValid() || input.AuditAt.IsZero() {
 		return nil, store.NewErrInvalidInput("browser_activity", "append", nil)
 	}
 	batch := model.BrowserActivityBatch{SourceSessionID: input.SourceSessionID, ParticipationID: input.ParticipationID, Generation: input.Generation, PolicyRevisionID: input.PolicyRevisionID, PolicyDigest: input.PolicyDigest, Events: input.Events}

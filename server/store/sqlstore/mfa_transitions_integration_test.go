@@ -28,7 +28,7 @@ func TestMFAEnrollmentRechecksDeadlinesAfterSessionRowLock(t *testing.T) {
 			defer cancel()
 			f := mfaRecoveryFixture(t, ctx)
 			s := f.persistence
-			audit, _ := mfaSQLSecurityNoticeFixture(t, ctx, s, f.target, model.MailTemplateIdentityMFAEnabled, model.GetMillis())
+			audit, _ := mfaSQLSecurityNoticeFixture(t, ctx, s, f.target, model.MailTemplateIdentityMFAEnabled, model.NowUTC())
 			input := &store.MFAPendingEnrollment{Principal: mfaSQLPrincipal(f.targetSession, f.targetCredential),
 				Credential: &model.MFACredential{UserID: f.target.ID, State: model.MFAStatePending,
 					EncryptedSecret: "pending-secret", EncryptionKeyID: "0123456789abcdef0123456789abcdef"},

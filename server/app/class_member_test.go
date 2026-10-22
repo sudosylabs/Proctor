@@ -32,7 +32,7 @@ type classMemberStoreFake struct {
 	noOp        bool
 }
 
-func (s *classMemberStoreFake) ListActiveByUser(context.Context, model.UserID, int64) ([]*model.ClassMember, error) {
+func (s *classMemberStoreFake) ListActiveByUser(context.Context, model.UserID, time.Time) ([]*model.ClassMember, error) {
 	*s.events = append(*s.events, "list-active")
 	return s.active, nil
 }
@@ -56,7 +56,7 @@ func (s *classMemberStoreFake) End(_ context.Context, input *store.ClassMemberEn
 	*s.events = append(*s.events, "store-end")
 	s.endInput = input
 	ended := *s.current
-	ended.EndsAt = model.OptionalTimeFromMillis(input.EndAt)
+	ended.EndsAt = model.OptionalTimeFrom(input.EndAt)
 	ended.Revision = input.ExpectedRevision + 1
 	return &ended, nil
 }
@@ -138,7 +138,7 @@ func TestClassMemberEnrollUsesDestinationPeriodAndAtomicStore(t *testing.T) {
 	require.Equal(t, userID, persistence.enrollInput.Member.UserID.String(), "enrollment/input = %#v / %#v", enrollment, persistence.enrollInput)
 	require.Equal(t, user.Revision, persistence.enrollInput.ExpectedRecipientRevision, "expected recipient revision")
 	require.Equal(t, 1, clockCalls, "clock calls/creation/audit time")
-	require.Equal(t, model.MillisFromTime(enrollment.Membership.CreatedAt), persistence.enrollInput.AuditAt, "clock calls/creation/audit time")
+	require.True(t, model.TimeUTC(enrollment.Membership.CreatedAt).Equal(persistence.enrollInput.AuditAt), "clock calls/creation/audit time")
 	require.Len(t, mailer.requests, 1, "enrollment mail/input = %#v / %#v", mailer.requests, persistence.enrollInput)
 	require.Equal(t, model.MailTemplateAcademicClassEnrolled, mailer.requests[0].TemplateKey, "enrollment mail/input = %#v / %#v", mailer.requests, persistence.enrollInput)
 	require.Equal(t, classes.value.DisplayName, mailer.requests[0].Details.ClassDisplayName, "enrollment mail/input = %#v / %#v", mailer.requests, persistence.enrollInput)

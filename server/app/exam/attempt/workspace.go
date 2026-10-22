@@ -406,7 +406,7 @@ func (s *Service) applyWorkspaceMutation(ctx context.Context, invocation invocat
 	if err != nil {
 		return WorkspaceMutationResult{}, err
 	}
-	mutation.AuditEventID, mutation.AuditAt = auditID, model.MillisFromTime(model.TimeUTC(s.deps.Now()))
+	mutation.AuditEventID, mutation.AuditAt = auditID, model.TimeUTC(s.deps.Now())
 	stored, err := s.deps.Workspace.ApplyMutation(ctx, mutation, idempotency)
 	if err != nil {
 		return WorkspaceMutationResult{}, s.failAudit(ctx, auditID, err)

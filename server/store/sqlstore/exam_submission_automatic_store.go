@@ -147,7 +147,7 @@ func (s *SQLExamSubmissionStore) SealForSittingClose(ctx context.Context,
 	input *store.ExamSubmissionAutomaticSeal,
 ) (*store.ExamSubmissionAutomaticSealResult, error) {
 	if input == nil || !validAutomaticExamSubmissionTarget(input.Target) || !input.SubmissionID.IsValid() ||
-		!input.AuditEventID.IsValid() || input.AuditAt <= 0 {
+		!input.AuditEventID.IsValid() || input.AuditAt.IsZero() {
 		return nil, store.NewErrInvalidInput("exam_submission", "automatic_seal", nil)
 	}
 	prepared := *input
@@ -275,7 +275,7 @@ func sealAutomaticExamSubmission(ctx context.Context, tx *sqlxTxWrapper,
 		return nil, err
 	}
 	beforeParticipation, beforeConnection := participation.State, connection.State
-	sealAt := model.TimeFromMillis(input.AuditAt)
+	sealAt := model.TimeUTC(input.AuditAt)
 	if sealAt.After(databaseNow) {
 		return nil, store.NewErrConflict("exam_submission", "seal_time", nil)
 	}

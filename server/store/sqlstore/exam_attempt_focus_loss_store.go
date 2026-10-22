@@ -114,7 +114,7 @@ func validateFocusLossSignal(input *store.ExamAttemptFocusLossSignal) error {
 		!input.SignalID.IsValid() || !input.EvidenceID.IsValid() || !input.FlagID.IsValid() || !input.SuspensionID.IsValid() ||
 		input.Sequence < 1 || input.DurationMilliseconds < 1 ||
 		input.DurationMilliseconds > model.FocusLossMaximumDurationMilliseconds || !input.Source.IsValid() ||
-		!input.AuditEventID.IsValid() || input.AuditAt <= 0 {
+		!input.AuditEventID.IsValid() || input.AuditAt.IsZero() {
 		return store.NewErrInvalidInput("focus_loss", "signal", nil)
 	}
 	return nil
@@ -813,7 +813,7 @@ func loadFocusLossSuspensionResult(ctx context.Context, tx *sqlxTxWrapper, acces
 	return nil
 }
 
-func completeFocusLossAudit(ctx context.Context, tx *sqlxTxWrapper, result *store.ExamAttemptFocusLossResult, auditID model.AuditEventID, auditAt int64) error {
+func completeFocusLossAudit(ctx context.Context, tx *sqlxTxWrapper, result *store.ExamAttemptFocusLossResult, auditID model.AuditEventID, auditAt time.Time) error {
 	data, err := model.EncodeAuditData(map[string]any{"exam_id": result.ExamID.String(), "exam_sitting_id": result.SittingID.String(),
 		"exam_attempt_id": result.AttemptID.String(), "participation_id": result.ParticipationID.String(), "generation": result.Generation,
 		"signal_id": result.Signal.ID.String(), "accepted_sequence": result.AcceptedSequence, "replayed": result.Duplicate})

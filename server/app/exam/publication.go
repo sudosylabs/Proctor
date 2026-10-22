@@ -122,7 +122,7 @@ func (p *Publication) PublishExamRevision(ctx context.Context, invocation invoca
 	result, err := p.deps.Persistence.Publish(ctx, &store.ExamRevisionPublication{InstitutionOrigin: p.deps.InstitutionOrigin, RevisionID: revisionID, ExamID: command.ExamID,
 		ActorUserID: principal.UserID, ManagerOverride: action == model.ActionExamPublishOverride,
 		ExpectedDraftRevision: command.ExpectedDraftRevision, Kind: model.ExamRevisionPublicationStandard,
-		PublishedAt: at, AuditEventID: auditID, AuditAt: model.MillisFromTime(at)}, idempotency)
+		PublishedAt: at, AuditEventID: auditID, AuditAt: at}, idempotency)
 	if err != nil {
 		mapped := examStoreErrors.Translate(err)
 		if auditErr := p.deps.Auditor.Fail(ctx, auditID, apperror.CodeOf(mapped, "exam.unavailable")); auditErr != nil {

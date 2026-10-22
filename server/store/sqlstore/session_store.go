@@ -115,7 +115,7 @@ func (s SQLSessionStore) Save(
 	if input == nil || input.Session == nil {
 		return nil, nil, store.NewErrInvalidInput("session", "value", nil)
 	}
-	if !input.AuditEventID.IsValid() || input.AuditAt <= 0 {
+	if !input.AuditEventID.IsValid() || input.AuditAt.IsZero() {
 		return nil, nil, store.NewErrInvalidInput("session", "audit", nil)
 	}
 	session, credentials, maximumActive := input.Session, input.Credentials, input.MaximumActive
@@ -415,7 +415,7 @@ func (s SQLSessionStore) UpdateActivity(ctx context.Context, id model.SessionID,
 
 // Withdraw revokes one Session of the User for a system withdrawal reason and
 // returns the hashes of its revoked credentials.
-func (s SQLSessionStore) Withdraw(ctx context.Context, id model.SessionID, userID model.UserID, revokedAt int64, reason model.SessionRevocationReason) ([]string, error) {
+func (s SQLSessionStore) Withdraw(ctx context.Context, id model.SessionID, userID model.UserID, revokedAt time.Time, reason model.SessionRevocationReason) ([]string, error) {
 	if !reason.IsSystemWithdrawal() {
 		return nil, store.NewErrInvalidInput("session", "revocation_reason", nil)
 	}
@@ -487,7 +487,7 @@ func (s SQLSessionStore) Revoke(
 	input *store.SessionRevocation,
 ) (*store.SessionRevocationResult, error) {
 	if input == nil || !input.SessionID.IsValid() || !input.UserID.IsValid() ||
-		input.RevokedAt <= 0 || !input.AuditEventID.IsValid() || input.AuditAt <= 0 {
+		input.RevokedAt.IsZero() || !input.AuditEventID.IsValid() || input.AuditAt.IsZero() {
 		return nil, store.NewErrInvalidInput("session", "revocation", nil)
 	}
 	reason := model.SessionRevocationReason(model.SanitizeUnicode(string(input.Reason)))
@@ -555,7 +555,7 @@ func (s SQLSessionStore) Revoke(
 		if err != nil {
 			return nil, err
 		}
-		revokedAt := model.TimeFromMillis(input.RevokedAt)
+		revokedAt := model.TimeUTC(input.RevokedAt)
 		if session.UpdatedAt.Before(revokedAt) {
 			session.UpdatedAt = revokedAt
 		}
@@ -584,8 +584,8 @@ func (s SQLSessionStore) RevokeAllForUser(
 	ctx context.Context,
 	input *store.UserSessionsRevocation,
 ) (*store.UserSessionsRevocationResult, error) {
-	if input == nil || !input.UserID.IsValid() || input.RevokedAt <= 0 ||
-		!input.AuditEventID.IsValid() || input.AuditAt <= 0 {
+	if input == nil || !input.UserID.IsValid() || input.RevokedAt.IsZero() ||
+		!input.AuditEventID.IsValid() || input.AuditAt.IsZero() {
 		return nil, store.NewErrInvalidInput("session", "user_revocation", nil)
 	}
 	reason := model.SessionRevocationReason(model.SanitizeUnicode(string(input.Reason)))
@@ -704,10 +704,10 @@ func revokeOneUserSession(
 	tx *sqlxTxWrapper,
 	id string,
 	userID string,
-	revokedAt int64,
+	revokedAt time.Time,
 	reason model.SessionRevocationReason,
 ) ([]string, error) {
-	return revokeOneUserSessionAt(ctx, tx, id, userID, model.TimeFromMillis(revokedAt), reason)
+	return revokeOneUserSessionAt(ctx, tx, id, userID, model.TimeUTC(revokedAt), reason)
 }
 
 func revokeOneUserSessionAt(
@@ -768,10 +768,10 @@ func revokeAllUserSessions(
 	ctx context.Context,
 	executor sqlxExecutor,
 	userID string,
-	revokedAt int64,
+	revokedAt time.Time,
 	reason model.SessionRevocationReason,
 ) ([]sessionRow, []string, error) {
-	return revokeAllUserSessionsAt(ctx, executor, userID, model.TimeFromMillis(revokedAt), reason)
+	return revokeAllUserSessionsAt(ctx, executor, userID, model.TimeUTC(revokedAt), reason)
 }
 
 func revokeAllUserSessionsAt(
@@ -847,10 +847,10 @@ func revokeAllUserSessionsAt(
 
 func revokedSessionModels(
 	rows []sessionRow,
-	revokedAt int64,
+	revokedAt time.Time,
 	reason model.SessionRevocationReason,
 ) ([]*model.Session, error) {
-	return revokedSessionModelsAt(rows, model.TimeFromMillis(revokedAt), reason)
+	return revokedSessionModelsAt(rows, model.TimeUTC(revokedAt), reason)
 }
 
 func revokedSessionModelsAt(

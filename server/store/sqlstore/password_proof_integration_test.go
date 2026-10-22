@@ -174,7 +174,7 @@ func TestPasswordProofResetFencesEachDesktopTransition(t *testing.T) {
 			authenticate := func() error {
 				_, err := persistence.BrowserAuthentication().AuthenticateDesktopAuthorization(ctx, &store.DesktopAuthorizationAuthentication{
 					BindingHash: model.HashToken(binding), UserID: user.ID, AuthenticationMethod: "password",
-					AuthenticationStrength: model.AuthenticationSingleFactor, AuthenticatedAt: model.GetMillis(),
+					AuthenticationStrength: model.AuthenticationSingleFactor, AuthenticatedAt: model.NowUTC(),
 					PasswordProof: store.PasswordCredentialProof{ID: password.ID, Revision: password.Revision},
 					Capabilities:  store.AccessDeploymentCapabilities{Providers: map[string]store.AccessProviderCapability{}},
 				})
@@ -186,7 +186,7 @@ func TestPasswordProofResetFencesEachDesktopTransition(t *testing.T) {
 				_, err := persistence.BrowserAuthentication().IssueCode(ctx, &store.DesktopAuthorizationCodeIssue{
 					BindingHash: model.HashToken(binding), StateHash: model.HashToken(state), CodeHash: model.HashToken(code), ExpectedUserID: user.ID,
 					CodeLifetime: time.Minute, Capabilities: store.AccessDeploymentCapabilities{Providers: map[string]store.AccessProviderCapability{}},
-					AuditEventID: issueAudit.ID, AuditAt: model.GetMillis(),
+					AuditEventID: issueAudit.ID, AuditAt: model.NowUTC(),
 				})
 				return err
 			}
@@ -236,7 +236,7 @@ func TestPasswordProofDesktopRejectsRevokedSourceSession(t *testing.T) {
 	_, err = persistence.BrowserAuthentication().AuthenticateDesktopAuthorization(ctx, &store.DesktopAuthorizationAuthentication{
 		BindingHash: model.HashToken(binding), UserID: user.ID, SourceSessionID: session.ID, SourceCredentialID: accessID,
 		AuthenticationMethod: session.AuthenticationMethod, AuthenticationStrength: session.AuthenticationStrength,
-		AuthenticatedAt: session.AuthenticatedAt.UnixMilli(), Capabilities: store.AccessDeploymentCapabilities{Providers: map[string]store.AccessProviderCapability{}},
+		AuthenticatedAt: session.AuthenticatedAt, Capabilities: store.AccessDeploymentCapabilities{Providers: map[string]store.AccessProviderCapability{}},
 	})
 	require.True(t, store.IsNotFound(err), "revoked source Session error")
 }
@@ -259,7 +259,7 @@ func passwordProofReset(t *testing.T, ctx context.Context, persistence *SQLStore
 		TokenHash: model.HashToken(model.NewCredentialToken()), Target: user.Email, ExpiresAt: model.NowUTC().Add(time.Hour)},
 		authenticationPolicyTestAudit("authentication.password_reset.request", user.ID.String(), institution.ID.String()))
 	require.NoError(t, err)
-	return authenticationPolicyTestResetCompletion(t, user, token.TokenHash, "encoded-reset-password", model.GetMillis(), authenticationPolicyTestCompletionAudit(institution.ID.String()))
+	return authenticationPolicyTestResetCompletion(t, user, token.TokenHash, "encoded-reset-password", model.NowUTC(), authenticationPolicyTestCompletionAudit(institution.ID.String()))
 }
 
 // A database trigger pauses the first writer after it holds the Session lock.

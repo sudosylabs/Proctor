@@ -72,7 +72,7 @@ func TestTimeAuthorityAccessPolicyReplacementAfterLeadingPolicyClock(t *testing.
 	audit := timeAuthorityAccessAttempt(t, ctx, s, f.actor.ID, string(model.ActionAccessPolicyManage))
 	replacement := &store.AccessPolicyReplacement{Preflight: store.AccessPolicyPreflight{ExpectedRevision: before.Policy.Revision,
 		Settings: settings, Capabilities: store.AccessDeploymentCapabilities{Providers: map[string]store.AccessProviderCapability{}}, CheckedAt: model.NowUTC()},
-		ActorID: f.actor.ID, AuditEventID: audit.ID, AuditAt: model.MillisFromTime(audit.CreatedAt)}
+		ActorID: f.actor.ID, AuditEventID: audit.ID, AuditAt: audit.CreatedAt}
 	command := &store.CommandIdempotency{UserID: f.actor.ID, Operation: "access_policy.replace",
 		KeyDigest:   sha256.Sum256([]byte("time-authority-access-policy")),
 		Fingerprint: sha256.Sum256([]byte("time-authority-access-policy-command")), Retention: time.Hour, Wait: time.Second}
@@ -97,7 +97,7 @@ func TestTimeAuthorityAccessPasswordReauthenticationAfterLeadingSessionClock(t *
 	leadSessionDatabaseClock(t, ctx, s, f.targetSession.ID)
 	session, err := s.Session().Get(ctx, f.targetSession.ID)
 	require.NoError(t, err)
-	audit, _ := mfaSQLSecurityNoticeFixture(t, ctx, s, f.target, model.MailTemplateIdentityMFAEnabled, model.GetMillis())
+	audit, _ := mfaSQLSecurityNoticeFixture(t, ctx, s, f.target, model.MailTemplateIdentityMFAEnabled, model.NowUTC())
 	result, err := s.Session().ReauthenticatePassword(ctx, &store.SessionPasswordReauthentication{SessionID: session.ID,
 		CredentialID: f.targetCredential.ID, UserID: f.target.ID, PasswordProof: passwordProofForSQLTest(t, ctx, s, f.target.ID), AuditEventID: audit.ID})
 	require.NoError(t, err)
@@ -138,7 +138,7 @@ func TestTimeAuthorityAccessRecoveryCodeConsumptionAfterLeadingCodeClock(t *test
 	timeAuthorityAccessLead(t, ctx, s, `INSERT INTO mfa_recovery_codes(id,created_at,updated_at,user_id,code_hash)
 		VALUES(?,clock_timestamp()+INTERVAL '1 minute',clock_timestamp()+INTERVAL '1 minute',?,?)`,
 		model.NewMFARecoveryCodeID().String(), user.ID.String(), codeHash)
-	require.NoError(t, s.MFA().ConsumeSecondFactor(ctx, user.ID, 0, codeHash, model.GetMillis()))
+	require.NoError(t, s.MFA().ConsumeSecondFactor(ctx, user.ID, 0, codeHash, model.NowUTC()))
 	timeAuthorityAccessCheck(t, ctx, s, `SELECT consumed_at >= created_at FROM mfa_recovery_codes WHERE code_hash=?`, codeHash)
 }
 
@@ -176,8 +176,8 @@ func TestTimeAuthorityAccessExternalIdentityUnlinkAfterLeadingIdentityClock(t *t
 	timeAuthorityAccessLead(t, ctx, s, `UPDATE external_identities SET created_at=created_at+INTERVAL '1 minute', updated_at=updated_at+INTERVAL '1 minute' WHERE id=?`, identity.ID.String())
 	audit := timeAuthorityAccessAttempt(t, ctx, s, user.ID, "authentication.external_identity.unlink")
 	result, err := s.ExternalIdentity().Unlink(ctx, &store.ExternalIdentityUnlink{ID: identity.ID, UserID: user.ID,
-		Capabilities: store.AccessDeploymentCapabilities{Providers: map[string]store.AccessProviderCapability{}}, ChangedAt: model.GetMillis(),
-		RevocationReason: model.SessionRevocationExternalIdentityUnlinked, AuditEventID: audit.ID, AuditAt: model.MillisFromTime(audit.CreatedAt)})
+		Capabilities: store.AccessDeploymentCapabilities{Providers: map[string]store.AccessProviderCapability{}}, ChangedAt: model.NowUTC(),
+		RevocationReason: model.SessionRevocationExternalIdentityUnlinked, AuditEventID: audit.ID, AuditAt: audit.CreatedAt})
 	require.NoError(t, err)
 	err = result.Identity.Validate()
 	require.NoError(t, err, "unlinked identity = %#v", result.Identity)
@@ -202,7 +202,7 @@ func TestTimeAuthorityAccessDesktopRegistrationRevocationAfterLeadingNodeClock(t
 	leadSessionDatabaseClock(t, ctx, s, exchanged.Session.ID)
 	audit := saveDesktopAuthorizationAuditForSQLTest(t, ctx, s, institution.ID, user.ID, "registration-revoke")
 	revoked, err := s.DesktopRegistration().Revoke(ctx, &store.DesktopRegistrationRevocation{RegistrationID: exchanged.Registration.ID,
-		UserID: user.ID, RevokedAt: model.GetMillis(), AuditEventID: audit.ID, AuditAt: model.GetMillis()})
+		UserID: user.ID, RevokedAt: model.NowUTC(), AuditEventID: audit.ID, AuditAt: model.NowUTC()})
 	require.NoError(t, err)
 	stored, err := s.DesktopRegistration().Get(ctx, exchanged.Registration.ID)
 	require.NoError(t, err, "stored registration = %#v, %v; returned %#v", stored, err, revoked.Registration)
@@ -259,8 +259,8 @@ func TestTimeAuthorityAccessSessionRevocationModelAfterLeadingSessionClock(t *te
 	user, session, _ := timeAuthorityAccessSession(t, ctx, s, "time-authority-session-revoke")
 	leadSessionDatabaseClock(t, ctx, s, session.ID)
 	audit := timeAuthorityAccessAttempt(t, ctx, s, user.ID, "authentication.session.revoke")
-	result, err := s.Session().Revoke(ctx, &store.SessionRevocation{SessionID: session.ID, UserID: user.ID, RevokedAt: model.GetMillis(),
-		Reason: model.SessionRevocationUserSession, AuditEventID: audit.ID, AuditAt: model.MillisFromTime(audit.CreatedAt)})
+	result, err := s.Session().Revoke(ctx, &store.SessionRevocation{SessionID: session.ID, UserID: user.ID, RevokedAt: model.NowUTC(),
+		Reason: model.SessionRevocationUserSession, AuditEventID: audit.ID, AuditAt: audit.CreatedAt})
 	require.NoError(t, err)
 	stored, err := s.Session().Get(ctx, session.ID)
 	require.NoError(t, err, "stored revoked Session = %#v, %v; returned %#v", stored, err, result.Session)

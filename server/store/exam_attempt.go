@@ -49,7 +49,7 @@ type ExamAttemptConnect struct {
 	DesktopBuild                       model.DesktopBuildTuple
 	DesktopCompatibilityPolicyRevision int64
 	AuditEventID                       model.AuditEventID
-	AuditAt                            int64
+	AuditAt                            time.Time
 }
 
 // ExamAttemptConnectResult is the committed connection aggregate. Replayed
@@ -186,7 +186,7 @@ type ExamAttemptFocusLossSignal struct {
 	DurationMilliseconds int64
 	Source               model.FocusLossSource
 	AuditEventID         model.AuditEventID
-	AuditAt              int64
+	AuditAt              time.Time
 }
 
 // ExamAttemptFocusLossResult is the safe retained decision for one accepted
@@ -255,7 +255,7 @@ type ExamAttemptFocusLossDiscrepancy struct {
 	DurationMilliseconds int64
 	Source               model.FocusLossSource
 	AuditEventID         model.AuditEventID
-	AuditAt              int64
+	AuditAt              time.Time
 }
 
 type ExamAttemptFocusLossDiscrepancyResult struct {
@@ -290,7 +290,7 @@ type ExamAttemptParticipationExpiry struct {
 	FlagID          model.IntegrityFlagID
 	SuspensionID    model.AttemptSuspensionID
 	AuditEventID    model.AuditEventID
-	AuditAt         int64
+	AuditAt         time.Time
 }
 
 // ExamAttemptSuspensionView excludes the manager's private reason while
@@ -348,7 +348,7 @@ type ExamAttemptReallow struct {
 	ExpectedAttemptRevision int64
 	PrivateReason           string
 	AuditEventID            model.AuditEventID
-	AuditAt                 int64
+	AuditAt                 time.Time
 }
 
 // ExamAttemptReallowResult deliberately uses the private-reason-free
@@ -383,7 +383,7 @@ type ExamAttemptManualSuspension struct {
 	ExpectedAttemptRevision int64
 	PrivateReason           string
 	AuditEventID            model.AuditEventID
-	AuditAt                 int64
+	AuditAt                 time.Time
 }
 
 // ExamAttemptManualSuspensionResult is the committed, private-reason-free
@@ -408,7 +408,7 @@ type ExamAttemptConnectionClose struct {
 	SessionID       model.SessionID
 	Reason          model.AttemptConnectionCloseReason
 	AuditEventID    model.AuditEventID
-	AuditAt         int64
+	AuditAt         time.Time
 }
 
 type ExamAttemptConnectionCloseResult struct {
@@ -442,7 +442,7 @@ type DeliveryOwnerTarget struct {
 
 type BrowserActivitySourceStart struct {
 	AuditEventID     model.AuditEventID
-	AuditAt          int64
+	AuditAt          time.Time
 	Access           CandidateAttemptAccess
 	ParticipationID  model.AttemptParticipationID
 	Generation       int64
@@ -481,7 +481,7 @@ type BrowserDeliveryAccess struct {
 
 type BrowserActivityAppend struct {
 	AuditEventID     model.AuditEventID
-	AuditAt          int64
+	AuditAt          time.Time
 	PolicyRevisionID model.ExamRevisionID
 	PolicyDigest     string
 	Access           CandidateAttemptAccess

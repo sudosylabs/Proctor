@@ -110,7 +110,7 @@ func (s SQLInvitationStore) CreateOnboardingImport(ctx context.Context, input *s
 		input.Import.State != model.OnboardingImportParsing || input.Import.ParseJobID != input.ParseJob.ID ||
 		(input.Import.Mode == model.OnboardingImportStudentProgression) != (input.ParseJob.Type == model.JobTypeStudentProgressionPreview) ||
 		(input.Import.Mode != model.OnboardingImportStudentProgression && input.ParseJob.Type != model.JobTypeOnboardingImportParse) ||
-		!input.AuditEventID.IsValid() || !validOnboardingImportSourceAudit(input.Import.Mode, input.AuditEventID, input.SourceAuditEventID) || input.AuditAt <= 0 {
+		!input.AuditEventID.IsValid() || !validOnboardingImportSourceAudit(input.Import.Mode, input.AuditEventID, input.SourceAuditEventID) || input.AuditAt.IsZero() {
 		return nil, store.NewErrInvalidInput("onboarding_import", "creation", nil)
 	}
 	principal, err := json.Marshal(input.Import.Principal)
@@ -305,7 +305,7 @@ func (s SQLInvitationStore) CompleteOnboardingImportPreview(ctx context.Context,
 			if _, err := tx.Exec(ctx, `INSERT INTO onboarding_import_rows (`+onboardingImportDetailColumns+`) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NULL,NULL,?)`,
 				input.ID.String(), row.RowNumber, row.Reference, row.Operation, string(row.ScopeType), row.ScopeID, row.TargetRevision, nullableID(row.RoleID.String()), row.RoleRevision,
 				row.Email, nullableID(row.UserID.String()), nullableID(row.RelationshipID), row.RelationshipRevision, nullableID(row.DestinationRelationshipID), row.DestinationRelationshipRevision,
-				string(row.AffiliationKind), row.Username, row.DisplayName, row.FirstName, row.LastName, row.Locale, row.Timezone, nullableMillisTime(row.StartsAt), nullableMillisTime(row.EndsAt),
+				string(row.AffiliationKind), row.Username, row.DisplayName, row.FirstName, row.LastName, row.Locale, row.Timezone, NullTimeFromOptional(row.StartsAt), NullTimeFromOptional(row.EndsAt),
 				string(row.PreviewStatus), row.PreviewCode, string(status), "", input.At); err != nil {
 				return nil, translateError("onboarding_import_row", fmt.Sprintf("%s/%d", input.ID, row.RowNumber), err)
 			}
@@ -322,7 +322,7 @@ func (s SQLInvitationStore) CompleteOnboardingImportPreview(ctx context.Context,
 func (s SQLInvitationStore) CommitOnboardingImport(ctx context.Context, input *store.OnboardingImportCommit) (*store.OnboardingImport, error) {
 	if input == nil || !input.ID.IsValid() || !input.ActorUserID.IsValid() || input.Principal.Validate() != nil || input.Principal.UserID != input.ActorUserID || input.ExpectedRevision < 1 || len(input.PreviewDigest) != sha256.Size*2 ||
 		!input.Policy.IsValid() || input.IdempotencyKey == ([sha256.Size]byte{}) || input.ExecutionJob == nil || input.ExecutionJob.Type != model.JobTypeOnboardingImportExecute ||
-		input.At.IsZero() || !input.AuditEventID.IsValid() || (input.SourceAuditEventID != "" && !input.SourceAuditEventID.IsValid()) || input.SourceAuditEventID == input.AuditEventID || input.AuditAt <= 0 {
+		input.At.IsZero() || !input.AuditEventID.IsValid() || (input.SourceAuditEventID != "" && !input.SourceAuditEventID.IsValid()) || input.SourceAuditEventID == input.AuditEventID || input.AuditAt.IsZero() {
 		return nil, store.NewErrInvalidInput("onboarding_import", "commit", nil)
 	}
 	principal, err := json.Marshal(input.Principal)
@@ -431,7 +431,7 @@ func (row onboardingImportDetailRow) value() store.OnboardingImportRow {
 		ScopeType: row.ScopeType, ScopeID: row.ScopeID, TargetRevision: row.TargetRevision, RoleRevision: row.RoleRevision, Email: row.Email, AffiliationKind: model.AffiliationKind(row.AffiliationKind), RelationshipRevision: row.RelationshipRevision,
 		DestinationRelationshipRevision: row.DestinationRelationshipRevision,
 		Username:                        row.Username, DisplayName: row.DisplayName, FirstName: row.FirstName, LastName: row.LastName, Locale: row.Locale, Timezone: row.Timezone,
-		StartsAt: millisFromNullTime(row.StartsAt), EndsAt: millisFromNullTime(row.EndsAt), PreviewStatus: row.PreviewStatus, PreviewCode: row.PreviewCode, Status: row.Status,
+		StartsAt: OptionalTimeFromNullTime(row.StartsAt), EndsAt: OptionalTimeFromNullTime(row.EndsAt), PreviewStatus: row.PreviewStatus, PreviewCode: row.PreviewCode, Status: row.Status,
 		PublicCode: row.PublicCode, UpdatedAt: row.UpdatedAt}
 	if row.RoleID.Valid {
 		value.RoleID = model.RoleID(row.RoleID.String)
@@ -973,7 +973,7 @@ func completeOnboardingImportCommand[T any](ctx context.Context, tx *sqlxTxWrapp
 
 func (s SQLInvitationStore) CancelOnboardingImport(ctx context.Context, input *store.OnboardingImportCancellation) (*store.OnboardingImport, error) {
 	if input == nil || !input.ID.IsValid() || !input.ActorUserID.IsValid() || input.Principal.Validate() != nil || input.Principal.UserID != input.ActorUserID || input.At.IsZero() || !input.AuditEventID.IsValid() ||
-		(input.SourceAuditEventID != "" && !input.SourceAuditEventID.IsValid()) || input.SourceAuditEventID == input.AuditEventID || input.AuditAt <= 0 {
+		(input.SourceAuditEventID != "" && !input.SourceAuditEventID.IsValid()) || input.SourceAuditEventID == input.AuditEventID || input.AuditAt.IsZero() {
 		return nil, store.NewErrInvalidInput("onboarding_import", "cancel", nil)
 	}
 	id, actor, at := input.ID, input.ActorUserID, input.At
@@ -1082,20 +1082,6 @@ func (s SQLInvitationStore) PurgeOnboardingImport(ctx context.Context, id model.
 	return count == 1, err
 }
 
-func nullableMillisTime(value int64) any {
-	if value == 0 {
-		return nil
-	}
-	return model.TimeFromMillis(value)
-}
-
-func millisFromNullTime(value sql.NullTime) int64 {
-	if !value.Valid {
-		return 0
-	}
-	return model.MillisFromTime(value.Time)
-}
-
 func onboardingImportAuditData(value onboardingImportRow) ([]byte, error) {
 	return model.EncodeAuditData(map[string]any{"onboarding_import_id": value.ID, "mode": value.Mode, "scope_type": value.ScopeType, "scope_id": value.ScopeID,
 		"state": value.State, "total_rows": value.TotalRows, "valid_rows": value.ValidRows, "invalid_rows": value.InvalidRows,
@@ -1109,7 +1095,7 @@ func validOnboardingImportSourceAudit(mode model.OnboardingImportMode, destinati
 	return sourceID == ""
 }
 
-func completeOnboardingImportSourceAudit(ctx context.Context, tx *sqlxTxWrapper, value onboardingImportRow, auditID model.AuditEventID, at int64) error {
+func completeOnboardingImportSourceAudit(ctx context.Context, tx *sqlxTxWrapper, value onboardingImportRow, auditID model.AuditEventID, at time.Time) error {
 	if auditID == "" {
 		return nil
 	}

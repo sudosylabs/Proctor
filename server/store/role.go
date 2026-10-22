@@ -19,7 +19,7 @@ import (
 type RoleCreation struct {
 	Role         *model.Role
 	AuditEventID model.AuditEventID
-	AuditAt      int64
+	AuditAt      time.Time
 }
 
 // RoleUpdate is the durable input for updating a custom role under an
@@ -27,16 +27,16 @@ type RoleCreation struct {
 type RoleUpdate struct {
 	Role         *model.Role
 	AuditEventID model.AuditEventID
-	AuditAt      int64
+	AuditAt      time.Time
 }
 
 // RoleArchive is the durable input for archiving a custom role under an
 // already-persisted audit attempt.
 type RoleArchive struct {
 	ID           model.RoleID
-	ArchiveAt    int64
+	ArchiveAt    time.Time
 	AuditEventID model.AuditEventID
-	AuditAt      int64
+	AuditAt      time.Time
 }
 
 // RoleStore persists reusable permission sets independently of their scopes.
@@ -65,7 +65,7 @@ type RoleBindingCreation struct {
 	ExpectedRecipientRevision int64
 	Notice                    *PreparedMail
 	AuditEventID              model.AuditEventID
-	AuditAt                   int64
+	AuditAt                   time.Time
 	Command                   *CommandIdempotency
 	Replayed                  bool
 	NoOp                      bool
@@ -75,12 +75,12 @@ type RoleBindingCreation struct {
 // already-persisted audit attempt.
 type RoleBindingEnd struct {
 	ID                        model.RoleBindingID
-	EndAt                     int64
+	EndAt                     time.Time
 	ExpectedRecipientRevision int64
 	Notice                    *PreparedMail
 	Capabilities              AccessDeploymentCapabilities
 	AuditEventID              model.AuditEventID
-	AuditAt                   int64
+	AuditAt                   time.Time
 	Command                   *CommandIdempotency
 	Replayed                  bool
 	NoOp                      bool

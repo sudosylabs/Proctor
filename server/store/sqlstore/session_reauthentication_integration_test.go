@@ -30,7 +30,7 @@ func TestPasswordReauthenticationCommitsOnlyCurrentProofAndAudit(t *testing.T) {
 			s := f.persistence
 			session, err := s.Session().Get(ctx, f.principal.SessionID)
 			require.NoError(t, err)
-			audit, _ := mfaSQLSecurityNoticeFixture(t, ctx, s, f.actor, model.MailTemplateIdentityMFAEnabled, model.GetMillis())
+			audit, _ := mfaSQLSecurityNoticeFixture(t, ctx, s, f.actor, model.MailTemplateIdentityMFAEnabled, model.NowUTC())
 			input := &store.SessionPasswordReauthentication{SessionID: session.ID, CredentialID: model.SessionCredentialID(f.principal.CredentialID), UserID: f.actor.ID, PasswordProof: passwordProofForSQLTest(t, ctx, s, f.actor.ID), AuditEventID: audit.ID}
 			switch name {
 			case "missing audit":
@@ -86,7 +86,7 @@ func TestExternalReauthenticationRechecksExactIdentityAndLiveBoundSession(t *tes
 			candidate, credentials := authenticationPolicyTestSession(user.ID, "oidc", "campus", identity.ID)
 			session, savedCredentials, err := storetest.SaveSession(ctx, s, sessionCreationForSQLTest(t, ctx, s, candidate, credentials, 10))
 			require.NoError(t, err)
-			audit, _ := mfaSQLSecurityNoticeFixture(t, ctx, s, user, model.MailTemplateIdentityMFAEnabled, model.GetMillis())
+			audit, _ := mfaSQLSecurityNoticeFixture(t, ctx, s, user, model.MailTemplateIdentityMFAEnabled, model.NowUTC())
 			auditID := audit.ID.String()
 			stateHash, bindingHash := model.HashToken(model.NewCredentialToken()), model.HashToken(model.NewCredentialToken())
 			state, err := s.ExternalLoginState().Save(ctx, &model.ExternalLoginState{Provider: "campus", Purpose: model.ExternalAuthenticationPurposeReauthenticate, TargetUserID: user.ID, SessionID: session.ID, SessionCredentialID: savedCredentials[0].ID, ExternalIdentityID: identity.ID, AuditEventID: auditID, StateHash: stateHash, BindingHash: bindingHash, ReturnTo: "/account/security", ClientType: model.SessionClientWeb}, time.Minute)
@@ -111,7 +111,7 @@ func TestExternalReauthenticationRechecksExactIdentityAndLiveBoundSession(t *tes
 			case "disabled provider":
 				_, err = s.GetMaster().Exec(ctx, `UPDATE access_policies SET provider_admissions='{}'::jsonb`)
 			case "terminal audit":
-				_, err = s.Audit().Complete(ctx, audit.ID, model.AuditStatusFail, "authentication.token_invalid", nil, model.GetMillis())
+				_, err = s.Audit().Complete(ctx, audit.ID, model.AuditStatusFail, "authentication.token_invalid", nil, model.NowUTC())
 			}
 			require.NoError(t, err)
 			result, err := s.Session().ReauthenticateExternal(ctx, input)
@@ -151,7 +151,7 @@ func TestPasswordReauthenticationRechecksCredentialAfterWaitingForFence(t *testi
 	defer cancel()
 	f := mfaRecoveryFixture(t, ctx)
 	s := f.persistence
-	audit, _ := mfaSQLSecurityNoticeFixture(t, ctx, s, f.target, model.MailTemplateIdentityMFAEnabled, model.GetMillis())
+	audit, _ := mfaSQLSecurityNoticeFixture(t, ctx, s, f.target, model.MailTemplateIdentityMFAEnabled, model.NowUTC())
 	input := &store.SessionPasswordReauthentication{SessionID: f.targetSession.ID, CredentialID: f.targetCredential.ID, UserID: f.target.ID, PasswordProof: passwordProofForSQLTest(t, ctx, s, f.target.ID), AuditEventID: audit.ID}
 	pid, release := holdSQLAdvisoryFence(t, ctx, s, advisoryLockKey("session-user", f.target.ID.String()))
 	defer release()

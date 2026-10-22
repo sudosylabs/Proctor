@@ -34,7 +34,7 @@ func TestBrowserExhaustionSettlement(t *testing.T, ss store.Store, mode string, 
 		_, err = appendBrowserActivityFixture(t, ctx, ss, &store.BrowserActivityAppend{Access: access, ParticipationID: connected.Participation.ID, Generation: connected.Participation.Generation, SourceSessionID: source, Events: []model.BrowserActivityEvent{browserActivityEvent(2, model.BrowserActivityOpened, f.revisionID)}})
 		require.NoError(t, err)
 	}
-	seal := &store.ExamSubmissionSeal{SubmissionID: model.NewSubmissionID(), Access: store.ExamSubmissionSealAccess{AttemptID: connected.Attempt.ID, ParticipationID: connected.Participation.ID, Generation: connected.Participation.Generation, ConnectionID: connected.Connection.ID, CandidateUserID: f.candidate.ID, SessionID: f.session.ID, ContinuityCredentialHash: access.ContinuityCredentialHash, ExpectedCurrentRevisionID: f.revisionID, ExpectedWorkspaceCursor: connected.Workspace.Cursor}, AuditEventID: saveExamAttemptAudit(t, ctx, ss, f).ID, AuditAt: model.GetMillis()}
+	seal := &store.ExamSubmissionSeal{SubmissionID: model.NewSubmissionID(), Access: store.ExamSubmissionSealAccess{AttemptID: connected.Attempt.ID, ParticipationID: connected.Participation.ID, Generation: connected.Participation.Generation, ConnectionID: connected.Connection.ID, CandidateUserID: f.candidate.ID, SessionID: f.session.ID, ContinuityCredentialHash: access.ContinuityCredentialHash, ExpectedCurrentRevisionID: f.revisionID, ExpectedWorkspaceCursor: connected.Workspace.Cursor}, AuditEventID: saveExamAttemptAudit(t, ctx, ss, f).ID, AuditAt: model.NowUTC()}
 	attachSubmissionReceipt(t, ctx, ss, f.candidate, seal)
 	sealed, err := ss.ExamSubmission().Seal(ctx, seal, examCommand(f.candidate.ID, store.ExamSubmissionSealOperation, "exhaustion-seal", "exhaustion-seal"))
 	require.NoError(t, err)
@@ -42,13 +42,13 @@ func TestBrowserExhaustionSettlement(t *testing.T, ss store.Store, mode string, 
 	access.ContinuityCredentialHash = ""
 	for _, source := range sources {
 		owner := store.BrowserDeliveryAccess{Access: access, ParticipationID: connected.Participation.ID, SourceSessionID: source}
-		_, err = ss.ExamAttempt().SealBrowserDelivery(ctx, &store.BrowserDeliveryFinalDeclaration{Access: owner, Declaration: model.FinalDeliveryDeclaration{DeclarationID: model.NewID(), FinalSequence: 2}, AuditEventID: browserDeliveryAuditFixture(t, ctx, ss, owner), AuditAt: model.GetMillis()}, examCommand(f.candidate.ID, store.BrowserDeliveryFinalOperation, string(source), string(source)))
+		_, err = ss.ExamAttempt().SealBrowserDelivery(ctx, &store.BrowserDeliveryFinalDeclaration{Access: owner, Declaration: model.FinalDeliveryDeclaration{DeclarationID: model.NewID(), FinalSequence: 2}, AuditEventID: browserDeliveryAuditFixture(t, ctx, ss, owner), AuditAt: model.NowUTC()}, examCommand(f.candidate.ID, store.BrowserDeliveryFinalOperation, string(source), string(source)))
 		require.NoError(t, err)
 	}
 	sub := sealed.Receipt.SubmissionID
-	draft, err := ss.ExamIntegrityReview().UpdateDraft(ctx, &store.ExamIntegrityReviewDraftMutation{SubmissionID: sub, ReviewID: model.NewSubmissionReviewID(), ActorUserID: f.manager.ID, ChangedAt: model.NowUTC(), AuditEventID: saveIntegrityReviewAudit(t, ctx, ss, f, sub, model.ActionSubmissionReview).ID, AuditAt: model.GetMillis()}, examCommand(f.manager.ID, store.ExamIntegrityReviewDraftOperation, "exhaustion-review", "exhaustion-review"))
+	draft, err := ss.ExamIntegrityReview().UpdateDraft(ctx, &store.ExamIntegrityReviewDraftMutation{SubmissionID: sub, ReviewID: model.NewSubmissionReviewID(), ActorUserID: f.manager.ID, ChangedAt: model.NowUTC(), AuditEventID: saveIntegrityReviewAudit(t, ctx, ss, f, sub, model.ActionSubmissionReview).ID, AuditAt: model.NowUTC()}, examCommand(f.manager.ID, store.ExamIntegrityReviewDraftOperation, "exhaustion-review", "exhaustion-review"))
 	require.NoError(t, err)
-	final, err := ss.ExamIntegrityReview().Finalize(ctx, &store.ExamIntegrityReviewFinalize{SubmissionID: sub, ReviewID: draft.Review.ID, ExpectedReviewRevision: draft.Review.Revision, ActorUserID: f.manager.ID, ChangedAt: model.NowUTC(), AuditEventID: saveIntegrityReviewAudit(t, ctx, ss, f, sub, model.ActionSubmissionReview).ID, AuditAt: model.GetMillis()}, examCommand(f.manager.ID, store.ExamIntegrityReviewFinalizeOperation, "exhaustion-finalize", "exhaustion-finalize"))
+	final, err := ss.ExamIntegrityReview().Finalize(ctx, &store.ExamIntegrityReviewFinalize{SubmissionID: sub, ReviewID: draft.Review.ID, ExpectedReviewRevision: draft.Review.Revision, ActorUserID: f.manager.ID, ChangedAt: model.NowUTC(), AuditEventID: saveIntegrityReviewAudit(t, ctx, ss, f, sub, model.ActionSubmissionReview).ID, AuditAt: model.NowUTC()}, examCommand(f.manager.ID, store.ExamIntegrityReviewFinalizeOperation, "exhaustion-finalize", "exhaustion-finalize"))
 	require.NoError(t, err)
 	before, err := ss.ExamSubmission().Get(ctx, sub)
 	require.NoError(t, err)
@@ -61,11 +61,11 @@ func TestBrowserExhaustionSettlement(t *testing.T, ss store.Store, mode string, 
 	gap := model.DeclareDeliveryGaps{DeclarationID: model.NewID(), ExpectedDeclarationRevision: 1, AllocatedThroughSequence: 2, Ranges: []model.SequenceRange{{First: 1, Last: 1}}, Reason: "spool_lost"}
 	trigger := func(audit model.AuditEventID) error {
 		if mode == "metadata" || mode == "intervals" {
-			_, err := ss.ExamAttempt().DeclareBrowserDeliveryGaps(ctx, &store.BrowserDeliveryGapDeclaration{Access: owner, Declaration: gap, AuditEventID: audit, AuditAt: model.GetMillis()}, examCommand(f.candidate.ID, store.BrowserDeliveryGapsOperation, "exhaustion-gap", "exhaustion-gap"))
-			return err
+			_, declareErr := ss.ExamAttempt().DeclareBrowserDeliveryGaps(ctx, &store.BrowserDeliveryGapDeclaration{Access: owner, Declaration: gap, AuditEventID: audit, AuditAt: model.NowUTC()}, examCommand(f.candidate.ID, store.BrowserDeliveryGapsOperation, "exhaustion-gap", "exhaustion-gap"))
+			return declareErr
 		}
-		_, err := ss.ExamAttempt().AppendHistoricalBrowserDelivery(ctx, &store.BrowserActivityAppend{Access: access, ParticipationID: owner.ParticipationID, Generation: connected.Participation.Generation, SourceSessionID: owner.SourceSessionID, PolicyRevisionID: status.PolicyRevisionID, PolicyDigest: status.PolicyDigest, Events: []model.BrowserActivityEvent{browserActivityEvent(1, model.BrowserActivityOpened, f.revisionID)}, AuditEventID: audit, AuditAt: model.GetMillis()}, examCommand(f.candidate.ID, store.BrowserDeliveryAppendOperation, "exhaustion-append", "exhaustion-append"))
-		return err
+		_, appendErr := ss.ExamAttempt().AppendHistoricalBrowserDelivery(ctx, &store.BrowserActivityAppend{Access: access, ParticipationID: owner.ParticipationID, Generation: connected.Participation.Generation, SourceSessionID: owner.SourceSessionID, PolicyRevisionID: status.PolicyRevisionID, PolicyDigest: status.PolicyDigest, Events: []model.BrowserActivityEvent{browserActivityEvent(1, model.BrowserActivityOpened, f.revisionID)}, AuditEventID: audit, AuditAt: model.NowUTC()}, examCommand(f.candidate.ID, store.BrowserDeliveryAppendOperation, "exhaustion-append", "exhaustion-append"))
+		return appendErr
 	}
 	// Failing audit must roll back latching, interpretation and settlement together.
 	err = trigger(model.NewAuditEventID())

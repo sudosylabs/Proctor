@@ -213,7 +213,7 @@ func (s *Exports) CreateExamExport(ctx context.Context, invocation invocation.In
 	if err != nil {
 		return nil, err
 	}
-	input := &store.ExamExportCreation{ExamExportAccess: store.ExamExportAccess{ExamRecordsMutation: store.ExamRecordsMutation{Scope: command.Scope, Principal: invocation.Principal(), Action: action, AuditEventID: auditID, AuditAt: model.MillisFromTime(model.TimeUTC(s.deps.Now()))}, ExportID: exportID, Categories: command.Categories}, JobID: jobID}
+	input := &store.ExamExportCreation{ExamExportAccess: store.ExamExportAccess{ExamRecordsMutation: store.ExamRecordsMutation{Scope: command.Scope, Principal: invocation.Principal(), Action: action, AuditEventID: auditID, AuditAt: model.TimeUTC(s.deps.Now())}, ExportID: exportID, Categories: command.Categories}, JobID: jobID}
 	for _, a := range selected {
 		input.SubmissionIDs = append(input.SubmissionIDs, a.SubmissionID)
 	}

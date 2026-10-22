@@ -62,8 +62,8 @@ func (s SQLClusterDiscoveryStore) Upsert(
 			prepared.ServerVersion,
 			prepared.ProtocolMin,
 			prepared.ProtocolMax,
-			model.TimeFromMillis(prepared.ExpiresAt),
-			model.TimeFromMillis(prepared.UpdatedAt),
+			model.TimeUTC(prepared.ExpiresAt),
+			model.TimeUTC(prepared.UpdatedAt),
 		).
 		Suffix(`
 ON CONFLICT (node_id) DO UPDATE SET
@@ -86,9 +86,9 @@ ON CONFLICT (node_id) DO UPDATE SET
 
 func (s SQLClusterDiscoveryStore) ListLive(
 	ctx context.Context,
-	nowMillis int64,
+	nowMillis time.Time,
 ) ([]*store.ClusterDiscoveryNode, error) {
-	if nowMillis <= 0 {
+	if nowMillis.IsZero() {
 		return nil, fmt.Errorf("cluster discovery now is invalid")
 	}
 	query, args, err := s.getQueryBuilder().
@@ -102,7 +102,7 @@ func (s SQLClusterDiscoveryStore) ListLive(
 			"updated_at",
 		).
 		From("cluster_discovery_nodes").
-		Where(sq.Gt{"expires_at": model.TimeFromMillis(nowMillis)}).
+		Where(sq.Gt{"expires_at": model.TimeUTC(nowMillis)}).
 		OrderBy("node_id ASC").
 		ToSql()
 	if err != nil {
@@ -143,14 +143,14 @@ func (s SQLClusterDiscoveryStore) Delete(ctx context.Context, nodeID string) err
 
 func (s SQLClusterDiscoveryStore) DeleteExpired(
 	ctx context.Context,
-	nowMillis int64,
+	nowMillis time.Time,
 ) (int64, error) {
-	if nowMillis <= 0 {
+	if nowMillis.IsZero() {
 		return 0, fmt.Errorf("cluster discovery now is invalid")
 	}
 	query, args, err := s.getQueryBuilder().
 		Delete("cluster_discovery_nodes").
-		Where(sq.LtOrEq{"expires_at": model.TimeFromMillis(nowMillis)}).
+		Where(sq.LtOrEq{"expires_at": model.TimeUTC(nowMillis)}).
 		ToSql()
 	if err != nil {
 		return 0, fmt.Errorf("build cluster discovery delete expired: %w", err)
@@ -189,7 +189,7 @@ func (r clusterDiscoveryNodeRow) model() *store.ClusterDiscoveryNode {
 		ServerVersion:    r.ServerVersion,
 		ProtocolMin:      r.ProtocolMin,
 		ProtocolMax:      r.ProtocolMax,
-		ExpiresAt:        model.MillisFromTime(r.ExpiresAt),
-		UpdatedAt:        model.MillisFromTime(r.UpdatedAt),
+		ExpiresAt:        r.ExpiresAt,
+		UpdatedAt:        r.UpdatedAt,
 	}
 }

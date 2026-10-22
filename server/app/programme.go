@@ -147,7 +147,7 @@ func (s *programmeService) CreateProgramme(ctx context.Context, invocation invoc
 		s.deps.Now,
 		func(ctx context.Context, reference mutationAttemptReference) (*model.Programme, error) {
 			return s.deps.Store.Create(ctx, &store.ProgrammeCreation{
-				Programme: candidate, AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis,
+				Programme: candidate, AuditEventID: reference.ID, AuditAt: reference.MutationAt,
 			})
 		},
 		programmeStoreErrors.Translate,
@@ -193,7 +193,7 @@ func (s *programmeService) UpdateProgramme(ctx context.Context, invocation invoc
 		s.deps.Now,
 		func(ctx context.Context, reference mutationAttemptReference) (*model.Programme, error) {
 			return s.deps.Store.Update(ctx, &store.ProgrammeUpdate{
-				Programme: &candidate, AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis,
+				Programme: &candidate, AuditEventID: reference.ID, AuditAt: reference.MutationAt,
 			})
 		},
 		programmeStoreErrors.Translate,
@@ -225,8 +225,8 @@ func (s *programmeService) ArchiveProgramme(ctx context.Context, invocation invo
 		func(ctx context.Context, reference mutationAttemptReference) (*model.Programme, error) {
 			return s.deps.Store.Archive(ctx, &store.ProgrammeArchive{
 				ExpectedRevision: current.Revision,
-				ID:               current.ID, ArchiveAt: reference.MutationAtMillis,
-				AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis,
+				ID:               current.ID, ArchiveAt: reference.MutationAt,
+				AuditEventID: reference.ID, AuditAt: reference.MutationAt,
 			})
 		},
 		programmeStoreErrors.Translate,

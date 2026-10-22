@@ -269,7 +269,7 @@ func (s *accountTokenService) CompleteEmailVerification(
 	result, err := s.deps.Tokens.ConsumeEmailVerification(
 		ctx,
 		model.HashToken(command.Token),
-		s.deps.Now().UnixMilli(),
+		s.deps.Now(),
 		event,
 	)
 	if err != nil {
@@ -342,7 +342,7 @@ func (s *accountTokenService) CompletePasswordReset(
 		return nil, accountRecoveryUnavailable(err)
 	}
 	result, err := s.deps.Tokens.ConsumePasswordReset(ctx, &store.PasswordResetCompletion{
-		TokenHash: model.HashToken(command.Token), PasswordHash: passwordHash, At: now.UnixMilli(),
+		TokenHash: model.HashToken(command.Token), PasswordHash: passwordHash, At: now,
 		RevocationReason: model.SessionRevocationPasswordReset, AuditEvent: event, Occurrence: prepared.Occurrence,
 		Delivery: prepared.Delivery, Job: prepared.Job,
 	})

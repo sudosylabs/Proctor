@@ -117,7 +117,7 @@ func newSQLAcademicPeriodStore(sqlStore *SQLStore) store.AcademicPeriodStore {
 }
 
 func (s SQLAcademicPeriodStore) Create(ctx context.Context, input *store.AcademicPeriodCreation) (*model.AcademicPeriod, error) {
-	if input == nil || input.Period == nil || !input.AuditEventID.IsValid() || input.AuditAt <= 0 {
+	if input == nil || input.Period == nil || !input.AuditEventID.IsValid() || input.AuditAt.IsZero() {
 		return nil, store.NewErrInvalidInput("academic_period", "creation", nil)
 	}
 	if !input.Period.ID.IsValid() {
@@ -133,7 +133,7 @@ func (s SQLAcademicPeriodStore) Create(ctx context.Context, input *store.Academi
 }
 
 func (s SQLAcademicPeriodStore) CreateIdempotently(ctx context.Context, input *store.AcademicPeriodCreation, command *store.CommandIdempotency) (*store.AcademicPeriodCommandResult, error) {
-	if input == nil || input.Period == nil || command == nil || !input.AuditEventID.IsValid() || input.AuditAt <= 0 {
+	if input == nil || input.Period == nil || command == nil || !input.AuditEventID.IsValid() || input.AuditAt.IsZero() {
 		return nil, store.NewErrInvalidInput("academic_period", "idempotent_creation", nil)
 	}
 	candidate := *input.Period
@@ -295,7 +295,7 @@ func (s SQLAcademicPeriodStore) ListVisible(
 // fenced on the stored revision immediately preceding the candidate's Revision;
 // a concurrent change yields a conflict.
 func (s SQLAcademicPeriodStore) Update(ctx context.Context, input *store.AcademicPeriodUpdate) (*model.AcademicPeriod, error) {
-	if input == nil || input.Period == nil || !input.AuditEventID.IsValid() || input.AuditAt <= 0 {
+	if input == nil || input.Period == nil || !input.AuditEventID.IsValid() || input.AuditAt.IsZero() {
 		return nil, store.NewErrInvalidInput("academic_period", "update", nil)
 	}
 	candidate := *input.Period
@@ -341,13 +341,13 @@ func (s SQLAcademicPeriodStore) updateAcademicPeriod(ctx context.Context, candid
 // positive ExpectedRevision must match the stored revision, and Classes or
 // Class Members still active in the period make it a conflict.
 func (s SQLAcademicPeriodStore) Archive(ctx context.Context, input *store.AcademicPeriodArchive) (*model.AcademicPeriod, error) {
-	if input == nil || !input.ID.IsValid() || input.ArchiveAt <= 0 || input.ExpectedRevision < 0 || !input.AuditEventID.IsValid() || input.AuditAt <= 0 {
+	if input == nil || !input.ID.IsValid() || input.ArchiveAt.IsZero() || input.ExpectedRevision < 0 || !input.AuditEventID.IsValid() || input.AuditAt.IsZero() {
 		return nil, store.NewErrInvalidInput("academic_period", "archive", nil)
 	}
 	return s.archiveAcademicPeriod(ctx, input.ID, input.ArchiveAt, input.ExpectedRevision, &academicMutationAudit{eventID: input.AuditEventID, at: input.AuditAt})
 }
 
-func (s SQLAcademicPeriodStore) archiveAcademicPeriod(ctx context.Context, id model.AcademicPeriodID, archiveAt, expectedRevision int64, audit *academicMutationAudit) (*model.AcademicPeriod, error) {
+func (s SQLAcademicPeriodStore) archiveAcademicPeriod(ctx context.Context, id model.AcademicPeriodID, archiveAt time.Time, expectedRevision int64, audit *academicMutationAudit) (*model.AcademicPeriod, error) {
 	return runSQLTransaction(ctx, s.GetMaster().Begin, "academic period archive", func(ctx context.Context, tx *sqlxTxWrapper) (*model.AcademicPeriod, error) {
 		if err := lockAcademicPeriodLifecycle(ctx, tx); err != nil {
 			return nil, err
@@ -370,7 +370,7 @@ func (s SQLAcademicPeriodStore) archiveAcademicPeriod(ctx context.Context, id mo
 		if dependent {
 			return nil, store.NewErrConflict("academic_period", "academic_period_has_active_dependents", nil)
 		}
-		result, err := tx.Exec(ctx, `UPDATE academic_periods SET updated_at = GREATEST(updated_at, ?), archived_at = GREATEST(created_at, ?), revision = revision + 1 WHERE id = ? AND archived_at IS NULL AND revision = ?`, model.TimeFromMillis(archiveAt), model.TimeFromMillis(archiveAt), id, row.Revision)
+		result, err := tx.Exec(ctx, `UPDATE academic_periods SET updated_at = GREATEST(updated_at, ?), archived_at = GREATEST(created_at, ?), revision = revision + 1 WHERE id = ? AND archived_at IS NULL AND revision = ?`, model.TimeUTC(archiveAt), model.TimeUTC(archiveAt), id, row.Revision)
 		if err != nil {
 			return nil, fmt.Errorf("archive academic period: %w", err)
 		}

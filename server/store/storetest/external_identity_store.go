@@ -52,7 +52,7 @@ func TestExternalIdentityStore(t *testing.T, ss store.Store) {
 			<-start
 			_, unlinkErr = ss.ExternalIdentity().Unlink(ctx, &store.ExternalIdentityUnlink{ID: identity.ID,
 				UserID: user.ID, Capabilities: store.AccessDeploymentCapabilities{Providers: map[string]store.AccessProviderCapability{"campus-cas": {}}},
-				ChangedAt: model.GetMillis(), RevocationReason: model.SessionRevocationExternalIdentityUnlinked, AuditEventID: audit.ID, AuditAt: model.GetMillis()})
+				ChangedAt: model.NowUTC(), RevocationReason: model.SessionRevocationExternalIdentityUnlinked, AuditEventID: audit.ID, AuditAt: model.NowUTC()})
 		}()
 		close(start)
 		wait.Wait()
@@ -91,7 +91,7 @@ func TestExternalIdentityStore(t *testing.T, ss store.Store) {
 				_, errs[index] = ss.ExternalIdentity().Link(ctx, &store.ExternalIdentityLink{
 					Identity: &model.ExternalIdentity{UserID: users[index], Provider: "campus-cas", Subject: subject,
 						LastSeenAt: model.OptionalTimeFromMillis(model.GetMillis())},
-					Capabilities: capabilities, AuditEventID: attempts[index].ID, AuditAt: model.GetMillis(),
+					Capabilities: capabilities, AuditEventID: attempts[index].ID, AuditAt: model.NowUTC(),
 				})
 			}(i)
 		}
@@ -130,7 +130,7 @@ func TestExternalIdentityStore(t *testing.T, ss store.Store) {
 		linked, err := ss.ExternalIdentity().Link(ctx, &store.ExternalIdentityLink{
 			Identity: &model.ExternalIdentity{UserID: user.ID, Provider: "campus-cas",
 				Subject: "revocation-subject-" + model.NewID(), LastSeenAt: model.OptionalTimeFromMillis(model.GetMillis())},
-			Capabilities: capabilities, AuditEventID: linkAttempt.ID, AuditAt: model.GetMillis(),
+			Capabilities: capabilities, AuditEventID: linkAttempt.ID, AuditAt: model.NowUTC(),
 		})
 		require.NoError(t, err)
 
@@ -152,8 +152,8 @@ func TestExternalIdentityStore(t *testing.T, ss store.Store) {
 
 		unlinkAttempt := saveAuthenticationMethodAuditAttempt(t, ctx, ss, user.ID.String(), "unlink_provider")
 		result, err := ss.ExternalIdentity().Unlink(ctx, &store.ExternalIdentityUnlink{
-			ID: linked.Identity.ID, UserID: user.ID, Capabilities: capabilities, ChangedAt: model.GetMillis(),
-			RevocationReason: model.SessionRevocationExternalIdentityUnlinked, AuditEventID: unlinkAttempt.ID, AuditAt: model.GetMillis(),
+			ID: linked.Identity.ID, UserID: user.ID, Capabilities: capabilities, ChangedAt: model.NowUTC(),
+			RevocationReason: model.SessionRevocationExternalIdentityUnlinked, AuditEventID: unlinkAttempt.ID, AuditAt: model.NowUTC(),
 		})
 		require.NoError(t, err)
 		require.Len(t, result.RevokedSessions, 1)
@@ -663,7 +663,7 @@ func replaceExternalAdmissionPolicy(
 			ExpectedRevision: snapshot.Policy.Revision, Settings: settings,
 			Capabilities: capabilities, CheckedAt: model.NowUTC(),
 		},
-		ActorID: actorID, AuditEventID: event.ID, AuditAt: model.MillisFromTime(event.CreatedAt),
+		ActorID: actorID, AuditEventID: event.ID, AuditAt: event.CreatedAt,
 	}, command)
 	require.NoError(t, err)
 	require.NotNil(t, result)

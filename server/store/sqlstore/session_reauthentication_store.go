@@ -92,7 +92,7 @@ func commitSessionReauthentication(ctx context.Context, tx *sqlxTxWrapper, sessi
 	if err != nil {
 		return nil, err
 	}
-	if _, err := completeAuditEvent(ctx, tx, auditID, model.AuditStatusSuccess, "", encoded, at.UnixMilli()); err != nil {
+	if _, err := completeAuditEvent(ctx, tx, auditID, model.AuditStatusSuccess, "", encoded, at); err != nil {
 		return nil, fmt.Errorf("complete password reauthentication audit: %w", err)
 	}
 	return &store.SessionReauthenticationResult{Session: session, AccessTokenHashes: hashes}, nil

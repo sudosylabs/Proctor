@@ -24,7 +24,7 @@ type StudentClassInvitationIssue struct {
 	Delivery     *model.MailDelivery
 	DeliveryJob  *model.Job
 	AuditEventID model.AuditEventID
-	AuditAt      int64
+	AuditAt      time.Time
 }
 
 // TeacherAcademicUnitInvitationIssue atomically persists one exact teacher
@@ -39,7 +39,7 @@ type TeacherAcademicUnitInvitationIssue struct {
 	Delivery     *model.MailDelivery
 	DeliveryJob  *model.Job
 	AuditEventID model.AuditEventID
-	AuditAt      int64
+	AuditAt      time.Time
 }
 
 // StudentClassInvitationAcceptance is the complete prepared package for one
@@ -48,7 +48,7 @@ type TeacherAcademicUnitInvitationIssue struct {
 // missing local enrollment is required.
 type StudentClassInvitationAcceptance struct {
 	ClaimHash                string
-	AcceptedAt               int64
+	AcceptedAt               time.Time
 	User                     *model.User
 	Settings                 *model.UserSettingsDocument
 	PasswordCredential       *model.PasswordCredential
@@ -79,7 +79,7 @@ type StudentClassInvitationAcceptanceResult struct {
 // only missing effects inside the same transaction.
 type TeacherAcademicUnitInvitationAcceptance struct {
 	ClaimHash                string
-	AcceptedAt               int64
+	AcceptedAt               time.Time
 	User                     *model.User
 	Settings                 *model.UserSettingsDocument
 	PasswordCredential       *model.PasswordCredential
@@ -113,7 +113,7 @@ type ScopedRoleInvitationIssue struct {
 	Delivery     *model.MailDelivery
 	DeliveryJob  *model.Job
 	AuditEventID model.AuditEventID
-	AuditAt      int64
+	AuditAt      time.Time
 }
 
 // ScopedRoleInvitationAcceptance consumes one role-only claim for the exact
@@ -126,7 +126,7 @@ type ScopedRoleInvitationAcceptance struct {
 	// AuditEventID identifies the already-persisted secret-free attempt. The
 	// aggregate completes it atomically with acceptance or exact replay.
 	AuditEventID       model.AuditEventID
-	AuditAt            int64
+	AuditAt            time.Time
 	RequiredActions    []model.Action
 	BrowserTransaction *BrowserInvitationTransactionProof
 }
@@ -238,7 +238,7 @@ type InvitationBatchDuplicate struct {
 	CanonicalKeyDigest   [sha256.Size]byte
 	CanonicalFingerprint [sha256.Size]byte
 	AuditEventID         model.AuditEventID
-	AuditAt              int64
+	AuditAt              time.Time
 }
 
 type InvitationListOptions struct {
@@ -270,7 +270,7 @@ type InvitationResend struct {
 	DeliveryJob      *model.Job
 	ActorUserID      model.UserID
 	AuditEventID     model.AuditEventID
-	AuditAt          int64
+	AuditAt          time.Time
 }
 
 // InvitationRevocation terminalizes one pending Invitation. RevocationNotice
@@ -281,7 +281,7 @@ type InvitationRevocation struct {
 	ActorUserID      model.UserID
 	RevocationNotice *PreparedMail
 	AuditEventID     model.AuditEventID
-	AuditAt          int64
+	AuditAt          time.Time
 }
 
 // InvitationReplacement supersedes CurrentID and inserts Replacement plus its
@@ -297,7 +297,7 @@ type InvitationReplacement struct {
 	ActorUserID             model.UserID
 	CurrentAuditEventID     model.AuditEventID
 	ReplacementAuditEventID model.AuditEventID
-	AuditAt                 int64
+	AuditAt                 time.Time
 }
 
 // InvitationStore owns durable Invitation issuance, acceptance,
@@ -307,7 +307,7 @@ type InvitationReplacement struct {
 // completes after fresh authorization.
 type InvitationReplay struct {
 	AuditEventID model.AuditEventID
-	AuditAt      int64
+	AuditAt      time.Time
 }
 
 type InvitationStore interface {

@@ -103,7 +103,7 @@ func TestRetentionPolicyStore(t *testing.T, stores store.Store) {
 
 	missingAudit := &store.RetentionPolicyReplacement{RetentionMutation: replacement.RetentionMutation, ExpectedRevision: result.Policy.Revision,
 		Settings: settings}
-	missingAudit.AuditEventID, missingAudit.AuditAt = model.NewAuditEventID(), model.GetMillis()
+	missingAudit.AuditEventID, missingAudit.AuditAt = model.NewAuditEventID(), model.NowUTC()
 	missingAudit.Settings.SubmissionRetentionDays++
 	missingAuditCommand := retentionPolicyCommand(missingAudit.Principal.UserID, "missing-audit")
 	_, err = stores.RetentionPolicy().Replace(ctx, missingAudit, missingAuditCommand)
@@ -160,7 +160,7 @@ func testRetentionPolicyCurrentCredentialAndAssurance(t *testing.T, ctx context.
 			stale := principal
 			stale.SessionID, stale.CredentialID = saved.ID, model.PrincipalCredentialID(credentials[0].ID)
 			if state == "revoked Session" {
-				_, revokeErr := stores.Session().Withdraw(ctx, saved.ID, principal.UserID, model.GetMillis(), model.SessionRevocationInactiveUser)
+				_, revokeErr := stores.Session().Withdraw(ctx, saved.ID, principal.UserID, model.NowUTC(), model.SessionRevocationInactiveUser)
 				require.NoError(t, revokeErr)
 			}
 			for _, operation := range []string{"change", "no-op", "replay"} {
@@ -196,7 +196,7 @@ func testRetentionPolicyReplacementInstitution(t *testing.T, ctx context.Context
 	bootstrap *model.InstallationBootstrapResult,
 ) {
 	t.Helper()
-	require.NoError(t, stores.Institution().Archive(ctx, bootstrap.Institution.ID, model.GetMillis()))
+	require.NoError(t, stores.Institution().Archive(ctx, bootstrap.Institution.ID, model.NowUTC()))
 	policy, err := stores.RetentionPolicy().Get(ctx)
 	require.True(t, store.IsNotFound(err), "Get without an active Institution")
 	require.Nil(t, policy, "Get without an active Institution")
@@ -302,7 +302,7 @@ func testRetentionPolicyActiveAdministratorGuard(t *testing.T, ctx context.Conte
 					ScopeType: model.RoleScopeInstitution, ScopeID: bootstrap.Institution.ID.String(), StartsAt: model.NowUTC().Add(-time.Hour)})
 				require.NoError(t, saveErr)
 				if test.ended {
-					_, endErr := EndRoleBinding(ctx, stores, binding.ID, model.GetMillis())
+					_, endErr := EndRoleBinding(ctx, stores, binding.ID, model.NowUTC())
 					require.NoError(t, endErr)
 				}
 			}
@@ -310,8 +310,8 @@ func testRetentionPolicyActiveAdministratorGuard(t *testing.T, ctx context.Conte
 			if test.disabled {
 				audit := saveUserProfileAuditAttempt(t, ctx, stores, actor.ID.String())
 				_, disableErr := stores.User().SetDisabled(ctx, userDisabledStateChangeWithNotice(t, &store.UserDisabledStateChange{
-					ID: actor.ID, ExpectedRevision: actor.Revision, Disabled: true, ChangedAt: model.GetMillis(),
-					RevocationReason: model.SessionRevocationAccountDisabled, AuditEventID: audit.ID, AuditAt: model.MillisFromTime(audit.CreatedAt),
+					ID: actor.ID, ExpectedRevision: actor.Revision, Disabled: true, ChangedAt: model.NowUTC(),
+					RevocationReason: model.SessionRevocationAccountDisabled, AuditEventID: audit.ID, AuditAt: audit.CreatedAt,
 				}))
 				require.NoError(t, disableErr)
 			}
@@ -348,7 +348,7 @@ func prepareRetentionPolicyAttempt(t *testing.T, ctx context.Context, stores sto
 		ScopeType: model.RoleScopeInstitution, ScopeID: institutionID.String(), Status: model.AuditStatusAttempt,
 		NodeID: "store-test", ClientType: string(model.SessionClientWeb), AuthMethod: "password"})
 	require.NoError(t, err)
-	replacement.AuditEventID, replacement.AuditAt = event.ID, model.MillisFromTime(event.CreatedAt)
+	replacement.AuditEventID, replacement.AuditAt = event.ID, event.CreatedAt
 }
 
 func assertRetentionPolicyAudit(t *testing.T, ctx context.Context, stores store.Store, input *store.RetentionPolicyReplacement,

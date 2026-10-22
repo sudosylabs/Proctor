@@ -145,7 +145,7 @@ func (s SQLExternalIdentityStore) ResolveOrProvision(
 	if !configured {
 		return nil, store.ErrAuthenticationMethodDisabled
 	}
-	lastSeenAt := identity.LastSeenAt.Millis()
+	lastSeenAt := model.TimeUTC(identity.LastSeenAt.Time)
 	return runSQLTransaction(ctx, s.GetMaster().Begin, "external identity resolution", func(ctx context.Context, tx *sqlxTxWrapper) (*store.ExternalIdentityResolution, error) {
 		policy, err := getAccessPolicy(ctx, tx, "FOR SHARE")
 		if err != nil {
@@ -191,7 +191,7 @@ func (s SQLExternalIdentityStore) ResolveOrProvision(
 			!request.AuditEvent.ID.IsZero() || request.DefaultProfilePictureJob == nil {
 			return nil, store.NewErrInvalidInput("external_identity", "provisioning", nil)
 		}
-		at := model.TimeFromMillis(lastSeenAt)
+		at := lastSeenAt
 		if at.IsZero() {
 			at = model.NowUTC()
 		}
@@ -254,9 +254,9 @@ func resolveExternalIdentity(
 	tx *sqlxTxWrapper,
 	provider string,
 	subject string,
-	lastSeenAt int64,
+	lastSeenAt time.Time,
 ) (*model.ExternalIdentity, *model.User, error) {
-	at := model.TimeFromMillis(lastSeenAt)
+	at := model.TimeUTC(lastSeenAt)
 	var identityRow externalIdentityRow
 	err := tx.Get(ctx, &identityRow, `
 		SELECT id, created_at, updated_at, archived_at, user_id, provider, subject, last_seen_at

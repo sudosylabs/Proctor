@@ -154,7 +154,7 @@ func (s *bootstrapService) ReconcileSystemAdministratorRole(ctx context.Context,
 	}
 	_, err := s.deps.Installations.ReconcileSystemAdministratorRole(ctx, &store.SystemAdministratorRoleReconciliation{
 		RequiredPermissions: model.AllActions(),
-		ReconciledAt:        s.deps.Now().UnixMilli(),
+		ReconciledAt:        s.deps.Now(),
 		AuditEvent: &model.AuditEvent{
 			Action: string(model.ActionRoleSystemAdminReconcile), Status: model.AuditStatusSuccess,
 			NodeID: s.deps.NodeID, ClientType: "system",

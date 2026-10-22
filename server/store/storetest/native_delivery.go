@@ -26,7 +26,7 @@ type NativeDeliveryAppendProbe func(model.AttemptParticipationID, int64, int64)
 func TestNativeDeliveryAppendStore(t *testing.T, ss store.Store, probes ...NativeDeliveryAppendProbe) {
 	ctx := context.Background()
 	fixture := newExamAttemptFixture(t, ctx, ss)
-	connect := &store.ExamAttemptConnect{SittingID: fixture.sitting.ID, CandidateUserID: fixture.candidate.ID, SessionID: fixture.session.ID, DesktopRegistrationID: fixture.session.DesktopRegistrationID, DPoPKeyThumbprint: fixture.session.DPoPKeyThumbprint, AttemptID: model.NewExamAttemptID(), WorkspaceID: model.NewExamAttemptWorkspaceID(), ParticipationID: model.NewAttemptParticipationID(), ConnectionID: model.NewAttemptConnectionID(), ContinuityCredentialHash: model.HashToken(model.NewCredentialToken()), AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.GetMillis()}
+	connect := &store.ExamAttemptConnect{SittingID: fixture.sitting.ID, CandidateUserID: fixture.candidate.ID, SessionID: fixture.session.ID, DesktopRegistrationID: fixture.session.DesktopRegistrationID, DPoPKeyThumbprint: fixture.session.DPoPKeyThumbprint, AttemptID: model.NewExamAttemptID(), WorkspaceID: model.NewExamAttemptWorkspaceID(), ParticipationID: model.NewAttemptParticipationID(), ConnectionID: model.NewAttemptConnectionID(), ContinuityCredentialHash: model.HashToken(model.NewCredentialToken()), AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.NowUTC()}
 	prepareExamAttemptConnect(t, ctx, ss, connect)
 	connected, err := ss.ExamAttempt().Connect(ctx, connect, examCommand(fixture.candidate.ID, store.ExamAttemptConnectOperation, "native-intake-connect", "native-intake-connect"))
 	require.NoError(t, err)
@@ -48,7 +48,7 @@ func TestNativeDeliveryAppendStore(t *testing.T, ss store.Store, probes ...Nativ
 		t.Helper()
 		raw, err := b.Canonical()
 		require.NoError(t, err)
-		return ss.ExamAttempt().AppendNativeDelivery(ctx, &store.NativeDeliveryAppend{Access: access, Batch: b, DesktopBuild: connect.DesktopBuild, AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.GetMillis()}, examCommand(fixture.candidate.ID, store.NativeDeliveryAppendOperation, key, model.SHA256Fingerprint(raw)))
+		return ss.ExamAttempt().AppendNativeDelivery(ctx, &store.NativeDeliveryAppend{Access: access, Batch: b, DesktopBuild: connect.DesktopBuild, AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.NowUTC()}, examCommand(fixture.candidate.ID, store.NativeDeliveryAppendOperation, key, model.SHA256Fingerprint(raw)))
 	}
 	repeated := opened
 	repeated.Status = "repeated"
@@ -85,7 +85,7 @@ func TestNativeDeliveryAppendStore(t *testing.T, ss store.Store, probes ...Nativ
 	require.NoError(t, err)
 	require.Equal(t, int64(3), fifth.HighestContiguousBatchSequence, "invented missing opener")
 	require.Equal(t, int64(3), fifth.SettledThroughBatchSequence, "invented missing opener")
-	gap := &store.NativeDeliveryGapDeclaration{Access: access, Declaration: model.DeclareDeliveryGaps{DeclarationID: model.NewID(), AllocatedThroughSequence: 5, Ranges: []model.SequenceRange{{First: 4, Last: 4}}, Reason: "spool_lost"}, AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.GetMillis()}
+	gap := &store.NativeDeliveryGapDeclaration{Access: access, Declaration: model.DeclareDeliveryGaps{DeclarationID: model.NewID(), AllocatedThroughSequence: 5, Ranges: []model.SequenceRange{{First: 4, Last: 4}}, Reason: "spool_lost"}, AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.NowUTC()}
 	settled, err := ss.ExamAttempt().DeclareNativeDeliveryGaps(ctx, gap, examCommand(fixture.candidate.ID, store.NativeDeliveryGapsOperation, "native-gap", "native-gap"))
 	require.NoError(t, err)
 	require.Equal(t, int64(5), settled.SettledThroughSequence, "terminal gap did not release pending transition")
@@ -118,7 +118,7 @@ func TestNativeDeliveryAppendStore(t *testing.T, ss store.Store, probes ...Nativ
 		}
 	}
 	require.True(t, found, "candidate absent from board")
-	seal := &store.ExamSubmissionSeal{SubmissionID: model.NewSubmissionID(), Access: store.ExamSubmissionSealAccess{AttemptID: connected.Attempt.ID, ParticipationID: connected.Participation.ID, Generation: connected.Participation.Generation, ConnectionID: connected.Connection.ID, CandidateUserID: fixture.candidate.ID, SessionID: fixture.session.ID, ContinuityCredentialHash: access.Access.ContinuityCredentialHash, ExpectedCurrentRevisionID: fixture.revisionID, ExpectedWorkspaceCursor: connected.Workspace.Cursor}, AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.GetMillis()}
+	seal := &store.ExamSubmissionSeal{SubmissionID: model.NewSubmissionID(), Access: store.ExamSubmissionSealAccess{AttemptID: connected.Attempt.ID, ParticipationID: connected.Participation.ID, Generation: connected.Participation.Generation, ConnectionID: connected.Connection.ID, CandidateUserID: fixture.candidate.ID, SessionID: fixture.session.ID, ContinuityCredentialHash: access.Access.ContinuityCredentialHash, ExpectedCurrentRevisionID: fixture.revisionID, ExpectedWorkspaceCursor: connected.Workspace.Cursor}, AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.NowUTC()}
 	attachSubmissionReceipt(t, ctx, ss, fixture.candidate, seal)
 	sealed, err := ss.ExamSubmission().Seal(ctx, seal, examCommand(fixture.candidate.ID, store.ExamSubmissionSealOperation, "native-review-submit", "native-review-submit"))
 	require.NoError(t, err)
@@ -139,14 +139,14 @@ func TestNativeDeliveryAppendStore(t *testing.T, ss store.Store, probes ...Nativ
 	require.Empty(t, flags.Items, "native occurrence created a misconduct Flag")
 	access.Access.ConnectionID = ""
 	access.Access.ContinuityCredentialHash = ""
-	_, err = ss.ExamAttempt().SealNativeDelivery(ctx, &store.NativeDeliveryFinalDeclaration{Access: access, Declaration: model.FinalDeliveryDeclaration{DeclarationID: "native-review-final", FinalSequence: 6, ExpectedDeclarationRevision: 1}, AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.GetMillis()}, examCommand(fixture.candidate.ID, store.NativeDeliveryFinalOperation, "native-review-final", "native-review-final"))
+	_, err = ss.ExamAttempt().SealNativeDelivery(ctx, &store.NativeDeliveryFinalDeclaration{Access: access, Declaration: model.FinalDeliveryDeclaration{DeclarationID: "native-review-final", FinalSequence: 6, ExpectedDeclarationRevision: 1}, AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.NowUTC()}, examCommand(fixture.candidate.ID, store.NativeDeliveryFinalOperation, "native-review-final", "native-review-final"))
 	require.NoError(t, err)
 	audit := func() model.AuditEventID {
 		return saveIntegrityReviewAudit(t, ctx, ss, fixture, sub, model.ActionSubmissionReview).ID
 	}
-	draft, err := ss.ExamIntegrityReview().UpdateDraft(ctx, &store.ExamIntegrityReviewDraftMutation{SubmissionID: sub, ReviewID: model.NewSubmissionReviewID(), ActorUserID: fixture.manager.ID, ChangedAt: model.NowUTC(), AuditEventID: audit(), AuditAt: model.GetMillis()}, examCommand(fixture.manager.ID, store.ExamIntegrityReviewDraftOperation, "native-review-draft", "native-review-draft"))
+	draft, err := ss.ExamIntegrityReview().UpdateDraft(ctx, &store.ExamIntegrityReviewDraftMutation{SubmissionID: sub, ReviewID: model.NewSubmissionReviewID(), ActorUserID: fixture.manager.ID, ChangedAt: model.NowUTC(), AuditEventID: audit(), AuditAt: model.NowUTC()}, examCommand(fixture.manager.ID, store.ExamIntegrityReviewDraftOperation, "native-review-draft", "native-review-draft"))
 	require.NoError(t, err)
-	final, err := ss.ExamIntegrityReview().Finalize(ctx, &store.ExamIntegrityReviewFinalize{SubmissionID: sub, ReviewID: draft.Review.ID, ExpectedReviewRevision: draft.Review.Revision, ActorUserID: fixture.manager.ID, ChangedAt: model.NowUTC(), AuditEventID: audit(), AuditAt: model.GetMillis()}, examCommand(fixture.manager.ID, store.ExamIntegrityReviewFinalizeOperation, "native-review-finalize", "native-review-finalize"))
+	final, err := ss.ExamIntegrityReview().Finalize(ctx, &store.ExamIntegrityReviewFinalize{SubmissionID: sub, ReviewID: draft.Review.ID, ExpectedReviewRevision: draft.Review.Revision, ActorUserID: fixture.manager.ID, ChangedAt: model.NowUTC(), AuditEventID: audit(), AuditAt: model.NowUTC()}, examCommand(fixture.manager.ID, store.ExamIntegrityReviewFinalizeOperation, "native-review-finalize", "native-review-finalize"))
 	require.NoError(t, err)
 	before, err := ss.ExamIntegrityReview().Get(ctx, sub)
 	require.NoError(t, err)
@@ -177,7 +177,7 @@ func TestNativeDeliveryAppendStore(t *testing.T, ss store.Store, probes ...Nativ
 func TestNativeMaximumRecordStore(t *testing.T, ss store.Store) {
 	ctx := t.Context()
 	fixture := newExamAttemptFixture(t, ctx, ss)
-	input := &store.ExamAttemptConnect{CandidateUserID: fixture.candidate.ID, SessionID: fixture.session.ID, DesktopRegistrationID: fixture.session.DesktopRegistrationID, DPoPKeyThumbprint: fixture.session.DPoPKeyThumbprint, AttemptID: model.NewExamAttemptID(), WorkspaceID: model.NewExamAttemptWorkspaceID(), ParticipationID: model.NewAttemptParticipationID(), ConnectionID: model.NewAttemptConnectionID(), ContinuityCredentialHash: model.HashToken(model.NewCredentialToken()), AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.GetMillis()}
+	input := &store.ExamAttemptConnect{CandidateUserID: fixture.candidate.ID, SessionID: fixture.session.ID, DesktopRegistrationID: fixture.session.DesktopRegistrationID, DPoPKeyThumbprint: fixture.session.DPoPKeyThumbprint, AttemptID: model.NewExamAttemptID(), WorkspaceID: model.NewExamAttemptWorkspaceID(), ParticipationID: model.NewAttemptParticipationID(), ConnectionID: model.NewAttemptConnectionID(), ContinuityCredentialHash: model.HashToken(model.NewCredentialToken()), AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.NowUTC()}
 	prepareExamAttemptConnect(t, ctx, ss, input)
 	input.SittingID = fixture.sitting.ID
 	schema := model.SHA256Fingerprint([]byte("maximum-source-schema"))
@@ -194,14 +194,14 @@ func TestNativeMaximumRecordStore(t *testing.T, ss store.Store) {
 	require.NoError(t, err)
 	input.DesktopBuild.NativeAgreement = agreement
 	access := store.SecurityPreflightAccess{SittingID: input.SittingID, CandidateUserID: input.CandidateUserID, SessionID: input.SessionID, DesktopRegistrationID: input.DesktopRegistrationID, DPoPKeyThumbprint: input.DPoPKeyThumbprint, DesktopBuild: input.DesktopBuild, DesktopCompatibilityPolicyRevision: input.DesktopCompatibilityPolicyRevision}
-	prepare := &store.SecurityPreflightPrepare{Access: access, PreflightID: model.NewID(), Challenge: model.NewCredentialToken(), NativeRegistryDigest: agreement.RegistryDigest(), SourceManifestDigest: agreement.SourceManifestDigest(), ConfigurationManifestFingerprint: input.ConfigurationManifestFingerprint, AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.GetMillis()}
+	prepare := &store.SecurityPreflightPrepare{Access: access, PreflightID: model.NewID(), Challenge: model.NewCredentialToken(), NativeRegistryDigest: agreement.RegistryDigest(), SourceManifestDigest: agreement.SourceManifestDigest(), ConfigurationManifestFingerprint: input.ConfigurationManifestFingerprint, AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.NowUTC()}
 	prepared, err := ss.ExamAttempt().PrepareSecurityPreflight(ctx, prepare, examCommand(input.CandidateUserID, store.SecurityPreflightPrepareOperation, "maximum-prepare", "maximum-prepare"))
 	require.NoError(t, err)
 	report := syntheticPreflightReport(prepared, agreement)
 	for i := range report.Sources {
 		report.Sources[i].SourceInstanceID = strings.Repeat("i", 128)
 	}
-	accepted, err := ss.ExamAttempt().ReportSecurityPreflight(ctx, &store.SecurityPreflightReport{Access: access, PreflightID: prepare.PreflightID, Report: report, AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.GetMillis()}, examCommand(input.CandidateUserID, store.SecurityPreflightReportOperation, "maximum-report", "maximum-report"))
+	accepted, err := ss.ExamAttempt().ReportSecurityPreflight(ctx, &store.SecurityPreflightReport{Access: access, PreflightID: prepare.PreflightID, Report: report, AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.NowUTC()}, examCommand(input.CandidateUserID, store.SecurityPreflightReportOperation, "maximum-report", "maximum-report"))
 	require.NoError(t, err)
 	input.Security = model.ConnectSecurity{Kind: "preflight", PreflightID: prepare.PreflightID, ReportDigest: accepted.ReportDigest}
 	connected, err := ss.ExamAttempt().Connect(ctx, input, examCommand(input.CandidateUserID, store.ExamAttemptConnectOperation, "maximum-connect", "maximum-connect"))
@@ -235,7 +235,7 @@ func TestNativeMaximumRecordStore(t *testing.T, ss store.Store) {
 	require.Len(t, canonical, 256*1024, "occurrence batch did not reach exact request limit")
 	deliveryAccess := store.NativeDeliveryAccess{Access: store.CandidateAttemptAccess{AttemptID: connected.Attempt.ID, CandidateUserID: input.CandidateUserID, SessionID: input.SessionID, DesktopRegistrationID: input.DesktopRegistrationID, DPoPKeyThumbprint: input.DPoPKeyThumbprint, ConnectionID: connected.Connection.ID, ContinuityCredentialHash: input.ContinuityCredentialHash}, StreamID: batch.StreamID, ParticipationID: batch.ParticipationID, Generation: batch.Generation}
 	appendBatch := func(key string) (*model.NativeSecurityAcknowledgement, error) {
-		return ss.ExamAttempt().AppendNativeDelivery(ctx, &store.NativeDeliveryAppend{Access: deliveryAccess, Batch: batch, DesktopBuild: input.DesktopBuild, AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.GetMillis()}, examCommand(input.CandidateUserID, store.NativeDeliveryAppendOperation, key, model.SHA256Fingerprint(canonical)))
+		return ss.ExamAttempt().AppendNativeDelivery(ctx, &store.NativeDeliveryAppend{Access: deliveryAccess, Batch: batch, DesktopBuild: input.DesktopBuild, AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.NowUTC()}, examCommand(input.CandidateUserID, store.NativeDeliveryAppendOperation, key, model.SHA256Fingerprint(canonical)))
 	}
 	result, err := appendBatch("maximum-append")
 	require.NoError(t, err)
@@ -244,7 +244,7 @@ func TestNativeMaximumRecordStore(t *testing.T, ss store.Store) {
 	require.Equal(t, int64(1), result.HighestContiguousBatchSequence, "large legal native record failed exact acknowledgement/replay")
 	require.Equal(t, replay.Receipt, result.Receipt, "large legal native record failed exact acknowledgement/replay")
 	require.Equal(t, model.SHA256Fingerprint(canonical), result.Receipt.RequestDigest, "large legal native record failed exact acknowledgement/replay")
-	seal := &store.ExamSubmissionSeal{SubmissionID: model.NewSubmissionID(), Access: store.ExamSubmissionSealAccess{AttemptID: connected.Attempt.ID, ParticipationID: connected.Participation.ID, Generation: connected.Participation.Generation, ConnectionID: connected.Connection.ID, CandidateUserID: fixture.candidate.ID, SessionID: fixture.session.ID, ContinuityCredentialHash: deliveryAccess.Access.ContinuityCredentialHash, ExpectedCurrentRevisionID: fixture.revisionID, ExpectedWorkspaceCursor: connected.Workspace.Cursor}, AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.GetMillis()}
+	seal := &store.ExamSubmissionSeal{SubmissionID: model.NewSubmissionID(), Access: store.ExamSubmissionSealAccess{AttemptID: connected.Attempt.ID, ParticipationID: connected.Participation.ID, Generation: connected.Participation.Generation, ConnectionID: connected.Connection.ID, CandidateUserID: fixture.candidate.ID, SessionID: fixture.session.ID, ContinuityCredentialHash: deliveryAccess.Access.ContinuityCredentialHash, ExpectedCurrentRevisionID: fixture.revisionID, ExpectedWorkspaceCursor: connected.Workspace.Cursor}, AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.NowUTC()}
 	attachSubmissionReceipt(t, ctx, ss, fixture.candidate, seal)
 	sealed, err := ss.ExamSubmission().Seal(ctx, seal, examCommand(fixture.candidate.ID, store.ExamSubmissionSealOperation, "maximum-seal", "maximum-seal"))
 	require.NoError(t, err)
@@ -259,7 +259,7 @@ func TestNativeMaximumRecordStore(t *testing.T, ss store.Store) {
 	reset := nativeResetWithLongTimestamp(t, model.NativeSourceReset{Kind: "source_reset", ResetID: model.NewID(), SourceID: report.Sources[0].SourceID, PreviousSourceInstanceID: report.Sources[0].SourceInstanceID, PreviousFinalSequence: 1, NewSourceInstanceID: model.NewID(), Reason: "restart", OccurredAt: at}, 240000)
 	deliveryAccess.Access.ConnectionID = ""
 	deliveryAccess.Access.ContinuityCredentialHash = ""
-	_, err = ss.ExamAttempt().SealNativeDelivery(ctx, &store.NativeDeliveryFinalDeclaration{Access: deliveryAccess, Declaration: model.FinalDeliveryDeclaration{DeclarationID: model.NewID(), FinalSequence: 2, ExpectedDeclarationRevision: 0}, AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.GetMillis()}, examCommand(fixture.candidate.ID, store.NativeDeliveryFinalOperation, "maximum-final", "maximum-final"))
+	_, err = ss.ExamAttempt().SealNativeDelivery(ctx, &store.NativeDeliveryFinalDeclaration{Access: deliveryAccess, Declaration: model.FinalDeliveryDeclaration{DeclarationID: model.NewID(), FinalSequence: 2, ExpectedDeclarationRevision: 0}, AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.NowUTC()}, examCommand(fixture.candidate.ID, store.NativeDeliveryFinalOperation, "maximum-final", "maximum-final"))
 	require.NoError(t, err)
 	batch.BatchSequence = 2
 	batch.Records = []model.NativeRecord{{Reset: &reset}}

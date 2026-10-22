@@ -124,7 +124,7 @@ func TestExamExportStore(t *testing.T, ss store.Store, probe ExamExportSQLProbe)
 	second.Principal = saveRecordsPrincipal(t, ctx, ss, f.manager.ID, false)
 	_, err = peer.Get(ctx, &second)
 	require.NoError(t, err)
-	_, err = ss.Session().Withdraw(ctx, second.Principal.SessionID, f.manager.ID, model.GetMillis(), model.SessionRevocationInactiveUser)
+	_, err = ss.Session().Withdraw(ctx, second.Principal.SessionID, f.manager.ID, model.NowUTC(), model.SessionRevocationInactiveUser)
 	require.NoError(t, err)
 	_, err = peer.Get(ctx, &second)
 	require.True(t, store.IsConflict(err), "revoked Session retained export access: %v", err)
@@ -210,10 +210,10 @@ func TestExamExportStore(t *testing.T, ss store.Store, probe ExamExportSQLProbe)
 	require.Equal(t, 0, probe.ArtifactCount(t, ctx, created.ID), "finished verified artifact retained")
 	// The other category freezes its own structured records without work.
 	decision, err := ss.ExamIntegrityReview().SaveDecision(ctx, &store.ExamIntegrityReviewDecisionMutation{SubmissionID: scope.SubmissionID, ReviewID: model.NewSubmissionReviewID(), DecisionID: model.NewIntegrityReviewDecisionID(), FlagID: flagged.Flag.ID,
-		ActorUserID: f.manager.ID, Outcome: model.IntegrityReviewInconclusive, PrivateRationale: "Retained review rationale.", ChangedAt: model.NowUTC(), AuditEventID: saveIntegrityReviewAudit(t, ctx, ss, f, scope.SubmissionID, model.ActionSubmissionReview).ID, AuditAt: model.GetMillis()}, examCommand(f.manager.ID, store.ExamIntegrityReviewDecisionOperation, "export-decision", "export-decision"))
+		ActorUserID: f.manager.ID, Outcome: model.IntegrityReviewInconclusive, PrivateRationale: "Retained review rationale.", ChangedAt: model.NowUTC(), AuditEventID: saveIntegrityReviewAudit(t, ctx, ss, f, scope.SubmissionID, model.ActionSubmissionReview).ID, AuditAt: model.NowUTC()}, examCommand(f.manager.ID, store.ExamIntegrityReviewDecisionOperation, "export-decision", "export-decision"))
 	require.NoError(t, err)
 	_, err = ss.ExamIntegrityReview().Finalize(ctx, &store.ExamIntegrityReviewFinalize{SubmissionID: scope.SubmissionID, ReviewID: decision.Review.ID, ActorUserID: f.manager.ID, ExpectedReviewRevision: decision.Review.Revision, ChangedAt: model.NowUTC(),
-		AuditEventID: saveIntegrityReviewAudit(t, ctx, ss, f, scope.SubmissionID, model.ActionSubmissionReview).ID, AuditAt: model.GetMillis()}, examCommand(f.manager.ID, store.ExamIntegrityReviewFinalizeOperation, "export-finalize", "export-finalize"))
+		AuditEventID: saveIntegrityReviewAudit(t, ctx, ss, f, scope.SubmissionID, model.ActionSubmissionReview).ID, AuditAt: model.NowUTC()}, examCommand(f.manager.ID, store.ExamIntegrityReviewFinalizeOperation, "export-finalize", "export-finalize"))
 	require.NoError(t, err)
 	integrityInput := makeInput(model.RetentionCategoryIntegrity)
 	integrity, err := exports.Create(ctx, integrityInput, examCommand(f.manager.ID, store.ExamExportCreateOperation, "export-integrity", "export-integrity"))
@@ -261,7 +261,7 @@ func TestExamExportStore(t *testing.T, ss store.Store, probe ExamExportSQLProbe)
 	require.NoError(t, err)
 	for _, membership := range memberships {
 		if membership.AcademicUnitID == f.unitID {
-			_, err = EndAcademicUnitMember(ctx, ss, membership.ID, membership.Revision, model.GetMillis())
+			_, err = EndAcademicUnitMember(ctx, ss, membership.ID, membership.Revision, model.NowUTC())
 			require.NoError(t, err)
 		}
 	}
@@ -318,7 +318,7 @@ func TestExamExportStore(t *testing.T, ss store.Store, probe ExamExportSQLProbe)
 	// End the already-active fixture binding in its past interval. A host clock
 	// slightly ahead of PostgreSQL must not schedule this revocation in the
 	// database future and make the immediate peer authorization check race it.
-	_, err = EndRoleBinding(ctx, ss, binding.ID, model.MillisFromTime(binding.StartsAt.Add(time.Second)))
+	_, err = EndRoleBinding(ctx, ss, binding.ID, binding.StartsAt.Add(time.Second))
 	require.NoError(t, err)
 	_, err = peer.Get(ctx, &access)
 	require.True(t, store.IsConflict(err), "revoked role read retained archive")

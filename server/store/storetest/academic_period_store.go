@@ -52,7 +52,7 @@ func testAcademicPeriodStoreIdempotentCreate(t *testing.T, ss store.Store) {
 	candidate.PrepareCreate(model.NewAcademicPeriodID(), model.NowUTC())
 	command := &store.CommandIdempotency{UserID: user.ID, Operation: "academic_period.create", KeyDigest: sha256.Sum256([]byte("key")), Fingerprint: sha256.Sum256([]byte("command")), Retention: time.Hour, Wait: time.Second}
 	firstAudit := saveAcademicPeriodAuditAttempt(t, ctx, ss, institution.ID.String())
-	first, err := ss.AcademicPeriod().CreateIdempotently(ctx, &store.AcademicPeriodCreation{Period: candidate, AuditEventID: firstAudit.ID, AuditAt: model.GetMillis()}, command)
+	first, err := ss.AcademicPeriod().CreateIdempotently(ctx, &store.AcademicPeriodCreation{Period: candidate, AuditEventID: firstAudit.ID, AuditAt: model.NowUTC()}, command)
 	require.NoError(t, err)
 	require.False(t, first.Replayed)
 	require.Equal(t, candidate.ID, first.Value.ID)
@@ -60,7 +60,7 @@ func testAcademicPeriodStoreIdempotentCreate(t *testing.T, ss store.Store) {
 	retryCandidate := *candidate
 	retryCandidate.ID = model.NewAcademicPeriodID()
 	secondAudit := saveAcademicPeriodAuditAttempt(t, ctx, ss, institution.ID.String())
-	second, err := ss.AcademicPeriod().CreateIdempotently(ctx, &store.AcademicPeriodCreation{Period: &retryCandidate, AuditEventID: secondAudit.ID, AuditAt: model.GetMillis()}, command)
+	second, err := ss.AcademicPeriod().CreateIdempotently(ctx, &store.AcademicPeriodCreation{Period: &retryCandidate, AuditEventID: secondAudit.ID, AuditAt: model.NowUTC()}, command)
 	require.NoError(t, err)
 	require.True(t, second.Replayed, "replay result = %#v", second)
 	require.Equal(t, first.Value.ID, second.Value.ID, "replay result = %#v", second)
@@ -71,7 +71,7 @@ func testAcademicPeriodStoreIdempotentCreate(t *testing.T, ss store.Store) {
 	conflict := *command
 	conflict.Fingerprint = sha256.Sum256([]byte("different"))
 	conflictAudit := saveAcademicPeriodAuditAttempt(t, ctx, ss, institution.ID.String())
-	if _, err = ss.AcademicPeriod().CreateIdempotently(ctx, &store.AcademicPeriodCreation{Period: &retryCandidate, AuditEventID: conflictAudit.ID, AuditAt: model.GetMillis()}, &conflict); err == nil {
+	if _, err = ss.AcademicPeriod().CreateIdempotently(ctx, &store.AcademicPeriodCreation{Period: &retryCandidate, AuditEventID: conflictAudit.ID, AuditAt: model.NowUTC()}, &conflict); err == nil {
 		require.FailNow(t, "different command reused the key")
 	} else {
 		var target *store.ErrIdempotencyConflict
@@ -91,7 +91,7 @@ func testAcademicPeriodStoreMutationAuditAtomicity(t *testing.T, ss store.Store)
 		EndsAt:      model.TimeFromMillis(200),
 	}
 	candidate.PrepareCreate(model.AcademicPeriodID(model.NewID()), model.NowUTC())
-	created, err := ss.AcademicPeriod().Create(ctx, &store.AcademicPeriodCreation{Period: candidate, AuditEventID: createAttempt.ID, AuditAt: model.GetMillis()})
+	created, err := ss.AcademicPeriod().Create(ctx, &store.AcademicPeriodCreation{Period: candidate, AuditEventID: createAttempt.ID, AuditAt: model.NowUTC()})
 	require.NoError(t, err)
 	completed, err := ss.Audit().Get(ctx, createAttempt.ID)
 	require.NoError(t, err)
@@ -105,7 +105,7 @@ func testAcademicPeriodStoreMutationAuditAtomicity(t *testing.T, ss store.Store)
 		EndsAt:      model.TimeFromMillis(400),
 	}
 	rolledBackCreate.PrepareCreate(model.AcademicPeriodID(model.NewID()), model.NowUTC())
-	_, err = ss.AcademicPeriod().Create(ctx, &store.AcademicPeriodCreation{Period: rolledBackCreate, AuditEventID: model.NewAuditEventID(), AuditAt: model.GetMillis()})
+	_, err = ss.AcademicPeriod().Create(ctx, &store.AcademicPeriodCreation{Period: rolledBackCreate, AuditEventID: model.NewAuditEventID(), AuditAt: model.NowUTC()})
 	require.Error(t, err, "Create() succeeded without its audit attempt")
 	_, err = ss.AcademicPeriod().Get(ctx, rolledBackCreate.ID)
 	require.True(t, store.IsNotFound(err), "create survived audit rollback")
@@ -114,7 +114,7 @@ func testAcademicPeriodStoreMutationAuditAtomicity(t *testing.T, ss store.Store)
 	updatedCandidate := *created
 	updatedCandidate.EndsAt = model.TimeFromMillis(250)
 	updatedCandidate.PrepareUpdate(model.NowUTC())
-	updated, err := ss.AcademicPeriod().Update(ctx, &store.AcademicPeriodUpdate{Period: &updatedCandidate, AuditEventID: updateAttempt.ID, AuditAt: model.GetMillis()})
+	updated, err := ss.AcademicPeriod().Update(ctx, &store.AcademicPeriodUpdate{Period: &updatedCandidate, AuditEventID: updateAttempt.ID, AuditAt: model.NowUTC()})
 	require.NoError(t, err)
 	completed, err = ss.Audit().Get(ctx, updateAttempt.ID)
 	require.NoError(t, err)
@@ -123,13 +123,13 @@ func testAcademicPeriodStoreMutationAuditAtomicity(t *testing.T, ss store.Store)
 	stale := *created
 	stale.DisplayName = "Stale Period"
 	stale.PrepareUpdate(model.NowUTC())
-	_, err = ss.AcademicPeriod().Update(ctx, &store.AcademicPeriodUpdate{Period: &stale, AuditEventID: staleAttempt.ID, AuditAt: model.GetMillis()})
+	_, err = ss.AcademicPeriod().Update(ctx, &store.AcademicPeriodUpdate{Period: &stale, AuditEventID: staleAttempt.ID, AuditAt: model.NowUTC()})
 	require.True(t, store.IsConflict(err), "stale Update() error")
 
 	rolledBack := *updated
 	rolledBack.DisplayName = "Must Roll Back"
 	rolledBack.PrepareUpdate(model.NowUTC())
-	_, err = ss.AcademicPeriod().Update(ctx, &store.AcademicPeriodUpdate{Period: &rolledBack, AuditEventID: model.NewAuditEventID(), AuditAt: model.GetMillis()})
+	_, err = ss.AcademicPeriod().Update(ctx, &store.AcademicPeriodUpdate{Period: &rolledBack, AuditEventID: model.NewAuditEventID(), AuditAt: model.NowUTC()})
 	require.Error(t, err, "Update() succeeded without its audit attempt")
 	persisted, err := ss.AcademicPeriod().Get(ctx, updated.ID)
 	require.NoError(t, err)
@@ -139,16 +139,16 @@ func testAcademicPeriodStoreMutationAuditAtomicity(t *testing.T, ss store.Store)
 	wrongOwner.Owner = model.NewAcademicUnitAcademicPeriodOwner(model.NewAcademicUnitID())
 	wrongOwner.PrepareUpdate(model.NowUTC())
 	wrongOwnerAttempt := saveAcademicPeriodAuditAttempt(t, ctx, ss, institution.ID.String())
-	_, err = ss.AcademicPeriod().Update(ctx, &store.AcademicPeriodUpdate{Period: &wrongOwner, AuditEventID: wrongOwnerAttempt.ID, AuditAt: model.GetMillis()})
+	_, err = ss.AcademicPeriod().Update(ctx, &store.AcademicPeriodUpdate{Period: &wrongOwner, AuditEventID: wrongOwnerAttempt.ID, AuditAt: model.NowUTC()})
 	require.True(t, store.IsConflict(err), "ownership move error")
 
 	archiveAttempt := saveAcademicPeriodAuditAttempt(t, ctx, ss, institution.ID.String())
-	archived, err := ss.AcademicPeriod().Archive(ctx, &store.AcademicPeriodArchive{ID: updated.ID, ArchiveAt: model.GetMillis(), AuditEventID: archiveAttempt.ID, AuditAt: model.GetMillis()})
+	archived, err := ss.AcademicPeriod().Archive(ctx, &store.AcademicPeriodArchive{ID: updated.ID, ArchiveAt: model.NowUTC(), AuditEventID: archiveAttempt.ID, AuditAt: model.NowUTC()})
 	require.NoError(t, err)
 	require.True(t, archived.IsArchived())
 
 	archiveRollback := saveAcademicPeriod(t, ctx, ss, institution.ID.String(), "rolled-back-archive", 500)
-	_, err = ss.AcademicPeriod().Archive(ctx, &store.AcademicPeriodArchive{ID: archiveRollback.ID, ArchiveAt: model.GetMillis(), AuditEventID: model.NewAuditEventID(), AuditAt: model.GetMillis()})
+	_, err = ss.AcademicPeriod().Archive(ctx, &store.AcademicPeriodArchive{ID: archiveRollback.ID, ArchiveAt: model.NowUTC(), AuditEventID: model.NewAuditEventID(), AuditAt: model.NowUTC()})
 	require.Error(t, err, "Archive() succeeded without its audit attempt")
 	_, err = ss.AcademicPeriod().Get(ctx, archiveRollback.ID)
 	require.NoError(t, err)
@@ -159,7 +159,7 @@ func testAcademicPeriodStoreMutationAuditAtomicity(t *testing.T, ss store.Store)
 	withClass := saveAcademicPeriod(t, ctx, ss, institution.ID.String(), "period-with-class", 1_000)
 	saveClass(t, ctx, ss, level.ID.String(), withClass.ID.String(), "period-dependency-class")
 	blockedAttempt := saveAcademicPeriodAuditAttempt(t, ctx, ss, institution.ID.String())
-	_, err = ss.AcademicPeriod().Archive(ctx, &store.AcademicPeriodArchive{ID: withClass.ID, ArchiveAt: model.GetMillis(), AuditEventID: blockedAttempt.ID, AuditAt: model.GetMillis()})
+	_, err = ss.AcademicPeriod().Archive(ctx, &store.AcademicPeriodArchive{ID: withClass.ID, ArchiveAt: model.NowUTC(), AuditEventID: blockedAttempt.ID, AuditAt: model.NowUTC()})
 	require.True(t, store.IsConflict(err), "archive with active class error")
 }
 
@@ -202,7 +202,7 @@ func testAcademicPeriodStoreSearchAndArchive(t *testing.T, ss store.Store) {
 		require.Len(t, found, 1, "ListVisible(%q)", query)
 		require.Equal(t, period.ID, found[0].ID, "ListVisible(%q)", query)
 	}
-	archived, err := ArchiveAcademicPeriod(ctx, ss, period.ID, model.GetMillis())
+	archived, err := ArchiveAcademicPeriod(ctx, ss, period.ID, model.NowUTC())
 	require.NoError(t, err)
 	require.True(t, archived.IsArchived())
 }

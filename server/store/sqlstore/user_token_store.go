@@ -64,7 +64,7 @@ func validateUserEmailMail(userID model.UserID, occurrence *model.MailOccurrence
 
 func (s SQLUserTokenStore) ChangeEmail(ctx context.Context, input *store.UserEmailChange) (*store.UserEmailChangeResult, error) {
 	if input == nil || !input.UserID.IsValid() || input.ExpectedRevision <= 0 || !model.IsValidEmail(input.NewEmail) ||
-		input.NewEmail != strings.ToLower(strings.TrimSpace(model.SanitizeUnicode(input.NewEmail))) || input.Token == nil || !input.AuditEventID.IsValid() || input.AuditAt <= 0 ||
+		input.NewEmail != strings.ToLower(strings.TrimSpace(model.SanitizeUnicode(input.NewEmail))) || input.Token == nil || !input.AuditEventID.IsValid() || input.AuditAt.IsZero() ||
 		input.TokenLifetime < userEmailChangeTokenLifetimeMinimum || input.TokenLifetime > userEmailChangeTokenLifetimeMaximum ||
 		input.WarningLifetime < userEmailChangeWarningLifetimeMinimum || input.WarningLifetime > userEmailChangeWarningLifetimeMaximum ||
 		input.TokenLifetime%time.Millisecond != 0 || input.WarningLifetime%time.Millisecond != 0 {
@@ -171,7 +171,7 @@ func (s SQLUserTokenStore) ChangeEmail(ctx context.Context, input *store.UserEma
 }
 
 func (s SQLUserTokenStore) VerifyEmailPrivileged(ctx context.Context, input *store.PrivilegedEmailVerification) (*model.User, error) {
-	if input == nil || !input.UserID.IsValid() || input.ExpectedRevision <= 0 || !input.AuditEventID.IsValid() || input.AuditAt <= 0 {
+	if input == nil || !input.UserID.IsValid() || input.ExpectedRevision <= 0 || !input.AuditEventID.IsValid() || input.AuditAt.IsZero() {
 		return nil, store.NewErrInvalidInput("user_email", "privileged_verification", nil)
 	}
 	keyID, err := validateUserEmailMail(input.UserID, input.Occurrence, input.Delivery, input.Job, model.MailOccurrenceSecurityNotice, model.MailTemplateIdentityEmailVerifiedByAdmin)
@@ -547,10 +547,10 @@ func (s SQLUserTokenStore) GetByHash(
 func (s SQLUserTokenStore) ConsumeEmailVerification(
 	ctx context.Context,
 	tokenHash string,
-	now int64,
+	now time.Time,
 	auditEvent *model.AuditEvent,
 ) (*store.EmailVerificationResult, error) {
-	if !model.IsValidTokenHash(tokenHash) || now <= 0 || auditEvent == nil {
+	if !model.IsValidTokenHash(tokenHash) || now.IsZero() || auditEvent == nil {
 		return nil, store.NewErrInvalidInput("user_token", "consume", nil)
 	}
 	return runSQLTransaction(ctx, s.GetMaster().Begin, "email verification", func(ctx context.Context, tx *sqlxTxWrapper) (*store.EmailVerificationResult, error) {
@@ -618,7 +618,7 @@ func (s SQLUserTokenStore) ConsumePasswordReset(
 	input *store.PasswordResetCompletion,
 ) (*store.PasswordResetResult, error) {
 	if input == nil || !model.IsValidTokenHash(input.TokenHash) ||
-		!model.IsValidPasswordHash(input.PasswordHash) || input.At <= 0 || input.AuditEvent == nil ||
+		!model.IsValidPasswordHash(input.PasswordHash) || input.At.IsZero() || input.AuditEvent == nil ||
 		!input.RevocationReason.IsValid() || input.Occurrence == nil || input.Delivery == nil || input.Job == nil {
 		return nil, store.NewErrInvalidInput("user_token", "password_reset", nil)
 	}

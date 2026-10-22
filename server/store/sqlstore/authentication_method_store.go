@@ -26,7 +26,7 @@ import (
 // the external login state predates the User's last MFA reset.
 func (s SQLExternalIdentityStore) Link(ctx context.Context, input *store.ExternalIdentityLink) (*store.AuthenticationMethodMutationResult, error) {
 	if input == nil || input.Identity == nil || !input.Identity.ID.IsZero() ||
-		!input.Identity.UserID.IsValid() || !input.AuditEventID.IsValid() || input.AuditAt <= 0 ||
+		!input.Identity.UserID.IsValid() || !input.AuditEventID.IsValid() || input.AuditAt.IsZero() ||
 		!validAccessDeploymentCapabilities(input.Capabilities) {
 		return nil, store.NewErrInvalidInput("external_identity", "link", nil)
 	}
@@ -67,7 +67,7 @@ func (s SQLExternalIdentityStore) Link(ctx context.Context, input *store.Externa
 		if err := requireCurrentExternalProvider(ctx, tx, identity.Provider); err != nil {
 			return nil, err
 		}
-		identity.PrepareCreate(model.NewExternalIdentityID(), model.TimeFromMillis(input.AuditAt))
+		identity.PrepareCreate(model.NewExternalIdentityID(), model.TimeUTC(input.AuditAt))
 		if err := identity.Validate(); err != nil {
 			return nil, err
 		}
@@ -86,8 +86,8 @@ func (s SQLExternalIdentityStore) Link(ctx context.Context, input *store.Externa
 // store.ErrLastUsableAuthenticationMethod when the identity is the User's last
 // usable authentication path.
 func (s SQLExternalIdentityStore) Unlink(ctx context.Context, input *store.ExternalIdentityUnlink) (*store.AuthenticationMethodMutationResult, error) {
-	if input == nil || !input.ID.IsValid() || !input.UserID.IsValid() || input.ChangedAt <= 0 ||
-		!input.RevocationReason.IsValid() || !input.AuditEventID.IsValid() || input.AuditAt <= 0 ||
+	if input == nil || !input.ID.IsValid() || !input.UserID.IsValid() || input.ChangedAt.IsZero() ||
+		!input.RevocationReason.IsValid() || !input.AuditEventID.IsValid() || input.AuditAt.IsZero() ||
 		!validAccessDeploymentCapabilities(input.Capabilities) {
 		return nil, store.NewErrInvalidInput("external_identity", "unlink", nil)
 	}
@@ -147,7 +147,7 @@ func (s SQLExternalIdentityStore) Unlink(ctx context.Context, input *store.Exter
 // login is enabled, completing the audit event in the same transaction.
 func (s SQLPasswordCredentialStore) Enroll(ctx context.Context, input *store.PasswordCredentialEnrollment) (*store.AuthenticationMethodMutationResult, error) {
 	if input == nil || input.Credential == nil || !input.Credential.ID.IsZero() || !input.Credential.UserID.IsValid() ||
-		!input.AuditEventID.IsValid() || input.AuditAt <= 0 || !validAccessDeploymentCapabilities(input.Capabilities) {
+		!input.AuditEventID.IsValid() || input.AuditAt.IsZero() || !validAccessDeploymentCapabilities(input.Capabilities) {
 		return nil, store.NewErrInvalidInput("password_credential", "enroll", nil)
 	}
 	credential := *input.Credential
@@ -167,7 +167,7 @@ func (s SQLPasswordCredentialStore) Enroll(ctx context.Context, input *store.Pas
 		if err := requireCurrentLocalLogin(ctx, tx); err != nil {
 			return nil, err
 		}
-		credential.PrepareCreate(model.NewPasswordCredentialID(), model.TimeFromMillis(input.AuditAt))
+		credential.PrepareCreate(model.NewPasswordCredentialID(), model.TimeUTC(input.AuditAt))
 		if err := credential.Validate(); err != nil {
 			return nil, err
 		}
@@ -187,8 +187,8 @@ func (s SQLPasswordCredentialStore) Enroll(ctx context.Context, input *store.Pas
 // store.ErrLastUsableAuthenticationMethod when no other usable authentication
 // path remains.
 func (s SQLPasswordCredentialStore) Remove(ctx context.Context, input *store.PasswordCredentialRemoval) (*store.AuthenticationMethodMutationResult, error) {
-	if input == nil || !input.UserID.IsValid() || input.ChangedAt <= 0 || !input.RevocationReason.IsValid() ||
-		!input.AuditEventID.IsValid() || input.AuditAt <= 0 || !validAccessDeploymentCapabilities(input.Capabilities) {
+	if input == nil || !input.UserID.IsValid() || input.ChangedAt.IsZero() || !input.RevocationReason.IsValid() ||
+		!input.AuditEventID.IsValid() || input.AuditAt.IsZero() || !validAccessDeploymentCapabilities(input.Capabilities) {
 		return nil, store.NewErrInvalidInput("password_credential", "remove", nil)
 	}
 	return runSQLTransaction(ctx, s.GetMaster().Begin, "remove password credential", func(ctx context.Context, tx *sqlxTxWrapper) (*store.AuthenticationMethodMutationResult, error) {
@@ -219,7 +219,7 @@ func (s SQLPasswordCredentialStore) Remove(ctx context.Context, input *store.Pas
 		if !usable {
 			return nil, store.ErrLastUsableAuthenticationMethod
 		}
-		at := model.TimeFromMillis(input.ChangedAt)
+		at := model.TimeUTC(input.ChangedAt)
 		if _, err = tx.Exec(ctx, `UPDATE password_credentials SET updated_at=GREATEST(updated_at, ?), archived_at=GREATEST(created_at, ?) WHERE id=? AND user_id=? AND archived_at IS NULL`, at, at, credential.ID.String(), input.UserID.String()); err != nil {
 			return nil, fmt.Errorf("archive password credential: %w", err)
 		}
@@ -311,7 +311,7 @@ func revokeUserSessionsForAuthenticationMethod(ctx context.Context, executor sql
 	return rows, hashes, nil
 }
 
-func completeAuthenticationMethodAudit(ctx context.Context, tx *sqlxTxWrapper, auditID model.AuditEventID, auditAt int64, result any) error {
+func completeAuthenticationMethodAudit(ctx context.Context, tx *sqlxTxWrapper, auditID model.AuditEventID, auditAt time.Time, result any) error {
 	encoded, err := model.EncodeAuditData(result)
 	if err != nil {
 		return err

@@ -552,7 +552,7 @@ func invitationBatchLifecycleOperation(operation InvitationBatchOperation) strin
 func (s *invitationService) recordInvitationCommandDuplicate(ctx context.Context, idempotency *store.CommandIdempotency, attempt mutationAttempt, input store.InvitationBatchDuplicate) (*store.InvitationBatchCommandResult, error) {
 	return runAuditedMutation(ctx, s.deps.Audit, attempt, s.deps.Now,
 		func(ctx context.Context, reference mutationAttemptReference) (*store.InvitationBatchCommandResult, error) {
-			input.AuditEventID, input.AuditAt = reference.ID, reference.MutationAtMillis
+			input.AuditEventID, input.AuditAt = reference.ID, reference.MutationAt
 			return s.deps.Store.RecordBatchDuplicate(ctx, &input, idempotency)
 		}, invitationStoreErrors.Translate)
 }
@@ -590,7 +590,7 @@ func (s *invitationService) recoverInvitationIssueOutcome(ctx context.Context, i
 	}
 	replayed, err := runAuditedMutation(ctx, s.deps.Audit, attempt, s.deps.Now,
 		func(ctx context.Context, reference mutationAttemptReference) (*store.InvitationCommandResult, error) {
-			value, replayErr := s.deps.Store.ReplayIssue(ctx, &store.InvitationReplay{AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis}, idempotency)
+			value, replayErr := s.deps.Store.ReplayIssue(ctx, &store.InvitationReplay{AuditEventID: reference.ID, AuditAt: reference.MutationAt}, idempotency)
 			if replayErr == nil && value.Duplicate {
 				return nil, apperror.New("onboarding_batch.duplicate")
 			}
@@ -617,7 +617,7 @@ func (s *invitationService) recoverInvitationAdministrationOutcome(ctx context.C
 	}
 	replayed, err := runAuditedMutation(ctx, s.deps.Audit, attempt, s.deps.Now,
 		func(ctx context.Context, reference mutationAttemptReference) (*store.InvitationAdministrationCommandResult, error) {
-			value, replayErr := s.deps.Store.ReplayAdministration(ctx, &store.InvitationReplay{AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis}, idempotency)
+			value, replayErr := s.deps.Store.ReplayAdministration(ctx, &store.InvitationReplay{AuditEventID: reference.ID, AuditAt: reference.MutationAt}, idempotency)
 			if replayErr == nil && value.Duplicate {
 				return nil, apperror.New("onboarding_batch.duplicate")
 			}
@@ -856,7 +856,7 @@ func (s *invitationService) ResendInvitation(ctx context.Context, invocation inv
 	result, err := runAuditedMutation(ctx, s.deps.Audit, attempt, s.deps.Now,
 		func(ctx context.Context, reference mutationAttemptReference) (*store.InvitationAdministrationCommandResult, error) {
 			if idempotency != nil {
-				replayed, replayErr := s.deps.Store.ReplayAdministration(ctx, &store.InvitationReplay{AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis}, idempotency)
+				replayed, replayErr := s.deps.Store.ReplayAdministration(ctx, &store.InvitationReplay{AuditEventID: reference.ID, AuditAt: reference.MutationAt}, idempotency)
 				if replayErr == nil {
 					if replayed.Duplicate {
 						return nil, apperror.New("onboarding_batch.duplicate")
@@ -870,7 +870,7 @@ func (s *invitationService) ResendInvitation(ctx context.Context, invocation inv
 			if !s.deps.Mail.Enabled() {
 				return nil, apperror.New("invitation.mail_unavailable")
 			}
-			at := model.TimeFromMillis(reference.MutationAtMillis)
+			at := model.TimeUTC(reference.MutationAt)
 			rawClaim := s.deps.NewClaim()
 			if !model.IsValidCredentialToken(rawClaim) {
 				return nil, apperror.New("invitation.unavailable")
@@ -886,7 +886,7 @@ func (s *invitationService) ResendInvitation(ctx context.Context, invocation inv
 			input := &store.InvitationResend{ID: id, ExpectedRevision: command.ExpectedRevision,
 				ClaimHash: model.HashInvitationClaim(rawClaim), Occurrence: prepared.Occurrence, Delivery: prepared.Delivery,
 				DeliveryJob: prepared.Job, ActorUserID: invocation.Principal().UserID,
-				AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis}
+				AuditEventID: reference.ID, AuditAt: reference.MutationAt}
 			if idempotency != nil {
 				value, storeErr := s.deps.Store.ResendIdempotently(ctx, input, idempotency)
 				if storeErr == nil && value.Duplicate {
@@ -948,7 +948,7 @@ func (s *invitationService) RevokeInvitation(ctx context.Context, invocation inv
 	result, err := runAuditedMutation(ctx, s.deps.Audit, attempt, s.deps.Now,
 		func(ctx context.Context, reference mutationAttemptReference) (*store.InvitationAdministrationCommandResult, error) {
 			if idempotency != nil {
-				replayed, replayErr := s.deps.Store.ReplayAdministration(ctx, &store.InvitationReplay{AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis}, idempotency)
+				replayed, replayErr := s.deps.Store.ReplayAdministration(ctx, &store.InvitationReplay{AuditEventID: reference.ID, AuditAt: reference.MutationAt}, idempotency)
 				if replayErr == nil {
 					if replayed.Duplicate {
 						return nil, apperror.New("onboarding_batch.duplicate")
@@ -959,14 +959,14 @@ func (s *invitationService) RevokeInvitation(ctx context.Context, invocation inv
 					return nil, replayErr
 				}
 			}
-			at := model.TimeFromMillis(reference.MutationAtMillis)
+			at := model.TimeUTC(reference.MutationAt)
 			prepared, prepareErr := s.deps.Mail.PrepareInvitationRevocation(current.Invitation, invocation.Principal().UserID, at)
 			if prepareErr != nil {
 				return nil, apperror.New("invitation.mail_unavailable").Wrap(prepareErr)
 			}
 			input := &store.InvitationRevocation{ID: id, ExpectedRevision: command.ExpectedRevision,
 				ActorUserID: invocation.Principal().UserID, RevocationNotice: &store.PreparedMail{Occurrence: prepared.Occurrence,
-					Delivery: prepared.Delivery, Job: prepared.Job}, AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis}
+					Delivery: prepared.Delivery, Job: prepared.Job}, AuditEventID: reference.ID, AuditAt: reference.MutationAt}
 			if idempotency != nil {
 				value, storeErr := s.deps.Store.RevokeIdempotently(ctx, input, idempotency)
 				if storeErr == nil && value.Duplicate {
@@ -1022,13 +1022,13 @@ func (s *invitationService) ReplaceInvitation(ctx context.Context, invocation in
 	result, err := runAuditedMutation(ctx, s.deps.Audit, currentAttempt, s.deps.Now,
 		func(ctx context.Context, currentReference mutationAttemptReference) (*store.InvitationAdministrationRecord, error) {
 			return runAuditedMutation(ctx, s.deps.Audit, replacementAttempt,
-				func() time.Time { return model.TimeFromMillis(currentReference.MutationAtMillis) },
+				func() time.Time { return model.TimeUTC(currentReference.MutationAt) },
 				func(ctx context.Context, replacementReference mutationAttemptReference) (*store.InvitationAdministrationRecord, error) {
 					return s.deps.Store.Replace(ctx, &store.InvitationReplacement{CurrentID: id, ExpectedCurrentRevision: command.ExpectedRevision,
 						Replacement: replacement, Lifetime: model.InvitationLifetime, Occurrence: prepared.Occurrence,
 						Delivery: prepared.Delivery, DeliveryJob: prepared.Job, ActorUserID: invocation.Principal().UserID,
 						CurrentAuditEventID: currentReference.ID, ReplacementAuditEventID: replacementReference.ID,
-						AuditAt: currentReference.MutationAtMillis})
+						AuditAt: currentReference.MutationAt})
 				}, invitationStoreErrors.Translate)
 		}, invitationStoreErrors.Translate)
 	if err != nil {
@@ -1319,7 +1319,7 @@ func (s *invitationService) IssueStudentClassInvitation(ctx context.Context, inv
 	created, err := runAuditedMutation(ctx, s.deps.Audit, attempt,
 		func() time.Time { return issuedAt }, func(ctx context.Context, reference mutationAttemptReference) (*store.InvitationCommandResult, error) {
 			input := &store.StudentClassInvitationIssue{Invitation: invitation, Occurrence: prepared.Occurrence,
-				Delivery: prepared.Delivery, DeliveryJob: prepared.Job, AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis}
+				Delivery: prepared.Delivery, DeliveryJob: prepared.Job, AuditEventID: reference.ID, AuditAt: reference.MutationAt}
 			if idempotency != nil {
 				value, storeErr := s.deps.Store.IssueStudentClassIdempotently(ctx, input, idempotency)
 				if storeErr == nil && value.Duplicate {
@@ -1455,7 +1455,7 @@ func (s *invitationService) IssueTeacherAcademicUnitInvitation(ctx context.Conte
 			input := &store.TeacherAcademicUnitInvitationIssue{Invitation: invitation,
 				Lifetime:   model.InvitationLifetime,
 				Occurrence: prepared.Occurrence, Delivery: prepared.Delivery, DeliveryJob: prepared.Job,
-				AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis}
+				AuditEventID: reference.ID, AuditAt: reference.MutationAt}
 			if idempotency != nil {
 				value, storeErr := s.deps.Store.IssueTeacherAcademicUnitIdempotently(ctx, input, idempotency)
 				if storeErr == nil && value.Duplicate {
@@ -1640,7 +1640,7 @@ func (s *invitationService) issueAuthorizedScopedRole(ctx context.Context, invoc
 		func() time.Time { return issuedAt }, func(ctx context.Context, reference mutationAttemptReference) (*store.InvitationCommandResult, error) {
 			input := &store.ScopedRoleInvitationIssue{Invitation: invitation, Lifetime: model.InvitationLifetime,
 				Occurrence: prepared.Occurrence, Delivery: prepared.Delivery, DeliveryJob: prepared.Job,
-				AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis}
+				AuditEventID: reference.ID, AuditAt: reference.MutationAt}
 			if issue.idempotency != nil {
 				value, storeErr := s.deps.Store.IssueScopedRoleIdempotently(ctx, input, issue.idempotency)
 				if storeErr == nil && value.Duplicate {
@@ -1671,13 +1671,13 @@ func (s *invitationService) completeOnboardingInvitationNoOp(ctx context.Context
 			switch candidate.Purpose {
 			case model.InvitationPurposeStudentClass:
 				return s.deps.Store.IssueStudentClassIdempotently(ctx, &store.StudentClassInvitationIssue{Invitation: candidate,
-					AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis}, idempotency)
+					AuditEventID: reference.ID, AuditAt: reference.MutationAt}, idempotency)
 			case model.InvitationPurposeTeacherAcademicUnit:
 				return s.deps.Store.IssueTeacherAcademicUnitIdempotently(ctx, &store.TeacherAcademicUnitInvitationIssue{Invitation: candidate,
-					Lifetime: model.InvitationLifetime, AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis}, idempotency)
+					Lifetime: model.InvitationLifetime, AuditEventID: reference.ID, AuditAt: reference.MutationAt}, idempotency)
 			case model.InvitationPurposeAcademicUnitRole, model.InvitationPurposeInstitutionRole:
 				return s.deps.Store.IssueScopedRoleIdempotently(ctx, &store.ScopedRoleInvitationIssue{Invitation: candidate,
-					Lifetime: model.InvitationLifetime, AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis}, idempotency)
+					Lifetime: model.InvitationLifetime, AuditEventID: reference.ID, AuditAt: reference.MutationAt}, idempotency)
 			default:
 				return nil, store.NewErrInvalidInput("invitation", "purpose", candidate.Purpose)
 			}
@@ -1760,7 +1760,7 @@ func (s *invitationService) acceptStudentClassByClaimHash(ctx context.Context, i
 		ScopeID: invitation.ClassID.String(), Status: model.AuditStatusSuccess, RequestID: metadata.RequestID,
 		NodeID: s.deps.NodeID, ClientType: "web", AuthMethod: "invitation", IPAddress: metadata.IPAddress, UserAgent: metadata.UserAgent}
 	result, err := s.deps.Store.AcceptStudentClass(ctx, &store.StudentClassInvitationAcceptance{ClaimHash: claimHash,
-		AcceptedAt: model.MillisFromTime(at), User: user, Settings: settings, PasswordCredential: credential,
+		AcceptedAt: at, User: user, Settings: settings, PasswordCredential: credential,
 		DefaultProfilePictureJob: defaultJob, Affiliation: affiliation, ClassMember: member,
 		Occurrence: prepared.Occurrence, Delivery: prepared.Delivery, DeliveryJob: prepared.Job, AuditEvent: event,
 		RequiredActions:    []model.Action{model.ActionInvitationCreate, model.ActionClassMembersManage},
@@ -1837,7 +1837,7 @@ func (s *invitationService) acceptTeacherAcademicUnitByClaimHash(ctx context.Con
 		ScopeID: invitation.AcademicUnitID.String(), Status: model.AuditStatusSuccess, RequestID: metadata.RequestID,
 		NodeID: s.deps.NodeID, ClientType: "web", AuthMethod: "invitation", IPAddress: metadata.IPAddress, UserAgent: metadata.UserAgent}
 	result, err := s.deps.Store.AcceptTeacherAcademicUnit(ctx, &store.TeacherAcademicUnitInvitationAcceptance{ClaimHash: claimHash,
-		AcceptedAt: model.MillisFromTime(at), User: user, Settings: settings, PasswordCredential: credential,
+		AcceptedAt: at, User: user, Settings: settings, PasswordCredential: credential,
 		DefaultProfilePictureJob: defaultJob, Affiliation: affiliation, AcademicUnitMember: member, RoleBinding: binding,
 		Occurrence: prepared.Occurrence, Delivery: prepared.Delivery, DeliveryJob: prepared.Job, AuditEvent: event,
 		RequiredActions:    []model.Action{model.ActionInvitationCreate, model.ActionAcademicUnitMembersManage},
@@ -2007,7 +2007,7 @@ func (s *invitationService) acceptScopedRoleByClaimHash(
 		Operation: "accept_scoped_role_invitation", Value: invitation.Auditable(),
 	}, s.deps.Now, func(ctx context.Context, attempt mutationAttemptReference) (*store.ScopedRoleInvitationAcceptanceResult, error) {
 		return s.deps.Store.AcceptScopedRole(ctx, &store.ScopedRoleInvitationAcceptance{ClaimHash: claimHash,
-			UserID: principal.UserID, RoleBinding: binding, AuditEventID: attempt.ID, AuditAt: attempt.MutationAtMillis,
+			UserID: principal.UserID, RoleBinding: binding, AuditEventID: attempt.ID, AuditAt: attempt.MutationAt,
 			RequiredActions:    []model.Action{model.ActionInvitationCreate, model.ActionRoleBindingManage},
 			BrowserTransaction: browserTransaction})
 	}, invalidInvitationError)

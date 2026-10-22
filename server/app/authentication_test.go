@@ -243,7 +243,7 @@ func (authenticationUserStore) SetDisabled(context.Context, *store.UserDisabledS
 func (authenticationUserStore) UpdateProfile(context.Context, *store.UserProfileUpdate) (*model.User, error) {
 	return nil, errors.New("unused")
 }
-func (authenticationUserStore) UpdateLastLogin(context.Context, model.UserID, int64) error {
+func (authenticationUserStore) UpdateLastLogin(context.Context, model.UserID, time.Time) error {
 	return errors.New("unused")
 }
 
@@ -291,7 +291,7 @@ func (s authenticationSessionStore) Save(
 	if s.root.saveErr != nil {
 		return nil, nil, s.root.saveErr
 	}
-	if !input.AuditEventID.IsValid() || input.AuditAt <= 0 {
+	if !input.AuditEventID.IsValid() || input.AuditAt.IsZero() {
 		return nil, nil, store.NewErrInvalidInput("session", "audit", nil)
 	}
 	if s.root.auditCompleteErr != nil {
@@ -356,8 +356,8 @@ func (s authenticationSessionStore) UpdateActivity(_ context.Context, sessionID 
 	return nil
 }
 
-func (s authenticationSessionStore) Withdraw(_ context.Context, sessionID model.SessionID, _ model.UserID, revokedAt int64, reason model.SessionRevocationReason) ([]string, error) {
-	return s.revoke(sessionID.String(), model.TimeFromMillis(revokedAt), reason)
+func (s authenticationSessionStore) Withdraw(_ context.Context, sessionID model.SessionID, _ model.UserID, revokedAt time.Time, reason model.SessionRevocationReason) ([]string, error) {
+	return s.revoke(sessionID.String(), model.TimeUTC(revokedAt), reason)
 }
 
 func (s authenticationSessionStore) revoke(sessionID string, at time.Time, reason model.SessionRevocationReason) ([]string, error) {
@@ -426,7 +426,7 @@ func (s authenticationSessionStore) Revoke(_ context.Context, input *store.Sessi
 		}
 		return nil, store.NewErrNotFound("session", input.SessionID.String())
 	}
-	hashes, err := s.revoke(input.SessionID.String(), model.TimeFromMillis(input.RevokedAt), input.Reason)
+	hashes, err := s.revoke(input.SessionID.String(), model.TimeUTC(input.RevokedAt), input.Reason)
 	if err != nil {
 		return nil, err
 	}

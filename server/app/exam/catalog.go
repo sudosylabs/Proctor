@@ -135,7 +135,7 @@ func (a *Authoring) ArchiveExam(ctx context.Context, invocation invocation.Invoc
 	}
 	result, err := a.deps.Persistence.Archive(ctx, &store.ExamArchive{ExamID: command.ExamID, ActorUserID: principal.UserID,
 		ManagerOverride: action == model.ActionExamManageOverride, ExpectedRevision: command.ExpectedExamRevision,
-		ArchivedAt: model.MillisFromTime(at), AuditEventID: auditID, AuditAt: model.MillisFromTime(at)}, idempotency)
+		ArchivedAt: at, AuditEventID: auditID, AuditAt: at}, idempotency)
 	if err != nil {
 		mapped := examStoreErrors.Translate(err)
 		if auditErr := a.deps.Auditor.Fail(ctx, auditID, apperror.CodeOf(mapped, "exam.unavailable")); auditErr != nil {

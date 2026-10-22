@@ -240,7 +240,7 @@ func (s *Service) ScheduleExamSitting(ctx context.Context, invocation invocation
 		return store.ExamSittingSnapshot{}, err
 	}
 	result, err := s.deps.Persistence.Schedule(ctx, &store.ExamSittingSchedule{Sitting: sitting, OpenJob: openJob, DeadlineJob: deadlineJob, ActorUserID: principal.UserID,
-		ManagerOverride: authorization.override, AuditEventID: auditID, AuditAt: model.MillisFromTime(at), Mail: mail}, idempotency)
+		ManagerOverride: authorization.override, AuditEventID: auditID, AuditAt: at, Mail: mail}, idempotency)
 	if err != nil {
 		return store.ExamSittingSnapshot{}, s.failAudit(ctx, auditID, err)
 	}
@@ -571,7 +571,7 @@ func (s *Service) UpdateExamSittingSchedule(ctx context.Context, invocation invo
 		ManagerOverride: authorization.override, ExpectedRevision: command.ExpectedRevision,
 		ExamRevisionID: revisionID, ClassID: classID, ScheduledStartAt: startAt, ScheduledEndAt: endAt,
 		OpenJob: openJob, DeadlineJob: deadlineJob,
-		AuditEventID: auditID, AuditAt: model.MillisFromTime(at), Mail: mail,
+		AuditEventID: auditID, AuditAt: at, Mail: mail,
 	}, idempotency)
 	if err != nil {
 		return store.ExamSittingSnapshot{}, s.failAudit(ctx, auditID, err)
@@ -631,7 +631,7 @@ func (s *Service) CancelExamSitting(ctx context.Context, invocation invocation.I
 	result, err := s.deps.Persistence.Cancel(ctx, &store.ExamSittingCancellation{
 		ExamID: command.ExamID, SittingID: command.SittingID, ActorUserID: invocation.Principal().UserID,
 		ManagerOverride: authorization.override, ExpectedRevision: command.ExpectedRevision,
-		PrivateReason: command.PrivateReason, AuditEventID: auditID, AuditAt: model.MillisFromTime(at), Mail: mail,
+		PrivateReason: command.PrivateReason, AuditEventID: auditID, AuditAt: at, Mail: mail,
 	}, idempotency)
 	if err != nil {
 		return store.ExamSittingSnapshot{}, s.failAudit(ctx, auditID, err)
@@ -718,7 +718,7 @@ func (s *Service) runManagerTransition(ctx context.Context, invocation invocatio
 	}
 	input := &store.ExamSittingManagerTransition{ExamID: command.ExamID, SittingID: command.SittingID,
 		ActorUserID: invocation.Principal().UserID, ManagerOverride: authorization.override, ExpectedRevision: command.ExpectedRevision,
-		PrivateReason: command.PrivateReason, ChangedAt: at, AuditEventID: auditID, AuditAt: model.MillisFromTime(at),
+		PrivateReason: command.PrivateReason, ChangedAt: at, AuditEventID: auditID, AuditAt: at,
 		FinalizeJob: finalizeJob}
 	result, err := run(ctx, input, idempotency)
 	if err != nil {
@@ -769,7 +769,7 @@ func (s *Service) ExtendExamSitting(ctx context.Context, invocation invocation.I
 	result, err := s.deps.Persistence.Extend(ctx, &store.ExamSittingExtension{ExamID: command.ExamID, SittingID: command.SittingID,
 		ActorUserID: invocation.Principal().UserID, ManagerOverride: authorization.override, ExpectedRevision: command.ExpectedRevision,
 		ScheduledEndAt: deadline, DeadlineJob: deadlineJob, PrivateReason: command.PrivateReason, ChangedAt: at,
-		AuditEventID: auditID, AuditAt: model.MillisFromTime(at)}, idempotency)
+		AuditEventID: auditID, AuditAt: at}, idempotency)
 	if err != nil {
 		return store.ExamSittingSnapshot{}, s.failAudit(ctx, auditID, err)
 	}
@@ -869,7 +869,7 @@ func (s *Service) ListExamSittingNoShows(ctx context.Context, invocation invocat
 type systemLifecycleInput struct {
 	sittingID   model.ExamSittingID
 	auditID     model.AuditEventID
-	auditAt     int64
+	auditAt     time.Time
 	finalizeJob *model.Job
 }
 
@@ -909,7 +909,7 @@ func (s *Service) runSystemLifecycle(ctx context.Context, system invocation.Syst
 		return store.ExamSittingLifecycleResult{}, err
 	}
 	at := model.TimeUTC(s.deps.Now())
-	result, err := run(ctx, systemLifecycleInput{sittingID: sittingID, auditID: auditID, auditAt: model.MillisFromTime(at), finalizeJob: finalizeJob})
+	result, err := run(ctx, systemLifecycleInput{sittingID: sittingID, auditID: auditID, auditAt: at, finalizeJob: finalizeJob})
 	if err != nil {
 		return store.ExamSittingLifecycleResult{}, s.failSystemAudit(ctx, auditID, err)
 	}

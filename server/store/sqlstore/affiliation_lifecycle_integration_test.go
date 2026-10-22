@@ -13,6 +13,7 @@ import (
 	"context"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -50,7 +51,7 @@ func TestStudentAffiliationEndSerializesWithEnrollment(t *testing.T) {
 		go func() {
 			defer wait.Done()
 			<-start
-			_, endErr = persistence.Affiliation().End(ctx, &store.AffiliationEnd{ID: affiliation.ID, ExpectedRevision: affiliation.Revision, EndAt: model.GetMillis() + 100, AuditEventID: attempt.ID, AuditAt: model.GetMillis()})
+			_, endErr = persistence.Affiliation().End(ctx, &store.AffiliationEnd{ID: affiliation.ID, ExpectedRevision: affiliation.Revision, EndAt: model.NowUTC().Add(100 * time.Millisecond), AuditEventID: attempt.ID, AuditAt: model.NowUTC()})
 		}()
 		go func() {
 			defer wait.Done()

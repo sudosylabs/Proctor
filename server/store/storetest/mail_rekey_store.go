@@ -25,7 +25,7 @@ func testMailRekeyStore(t *testing.T, ctx context.Context, ss store.Store, user 
 	oldDelivery, err := ss.Mail().EnqueueTest(ctx, oldInput)
 	require.NoError(t, err)
 	rollback := newMailRekeyStartFixture(t, "22222222222222222222222222222222", "11111111111111111111111111111111")
-	rollback.AuditEventID, rollback.AuditAt = model.NewAuditEventID(), model.GetMillis()
+	rollback.AuditEventID, rollback.AuditAt = model.NewAuditEventID(), model.NowUTC()
 	_, err = ss.Mail().StartRekey(ctx, rollback)
 	require.Error(t, err, "invalid rekey audit did not abort start")
 	_, err = ss.Job().Get(ctx, rollback.Job.ID)
@@ -198,7 +198,7 @@ func mailRekeyStartFixture(t *testing.T, ctx context.Context, ss store.Store, us
 		ScopeType: model.RoleScopeInstitution, ScopeID: institution.ID.String(), Status: model.AuditStatusAttempt,
 		NodeID: "store-test", ClientType: string(model.SessionClientWeb), AuthMethod: "password"})
 	require.NoError(t, err)
-	input.AuditEventID, input.AuditAt = attempt.ID, model.GetMillis()
+	input.AuditEventID, input.AuditAt = attempt.ID, model.NowUTC()
 	return input
 }
 

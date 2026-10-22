@@ -86,7 +86,7 @@ func TestSubmitSealsExactAcknowledgedStateBeforePublishingEffects(t *testing.T) 
 	require.Equal(t, model.ExamSubmissionCandidateSubmitted, f.mail.request.Provenance, "mail request=%#v seal=%#v", f.mail.request, f.submissions.seal)
 	require.NotNil(t, f.submissions.seal.Notice, "mail request=%#v seal=%#v", f.mail.request, f.submissions.seal)
 	require.Equal(t, int64(2), f.submissions.seal.ExpectedRecipientRevision, "mail request=%#v seal=%#v", f.mail.request, f.submissions.seal)
-	require.Equal(t, model.MillisFromTime(f.at), f.submissions.seal.AuditAt, "mail request=%#v seal=%#v", f.mail.request, f.submissions.seal)
+	require.True(t, model.TimeUTC(f.at).Equal(f.submissions.seal.AuditAt), "mail request=%#v seal=%#v", f.mail.request, f.submissions.seal)
 	// Contract (guardrails 8 and 14): the audit begins before the durable write,
 	// and the write commits before its effect.
 	require.Equal(t, []string{"submission.resolve", "audit", "submission.mail", "submission.seal", "effect.submit"}, f.order)
@@ -157,7 +157,7 @@ func TestAutomaticSealUsesBoundedSystemAuditAndPublishesOnlyFreshResult(t *testi
 	require.Equal(t, model.ExamSubmissionSittingClosed, f.mail.request.Provenance, "automatic mail request=%#v input=%#v", f.mail.request, f.submissions.automaticInput)
 	require.Equal(t, retained, f.mail.request.SubmissionID, "automatic mail request=%#v input=%#v", f.mail.request, f.submissions.automaticInput)
 	require.True(t, f.mail.request.SealedAt.Equal(f.at), "automatic mail request=%#v input=%#v", f.mail.request, f.submissions.automaticInput)
-	require.Equal(t, model.MillisFromTime(f.at), f.submissions.automaticInput.AuditAt, "automatic mail request=%#v input=%#v", f.mail.request, f.submissions.automaticInput)
+	require.True(t, model.TimeUTC(f.at).Equal(f.submissions.automaticInput.AuditAt), "automatic mail request=%#v input=%#v", f.mail.request, f.submissions.automaticInput)
 	require.NotNil(t, f.submissions.automaticInput.Notice, "automatic mail request=%#v input=%#v", f.mail.request, f.submissions.automaticInput)
 	require.Equal(t, int64(2), f.submissions.automaticInput.ExpectedRecipientRevision, "automatic mail request=%#v input=%#v", f.mail.request, f.submissions.automaticInput)
 	require.Equal(t, jobID.String(), f.systemAudit.values["job_id"])

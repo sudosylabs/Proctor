@@ -13,13 +13,14 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
 
 func TestClusterDiscoveryNodeValidateAndLiveness(t *testing.T) {
 	t.Parallel()
 
-	now := time.Now().UTC().UnixMilli()
+	now := model.NowUTC()
 	node := &store.ClusterDiscoveryNode{
 		NodeID:           "node-a",
 		AdvertiseAddress: "127.0.0.1:7946",
@@ -27,7 +28,7 @@ func TestClusterDiscoveryNodeValidateAndLiveness(t *testing.T) {
 		ProtocolMin:      1,
 		ProtocolMax:      1,
 		UpdatedAt:        now,
-		ExpiresAt:        now + 30_000,
+		ExpiresAt:        now.Add(30 * time.Second),
 	}
 	require.NoError(t, node.Validate())
 	require.True(t, node.IsLive(now), "expected live node")

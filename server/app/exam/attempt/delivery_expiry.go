@@ -39,7 +39,7 @@ func (s *Service) ScanExpiredDeliveries(ctx context.Context, system invocation.S
 		if err != nil {
 			return result, err
 		}
-		changed, err := s.deps.Persistence.ExpireDelivery(ctx, &store.DeliveryExpiry{Due: d, AuditEventID: audit, AuditAt: model.MillisFromTime(s.deps.Now())})
+		changed, err := s.deps.Persistence.ExpireDelivery(ctx, &store.DeliveryExpiry{Due: d, AuditEventID: audit, AuditAt: s.deps.Now()})
 		if err != nil {
 			if auditErr := s.deps.SystemAuditor.Fail(ctx, audit, "exam.attempt.unavailable"); auditErr != nil {
 				return result, errors.Join(storeError(storeErrors, err), auditErr)

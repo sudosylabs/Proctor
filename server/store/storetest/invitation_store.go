@@ -158,14 +158,14 @@ func testStudentProgressionCrossPeriod(t *testing.T, ss store.Store) {
 		SourcePeriodRevision: fixture.period.Revision, SourceClassRevision: sourceClass.Revision, DestinationPeriodRevision: destinationPeriod.Revision,
 		DestinationClassRevision: destinationClass.Revision, EffectiveAt: effectiveAt, ActorUserID: actor.ID, Principal: principal, ParseJobID: previewJob.ID,
 		CreatedAt: at, UpdatedAt: at, ExpiresAt: at.Add(7 * 24 * time.Hour), Revision: 1}, ParseJob: previewJob,
-		AuditEventID: creationAudit.ID, SourceAuditEventID: creationSourceAudit.ID, AuditAt: model.MillisFromTime(at)})
+		AuditEventID: creationAudit.ID, SourceAuditEventID: creationSourceAudit.ID, AuditAt: at})
 	require.NoError(t, err)
 	digest := strings.Repeat("c", sha256.Size*2)
 	preview, err := ss.OnboardingImport().CompleteOnboardingImportPreview(ctx, &store.OnboardingImportPreviewCompletion{ID: importID, ExpectedRevision: created.Revision,
 		Digest: digest, At: at.Add(time.Second), Rows: []store.OnboardingImportRow{{ImportID: importID, RowNumber: 1, Reference: source.Membership.ID.String(),
 			Operation: "class.enroll", ScopeType: model.RoleScopeClass, ScopeID: destinationClass.ID.String(), TargetRevision: destinationClass.Revision,
 			UserID: student.ID, RelationshipID: source.Membership.ID.String(), RelationshipRevision: source.Membership.Revision,
-			StartsAt: model.MillisFromTime(effectiveAt), PreviewStatus: model.OnboardingImportRowValid, Status: model.OnboardingImportRowValid}}})
+			StartsAt: model.OptionalTimeFrom(effectiveAt), PreviewStatus: model.OnboardingImportRowValid, Status: model.OnboardingImportRowValid}}})
 	require.NoError(t, err)
 	executionJob, err := model.NewJob(model.NewJobID(), model.JobTypeOnboardingImportExecute, json.RawMessage(`{"import_id":"`+importID.String()+`"}`), "progression-execute:"+importID.String(), at, at, 3)
 	require.NoError(t, err)
@@ -177,7 +177,7 @@ func testStudentProgressionCrossPeriod(t *testing.T, ss store.Store) {
 	commitSourceAudit := saveOnboardingImportAuditAttempt(t, ctx, ss, actor.ID, model.RoleScopeClass, sourceClass.ID.String(), "student_progression.commit")
 	executing, err := ss.OnboardingImport().CommitOnboardingImport(ctx, &store.OnboardingImportCommit{ID: importID, ActorUserID: actor.ID, Principal: commitPrincipal, ExpectedRevision: preview.Revision,
 		PreviewDigest: digest, Policy: model.OnboardingImportValidRowsOnly, IdempotencyKey: sha256.Sum256([]byte("progression-commit")), ExecutionJob: executionJob,
-		At: at.Add(2 * time.Second), AuditEventID: commitAudit.ID, SourceAuditEventID: commitSourceAudit.ID, AuditAt: model.MillisFromTime(at.Add(2 * time.Second))})
+		At: at.Add(2 * time.Second), AuditEventID: commitAudit.ID, SourceAuditEventID: commitSourceAudit.ID, AuditAt: at.Add(2 * time.Second)})
 	require.NoError(t, err)
 	require.Equal(t, commitPrincipal.CredentialID, executing.Principal.CredentialID, "execution Principal = %#v; want commit Principal %#v", executing.Principal, commitPrincipal)
 	candidate := &model.ClassMember{ClassID: destinationClass.ID, AcademicPeriodID: destinationPeriod.ID, UserID: student.ID, StartsAt: effectiveAt}
@@ -190,7 +190,7 @@ func testStudentProgressionCrossPeriod(t *testing.T, ss store.Store) {
 	progressionSourceAudit := saveOnboardingImportAuditAttempt(t, ctx, ss, actor.ID, model.RoleScopeClass, sourceClass.ID.String(), "student_progression.execute_row")
 	progressed, err := ss.ClassMember().Enroll(ctx, &store.ClassMemberEnrollment{Member: candidate, ExpectedRecipientRevision: student.Revision, Notice: notice,
 		StudentProgression: true, ProgressionSourceAuditEventID: progressionSourceAudit.ID, ProgressionDestinationAuditEventID: progressionDestinationAudit.ID,
-		AuditEventID: audit.ID, AuditAt: model.MillisFromTime(at.Add(3 * time.Second)), Command: command})
+		AuditEventID: audit.ID, AuditAt: at.Add(3 * time.Second), Command: command})
 	require.NoError(t, err)
 	require.NoError(t, requireClassMemberMail(t, ctx, ss, notice, model.MailTemplateAcademicClassEnrolled))
 	require.Nil(t, progressed.Previous)
@@ -208,7 +208,7 @@ func testStudentProgressionCrossPeriod(t *testing.T, ss store.Store) {
 	replayProgressionSourceAudit := saveOnboardingImportAuditAttempt(t, ctx, ss, actor.ID, model.RoleScopeClass, sourceClass.ID.String(), "student_progression.execute_row")
 	replay := &store.ClassMemberEnrollment{Member: candidate, ExpectedRecipientRevision: student.Revision, StudentProgression: true,
 		ProgressionSourceAuditEventID: replayProgressionSourceAudit.ID, ProgressionDestinationAuditEventID: replayProgressionDestinationAudit.ID,
-		AuditEventID: replayAudit.ID, AuditAt: model.MillisFromTime(at.Add(4 * time.Second)), Command: command}
+		AuditEventID: replayAudit.ID, AuditAt: at.Add(4 * time.Second), Command: command}
 	_, err = ss.ClassMember().Enroll(ctx, replay)
 	require.NoError(t, err, "progression replay")
 	require.True(t, replay.Replayed, "progression replay")
@@ -224,7 +224,7 @@ func testStudentProgressionCrossPeriod(t *testing.T, ss store.Store) {
 	noOpSourceAudit := saveOnboardingImportAuditAttempt(t, ctx, ss, actor.ID, model.RoleScopeClass, sourceClass.ID.String(), "student_progression.execute_row")
 	noOpInput := &store.ClassMemberEnrollment{Member: noOpCandidate, ExpectedRecipientRevision: student.Revision, StudentProgression: true,
 		ProgressionSourceAuditEventID: noOpSourceAudit.ID, ProgressionDestinationAuditEventID: noOpDestinationAudit.ID,
-		AuditEventID: noOpAudit.ID, AuditAt: model.MillisFromTime(at.Add(5 * time.Second)), Command: noOpCommand}
+		AuditEventID: noOpAudit.ID, AuditAt: at.Add(5 * time.Second), Command: noOpCommand}
 	noOpEnrollment, err := ss.ClassMember().Enroll(ctx, noOpInput)
 	require.NoError(t, err)
 	require.True(t, noOpInput.NoOp, "existing progression destination = %#v no_op", noOpEnrollment)
@@ -250,7 +250,7 @@ func testOnboardingImportAcademicAdministration(t *testing.T, ss store.Store) {
 
 	row := store.OnboardingImportRow{Operation: "affiliation.add", ScopeType: model.RoleScopeInstitution,
 		ScopeID: institution.ID.String(), TargetRevision: institution.Revision, UserID: target.ID,
-		AffiliationKind: model.AffiliationStaff, StartsAt: model.MillisFromTime(at)}
+		AffiliationKind: model.AffiliationStaff, StartsAt: model.OptionalTimeFrom(at)}
 	importID := createExecutingOnboardingImport(t, ctx, ss, actor, principal, model.OnboardingImportAcademicAdministration,
 		model.RoleScopeInstitution, institution.ID.String(), "", at, row)
 	candidate := &model.Affiliation{UserID: target.ID, Kind: model.AffiliationStaff, StartsAt: at}
@@ -259,7 +259,7 @@ func testOnboardingImportAcademicAdministration(t *testing.T, ss store.Store) {
 	command := invitationTestCommand(actor.ID, "affiliation.add", "administration-import-row", "administration-import-row")
 	command.OnboardingImportID, command.OnboardingImportRowNumber = importID, 1
 	created, err := ss.Affiliation().Create(ctx, &store.AffiliationCreation{Affiliation: candidate, AuditEventID: audit.ID,
-		AuditAt: model.MillisFromTime(at), Command: command})
+		AuditAt: at, Command: command})
 	require.NoError(t, err)
 	completed, err := ss.OnboardingImport().GetOnboardingImport(ctx, importID)
 	require.NoError(t, err)
@@ -281,7 +281,7 @@ func testOnboardingImportAcademicAdministration(t *testing.T, ss store.Store) {
 	canonicalCommand := invitationTestCommand(actor.ID, "affiliation.add", "administration-json-a", "administration-json-duplicate")
 	canonicalCommand.Authorization, canonicalCommand.Batch = authority, &store.CommandBatch{GroupDigest: group}
 	canonical, err := ss.Affiliation().Create(ctx, &store.AffiliationCreation{Affiliation: duplicateCandidate,
-		AuditEventID: canonicalAudit.ID, AuditAt: model.MillisFromTime(at), Command: canonicalCommand})
+		AuditEventID: canonicalAudit.ID, AuditAt: at, Command: canonicalCommand})
 	require.NoError(t, err)
 
 	loserCandidate := *duplicateCandidate
@@ -290,7 +290,7 @@ func testOnboardingImportAcademicAdministration(t *testing.T, ss store.Store) {
 	loserCommand := invitationTestCommand(actor.ID, "affiliation.add", "administration-json-b", "administration-json-duplicate")
 	loserCommand.Authorization, loserCommand.Batch = authority, &store.CommandBatch{GroupDigest: group, DuplicateOfKeyDigest: canonicalCommand.KeyDigest}
 	duplicate, err := ss.Affiliation().Create(ctx, &store.AffiliationCreation{Affiliation: &loserCandidate,
-		AuditEventID: loserAudit.ID, AuditAt: model.MillisFromTime(at), Command: loserCommand})
+		AuditEventID: loserAudit.ID, AuditAt: at, Command: loserCommand})
 	require.NoError(t, err)
 	require.Equal(t, canonical.ID, duplicate.ID, "duplicate outcome = %#v metadata=%#v, want canonical", duplicate, loserCommand.Batch)
 	require.True(t, loserCommand.Batch.Duplicate, "duplicate outcome = %#v metadata=%#v, want canonical", duplicate, loserCommand.Batch)
@@ -299,7 +299,7 @@ func testOnboardingImportAcademicAdministration(t *testing.T, ss store.Store) {
 	loserReplayAudit := saveAffiliationAuditAttempt(t, ctx, ss, institution.ID.String(), duplicateTarget.ID.String())
 	loserCommand.Batch.Duplicate = false
 	_, err = ss.Affiliation().Create(ctx, &store.AffiliationCreation{Affiliation: &loserCandidate,
-		AuditEventID: loserReplayAudit.ID, AuditAt: model.MillisFromTime(at), Command: loserCommand})
+		AuditEventID: loserReplayAudit.ID, AuditAt: at, Command: loserCommand})
 	require.NoError(t, err, "retained duplicate replay metadata=%#v error", loserCommand.Batch)
 	require.True(t, loserCommand.Batch.Duplicate, "retained duplicate replay metadata=%#v error", loserCommand.Batch)
 
@@ -308,7 +308,7 @@ func testOnboardingImportAcademicAdministration(t *testing.T, ss store.Store) {
 	secondRow.UserID = secondTarget.ID
 	secondImportID := createExecutingOnboardingImport(t, ctx, ss, actor, principal, model.OnboardingImportAcademicAdministration,
 		model.RoleScopeInstitution, institution.ID.String(), "", at.Add(time.Second), secondRow)
-	_, err = EndRoleBinding(ctx, ss, authorityBinding.ID, model.MillisFromTime(at.Add(2*time.Second)))
+	_, err = EndRoleBinding(ctx, ss, authorityBinding.ID, at.Add(2*time.Second))
 	require.NoError(t, err)
 	secondCandidate := &model.Affiliation{UserID: secondTarget.ID, Kind: model.AffiliationStaff, StartsAt: at}
 	secondCandidate.PrepareCreate(model.NewAffiliationID(), at)
@@ -316,7 +316,7 @@ func testOnboardingImportAcademicAdministration(t *testing.T, ss store.Store) {
 	secondCommand := invitationTestCommand(actor.ID, "affiliation.add", "administration-import-authority-row", "administration-import-authority-row")
 	secondCommand.OnboardingImportID, secondCommand.OnboardingImportRowNumber = secondImportID, 1
 	_, err = ss.Affiliation().Create(ctx, &store.AffiliationCreation{Affiliation: secondCandidate, AuditEventID: secondAudit.ID,
-		AuditAt: model.MillisFromTime(at), Command: secondCommand})
+		AuditAt: at, Command: secondCommand})
 	require.True(t, store.IsConflict(err), "academic administration import after authority ended error")
 	_, err = ss.Affiliation().Get(ctx, secondCandidate.ID)
 	require.True(t, store.IsNotFound(err), "unauthorized import row mutated affiliation")
@@ -329,7 +329,7 @@ func testOnboardingImportAcademicAdministration(t *testing.T, ss store.Store) {
 		Actions: []model.Action{model.ActionOnboardingBatchManage, model.ActionUserManage}}
 	jsonCommand.Batch = &store.CommandBatch{GroupDigest: sha256.Sum256([]byte("administration-json-revoked"))}
 	_, err = ss.Affiliation().Create(ctx, &store.AffiliationCreation{Affiliation: jsonCandidate, AuditEventID: jsonAudit.ID,
-		AuditAt: model.MillisFromTime(at), Command: jsonCommand})
+		AuditAt: at, Command: jsonCommand})
 	require.True(t, store.IsConflict(err), "JSON row after authority ended error")
 	_, err = ss.Affiliation().Get(ctx, jsonCandidate.ID)
 	require.True(t, store.IsNotFound(err), "unauthorized JSON row mutated affiliation")
@@ -364,7 +364,7 @@ func testOnboardingImportTeacherAndRoleNoOps(t *testing.T, ss store.Store) {
 	teacherImportID := createExecutingOnboardingImport(t, ctx, ss, actor, principal, model.OnboardingImportTeacherAcademicUnit,
 		model.RoleScopeAcademicUnit, unit.ID.String(), targetRole.ID, at, store.OnboardingImportRow{Operation: "teacher_academic_unit.create",
 			ScopeType: model.RoleScopeAcademicUnit, ScopeID: unit.ID.String(), TargetRevision: unit.Revision, RoleID: targetRole.ID,
-			RoleRevision: targetRole.UpdatedAt.UnixMicro(), Email: teacher.TargetEmail, StartsAt: model.MillisFromTime(teacher.IntendedStartsAt)})
+			RoleRevision: targetRole.UpdatedAt.UnixMicro(), Email: teacher.TargetEmail, StartsAt: model.OptionalTimeFrom(teacher.IntendedStartsAt)})
 	teacherNoMail := teacherAcademicUnitInvitationIssueFixture(t, ss, actor, unit, targetRole, at.Add(time.Second))
 	teacherNoMail.Invitation.TargetEmail, teacherNoMail.Invitation.IntendedStartsAt = teacher.TargetEmail, teacher.IntendedStartsAt
 	require.NoError(t, teacherNoMail.Invitation.Validate())
@@ -387,7 +387,7 @@ func testOnboardingImportTeacherAndRoleNoOps(t *testing.T, ss store.Store) {
 	roleImportID := createExecutingOnboardingImport(t, ctx, ss, actor, principal, model.OnboardingImportInstitution,
 		model.RoleScopeInstitution, unit.InstitutionID.String(), "", at, store.OnboardingImportRow{Operation: "academic_unit_role.create",
 			ScopeType: model.RoleScopeAcademicUnit, ScopeID: unit.ID.String(), TargetRevision: unit.Revision, RoleID: targetRole.ID,
-			RoleRevision: targetRole.UpdatedAt.UnixMicro(), Email: roleInvitation.TargetEmail, StartsAt: model.MillisFromTime(roleInvitation.IntendedStartsAt)})
+			RoleRevision: targetRole.UpdatedAt.UnixMicro(), Email: roleInvitation.TargetEmail, StartsAt: model.OptionalTimeFrom(roleInvitation.IntendedStartsAt)})
 	roleNoMail := scopedRoleInvitationIssueFixture(t, ss, roleCandidate)
 	roleNoMail.Invitation.ID = model.NewInvitationID()
 	roleNoMail.Invitation.ClaimHash = model.HashInvitationClaim(model.NewCredentialToken())
@@ -419,7 +419,7 @@ func testOnboardingImportLifecycle(t *testing.T, ss store.Store) {
 	created, err := ss.OnboardingImport().CreateOnboardingImport(ctx, &store.OnboardingImportCreation{Import: &store.OnboardingImport{ID: importID,
 		Mode: model.OnboardingImportStudentClass, State: model.OnboardingImportParsing, ScopeType: model.RoleScopeClass, ScopeID: scopeID,
 		ActorUserID: actor.ID, Principal: principal, ParseJobID: parseJob.ID, CreatedAt: at, UpdatedAt: at, ExpiresAt: at.Add(7 * 24 * time.Hour), Revision: 1}, ParseJob: parseJob,
-		AuditEventID: creationAudit.ID, AuditAt: model.MillisFromTime(at)})
+		AuditEventID: creationAudit.ID, AuditAt: at})
 	require.NoError(t, err)
 	digest := strings.Repeat("a", sha256.Size*2)
 	preview, err := ss.OnboardingImport().CompleteOnboardingImportPreview(ctx, &store.OnboardingImportPreviewCompletion{ID: importID, ExpectedRevision: created.Revision,
@@ -436,7 +436,7 @@ func testOnboardingImportLifecycle(t *testing.T, ss store.Store) {
 	commit := &store.OnboardingImportCommit{ID: importID, ActorUserID: actor.ID, Principal: principal, ExpectedRevision: preview.Revision, PreviewDigest: digest,
 		Policy: model.OnboardingImportRequireAllValid, IdempotencyKey: key, ExecutionJob: executionJob, At: at.Add(2 * time.Second)}
 	commitAudit := saveOnboardingImportAuditAttempt(t, ctx, ss, actor.ID, model.RoleScopeClass, created.ScopeID, "onboarding_import.commit")
-	commit.AuditEventID, commit.AuditAt = commitAudit.ID, model.MillisFromTime(at.Add(2*time.Second))
+	commit.AuditEventID, commit.AuditAt = commitAudit.ID, at.Add(2*time.Second)
 	executing, err := ss.OnboardingImport().CommitOnboardingImport(ctx, commit)
 	require.NoError(t, err)
 	require.Equal(t, model.OnboardingImportExecuting, executing.State)
@@ -444,14 +444,14 @@ func testOnboardingImportLifecycle(t *testing.T, ss store.Store) {
 	retryJob, _ := model.NewJob(model.NewJobID(), model.JobTypeOnboardingImportExecute, json.RawMessage(`{"import_id":"`+importID.String()+`"}`), "retry:"+importID.String(), at, at, 3)
 	commit.ExecutionJob = retryJob
 	replayAudit := saveOnboardingImportAuditAttempt(t, ctx, ss, actor.ID, model.RoleScopeClass, created.ScopeID, "onboarding_import.commit")
-	commit.AuditEventID, commit.AuditAt = replayAudit.ID, model.MillisFromTime(at.Add(2*time.Second))
+	commit.AuditEventID, commit.AuditAt = replayAudit.ID, at.Add(2*time.Second)
 	replayed, err := ss.OnboardingImport().CommitOnboardingImport(ctx, commit)
 	require.NoError(t, err, "replay = %#v", replayed)
 	require.Equal(t, executionJob.ID, replayed.ExecutionJobID, "replay = %#v", replayed)
 	changed := *commit
 	changed.IdempotencyKey = sha256.Sum256([]byte("changed"))
 	changedAudit := saveOnboardingImportAuditAttempt(t, ctx, ss, actor.ID, model.RoleScopeClass, created.ScopeID, "onboarding_import.commit")
-	changed.AuditEventID, changed.AuditAt = changedAudit.ID, model.MillisFromTime(at.Add(2*time.Second))
+	changed.AuditEventID, changed.AuditAt = changedAudit.ID, at.Add(2*time.Second)
 	_, err = ss.OnboardingImport().CommitOnboardingImport(ctx, &changed)
 	require.True(t, store.IsConflict(err), "changed key error")
 	issue := studentClassInvitationIssueFixture(t, ss, actor, class, fixture.period, at)
@@ -465,7 +465,7 @@ func testOnboardingImportLifecycle(t *testing.T, ss store.Store) {
 	require.Equal(t, model.OnboardingImportCompleted, completed.State)
 	require.Equal(t, 1, completed.SucceededRows)
 	lateReplayAudit := saveOnboardingImportAuditAttempt(t, ctx, ss, actor.ID, model.RoleScopeClass, created.ScopeID, "onboarding_import.commit")
-	commit.AuditEventID, commit.AuditAt = lateReplayAudit.ID, model.MillisFromTime(at.Add(3*time.Second))
+	commit.AuditEventID, commit.AuditAt = lateReplayAudit.ID, at.Add(3*time.Second)
 	lateReplay, err := ss.OnboardingImport().CommitOnboardingImport(ctx, commit)
 	require.NoError(t, err)
 	require.Equal(t, executionJob.ID, lateReplay.ExecutionJobID)
@@ -476,7 +476,7 @@ func testOnboardingImportLifecycle(t *testing.T, ss store.Store) {
 	changedRevision := *commit
 	changedRevision.ExpectedRevision++
 	changedRevisionAudit := saveOnboardingImportAuditAttempt(t, ctx, ss, actor.ID, model.RoleScopeClass, created.ScopeID, "onboarding_import.commit")
-	changedRevision.AuditEventID, changedRevision.AuditAt = changedRevisionAudit.ID, model.MillisFromTime(at.Add(3*time.Second))
+	changedRevision.AuditEventID, changedRevision.AuditAt = changedRevisionAudit.ID, at.Add(3*time.Second)
 	_, err = ss.OnboardingImport().CommitOnboardingImport(ctx, &changedRevision)
 	require.True(t, store.IsConflict(err), "changed-revision late replay error")
 	page, err := ss.OnboardingImport().ListOnboardingImportRows(ctx, importID, 0, 10)
@@ -510,7 +510,7 @@ func testOnboardingImportLifecycle(t *testing.T, ss store.Store) {
 	cancelRaceID := createExecutingStudentOnboardingImport(t, ctx, ss, actor, principal, class, at.Add(-2*time.Minute), "canceled-row@example.edu")
 	cancelRaceAudit := saveOnboardingImportAuditAttempt(t, ctx, ss, actor.ID, model.RoleScopeClass, class.ID.String(), "onboarding_import.cancel")
 	_, err = ss.OnboardingImport().CancelOnboardingImport(ctx, &store.OnboardingImportCancellation{ID: cancelRaceID, ActorUserID: actor.ID, Principal: principal,
-		At: at, AuditEventID: cancelRaceAudit.ID, AuditAt: model.MillisFromTime(at)})
+		At: at, AuditEventID: cancelRaceAudit.ID, AuditAt: at})
 	require.NoError(t, err)
 	canceledIssue := studentClassInvitationIssueFixture(t, ss, actor, class, fixture.period, at)
 	canceledIssue.Invitation.TargetEmail = "canceled-row@example.edu"
@@ -529,7 +529,7 @@ func testOnboardingImportLifecycle(t *testing.T, ss store.Store) {
 	emptyCreated, err := ss.OnboardingImport().CreateOnboardingImport(ctx, &store.OnboardingImportCreation{Import: &store.OnboardingImport{ID: emptyID,
 		Mode: model.OnboardingImportStudentClass, State: model.OnboardingImportParsing, ScopeType: model.RoleScopeClass, ScopeID: scopeID,
 		ActorUserID: actor.ID, Principal: principal, ParseJobID: emptyParseJob.ID, CreatedAt: at, UpdatedAt: at, ExpiresAt: at.Add(7 * 24 * time.Hour), Revision: 1},
-		ParseJob: emptyParseJob, AuditEventID: emptyCreationAudit.ID, AuditAt: model.MillisFromTime(at)})
+		ParseJob: emptyParseJob, AuditEventID: emptyCreationAudit.ID, AuditAt: at})
 	require.NoError(t, err)
 	emptyPreview, err := ss.OnboardingImport().CompleteOnboardingImportPreview(ctx, &store.OnboardingImportPreviewCompletion{ID: emptyID, ExpectedRevision: emptyCreated.Revision,
 		Digest: strings.Repeat("b", sha256.Size*2), At: at.Add(time.Second), Rows: []store.OnboardingImportRow{{ImportID: emptyID, RowNumber: 1,
@@ -540,7 +540,7 @@ func testOnboardingImportLifecycle(t *testing.T, ss store.Store) {
 	emptyCommitAudit := saveOnboardingImportAuditAttempt(t, ctx, ss, actor.ID, model.RoleScopeClass, scopeID, "onboarding_import.commit")
 	emptyExecuting, err := ss.OnboardingImport().CommitOnboardingImport(ctx, &store.OnboardingImportCommit{ID: emptyID, ActorUserID: actor.ID, Principal: principal, ExpectedRevision: emptyPreview.Revision,
 		PreviewDigest: emptyPreview.PreviewDigest, Policy: model.OnboardingImportValidRowsOnly, IdempotencyKey: sha256.Sum256([]byte("empty-commit")), ExecutionJob: emptyExecutionJob,
-		At: at.Add(2 * time.Second), AuditEventID: emptyCommitAudit.ID, AuditAt: model.MillisFromTime(at.Add(2 * time.Second))})
+		At: at.Add(2 * time.Second), AuditEventID: emptyCommitAudit.ID, AuditAt: at.Add(2 * time.Second)})
 	require.NoError(t, err)
 	emptyFinished, err := ss.OnboardingImport().FinishOnboardingImport(ctx, emptyID, at.Add(3*time.Second))
 	require.NoError(t, err)
@@ -555,11 +555,11 @@ func testOnboardingImportLifecycle(t *testing.T, ss store.Store) {
 	_, err = ss.OnboardingImport().CreateOnboardingImport(ctx, &store.OnboardingImportCreation{Import: &store.OnboardingImport{ID: cancelID,
 		Mode: model.OnboardingImportStudentClass, State: model.OnboardingImportParsing, ScopeType: model.RoleScopeClass, ScopeID: scopeID,
 		ActorUserID: actor.ID, Principal: principal, ParseJobID: cancelJob.ID, CreatedAt: at, UpdatedAt: at, ExpiresAt: at.Add(7 * 24 * time.Hour), Revision: 1},
-		ParseJob: cancelJob, AuditEventID: cancelCreationAudit.ID, AuditAt: model.MillisFromTime(at)})
+		ParseJob: cancelJob, AuditEventID: cancelCreationAudit.ID, AuditAt: at})
 	require.NoError(t, err)
 	cancelAudit := saveOnboardingImportAuditAttempt(t, ctx, ss, actor.ID, model.RoleScopeClass, scopeID, "onboarding_import.cancel")
 	canceled, err := ss.OnboardingImport().CancelOnboardingImport(ctx, &store.OnboardingImportCancellation{ID: cancelID, ActorUserID: actor.ID, Principal: principal, At: at.Add(time.Second),
-		AuditEventID: cancelAudit.ID, AuditAt: model.MillisFromTime(at.Add(time.Second))})
+		AuditEventID: cancelAudit.ID, AuditAt: at.Add(time.Second)})
 	require.NoError(t, err)
 	storedJob, err := ss.Job().Get(ctx, cancelJob.ID)
 	require.NoError(t, err)
@@ -574,7 +574,7 @@ func testOnboardingImportLifecycle(t *testing.T, ss store.Store) {
 	_, err = ss.OnboardingImport().CreateOnboardingImport(ctx, &store.OnboardingImportCreation{Import: &store.OnboardingImport{ID: expiredID,
 		Mode: model.OnboardingImportStudentClass, State: model.OnboardingImportParsing, ScopeType: model.RoleScopeClass, ScopeID: scopeID,
 		ActorUserID: actor.ID, Principal: principal, ParseJobID: expiredJob.ID, CreatedAt: oldAt, UpdatedAt: oldAt, ExpiresAt: oldAt.Add(7 * 24 * time.Hour), Revision: 1},
-		ParseJob: expiredJob, AuditEventID: expiredAudit.ID, AuditAt: model.MillisFromTime(at)})
+		ParseJob: expiredJob, AuditEventID: expiredAudit.ID, AuditAt: at})
 	require.NoError(t, err)
 	expired, err := ss.OnboardingImport().ListExpiredOnboardingImports(ctx, 100, at)
 	require.NoError(t, err)
@@ -594,7 +594,7 @@ func createExecutingStudentOnboardingImport(t *testing.T, ctx context.Context, s
 	creationAudit := saveOnboardingImportAuditAttempt(t, ctx, ss, actor.ID, model.RoleScopeClass, class.ID.String(), "onboarding_import.upload")
 	created, err := ss.OnboardingImport().CreateOnboardingImport(ctx, &store.OnboardingImportCreation{Import: &store.OnboardingImport{ID: id,
 		Mode: model.OnboardingImportStudentClass, State: model.OnboardingImportParsing, ScopeType: model.RoleScopeClass, ScopeID: class.ID.String(), ActorUserID: actor.ID, Principal: principal, ParseJobID: parseJob.ID, CreatedAt: at, UpdatedAt: at, ExpiresAt: at.Add(7 * 24 * time.Hour), Revision: 1}, ParseJob: parseJob,
-		AuditEventID: creationAudit.ID, AuditAt: model.MillisFromTime(at)})
+		AuditEventID: creationAudit.ID, AuditAt: at})
 	require.NoError(t, err)
 	preview, err := ss.OnboardingImport().CompleteOnboardingImportPreview(ctx, &store.OnboardingImportPreviewCompletion{ID: id, ExpectedRevision: created.Revision,
 		Digest: strings.Repeat("c", sha256.Size*2), At: at.Add(time.Second), Rows: []store.OnboardingImportRow{{ImportID: id, RowNumber: 1, Reference: "row-1",
@@ -606,7 +606,7 @@ func createExecutingStudentOnboardingImport(t *testing.T, ctx context.Context, s
 	commitAudit := saveOnboardingImportAuditAttempt(t, ctx, ss, actor.ID, model.RoleScopeClass, class.ID.String(), "onboarding_import.commit")
 	_, err = ss.OnboardingImport().CommitOnboardingImport(ctx, &store.OnboardingImportCommit{ID: id, ActorUserID: actor.ID, Principal: principal, ExpectedRevision: preview.Revision,
 		PreviewDigest: preview.PreviewDigest, Policy: model.OnboardingImportRequireAllValid, IdempotencyKey: sha256.Sum256([]byte("commit:" + id.String())), ExecutionJob: executionJob,
-		At: at.Add(2 * time.Second), AuditEventID: commitAudit.ID, AuditAt: model.MillisFromTime(at.Add(2 * time.Second))})
+		At: at.Add(2 * time.Second), AuditEventID: commitAudit.ID, AuditAt: at.Add(2 * time.Second)})
 	require.NoError(t, err)
 	return id
 }
@@ -621,7 +621,7 @@ func createExecutingOnboardingImport(t *testing.T, ctx context.Context, ss store
 	creationAudit := saveOnboardingImportAuditAttempt(t, ctx, ss, actor.ID, scopeType, scopeID, "onboarding_import.upload")
 	created, err := ss.OnboardingImport().CreateOnboardingImport(ctx, &store.OnboardingImportCreation{Import: &store.OnboardingImport{ID: id,
 		Mode: mode, State: model.OnboardingImportParsing, ScopeType: scopeType, ScopeID: scopeID, RoleID: importRoleID, ActorUserID: actor.ID, Principal: principal, ParseJobID: parseJob.ID, CreatedAt: at, UpdatedAt: at, ExpiresAt: at.Add(7 * 24 * time.Hour), Revision: 1}, ParseJob: parseJob,
-		AuditEventID: creationAudit.ID, AuditAt: model.MillisFromTime(at)})
+		AuditEventID: creationAudit.ID, AuditAt: at})
 	require.NoError(t, err)
 	row.ImportID, row.RowNumber, row.Reference = id, 1, "row-1"
 	row.PreviewStatus, row.Status, row.UpdatedAt = model.OnboardingImportRowValid, model.OnboardingImportRowValid, at.Add(time.Second)
@@ -633,7 +633,7 @@ func createExecutingOnboardingImport(t *testing.T, ctx context.Context, ss store
 	commitAudit := saveOnboardingImportAuditAttempt(t, ctx, ss, actor.ID, scopeType, scopeID, "onboarding_import.commit")
 	_, err = ss.OnboardingImport().CommitOnboardingImport(ctx, &store.OnboardingImportCommit{ID: id, ActorUserID: actor.ID, Principal: principal, ExpectedRevision: preview.Revision,
 		PreviewDigest: preview.PreviewDigest, Policy: model.OnboardingImportRequireAllValid, IdempotencyKey: sha256.Sum256([]byte("commit:" + id.String())), ExecutionJob: executionJob,
-		At: at.Add(2 * time.Second), AuditEventID: commitAudit.ID, AuditAt: model.MillisFromTime(at.Add(2 * time.Second))})
+		At: at.Add(2 * time.Second), AuditEventID: commitAudit.ID, AuditAt: at.Add(2 * time.Second)})
 	require.NoError(t, err)
 	return id
 }
@@ -692,7 +692,7 @@ func testInvitationBatchCommandIdempotency(t *testing.T, ss store.Store) {
 	resendAudit := saveInvitationLifecycleAuditAttempt(t, ctx, ss, inviter.ID, class.ID.String(), "invitation.resend")
 	resend := &store.InvitationResend{ID: created.Invitation.ID, ExpectedRevision: created.Invitation.Revision,
 		ClaimHash: newHash, Occurrence: occurrence, Delivery: delivery, DeliveryJob: job, ActorUserID: inviter.ID,
-		AuditEventID: resendAudit.ID, AuditAt: model.MillisFromTime(model.NowUTC())}
+		AuditEventID: resendAudit.ID, AuditAt: model.NowUTC()}
 	resendCommand := invitationTestCommand(inviter.ID, "invitation.resend", "batch-row-1", "same-resend")
 	resent, err := ss.Invitation().ResendIdempotently(ctx, resend, resendCommand)
 	require.NoError(t, err)
@@ -704,7 +704,7 @@ func testInvitationBatchCommandIdempotency(t *testing.T, ss store.Store) {
 	replayResendAudit := saveInvitationLifecycleAuditAttempt(t, ctx, ss, inviter.ID, class.ID.String(), "invitation.resend")
 	replayResend := &store.InvitationResend{ID: created.Invitation.ID, ExpectedRevision: created.Invitation.Revision,
 		ClaimHash: model.HashInvitationClaim(model.NewCredentialToken()), Occurrence: replayOccurrence, Delivery: replayDelivery,
-		DeliveryJob: replayJob, ActorUserID: inviter.ID, AuditEventID: replayResendAudit.ID, AuditAt: model.MillisFromTime(model.NowUTC())}
+		DeliveryJob: replayJob, ActorUserID: inviter.ID, AuditEventID: replayResendAudit.ID, AuditAt: model.NowUTC()}
 	replayedResend, err := ss.Invitation().ResendIdempotently(ctx, replayResend, resendCommand)
 	require.NoError(t, err)
 	require.True(t, replayedResend.Replayed)
@@ -717,7 +717,7 @@ func testInvitationBatchCommandIdempotency(t *testing.T, ss store.Store) {
 	duplicate, err := ss.Invitation().RecordBatchDuplicate(ctx, &store.InvitationBatchDuplicate{
 		LifecycleID: created.Invitation.ID, ExpectedRevision: created.Invitation.Revision, ActorUserID: inviter.ID,
 		CanonicalOperation: resendCommand.Operation, CanonicalKeyDigest: resendCommand.KeyDigest, CanonicalFingerprint: resendCommand.Fingerprint,
-		AuditEventID: duplicateAudit.ID, AuditAt: model.GetMillis(),
+		AuditEventID: duplicateAudit.ID, AuditAt: model.NowUTC(),
 	}, duplicateCommand)
 	require.NoError(t, err)
 	require.True(t, duplicate.Duplicate)
@@ -729,7 +729,7 @@ func testInvitationBatchCommandIdempotency(t *testing.T, ss store.Store) {
 		LifecycleID: created.Invitation.ID, ExpectedRevision: created.Invitation.Revision, ActorUserID: inviter.ID,
 		CanonicalOperation: resendCommand.Operation, CanonicalKeyDigest: resendCommand.KeyDigest,
 		CanonicalFingerprint: sha256.Sum256([]byte("missing-canonical-fingerprint")),
-		AuditEventID:         staleAudit.ID, AuditAt: model.GetMillis(),
+		AuditEventID:         staleAudit.ID, AuditAt: model.NowUTC(),
 	}, staleCommand)
 	require.True(t, store.IsConflict(err), "stale lifecycle duplicate without canonical outcome error")
 }
@@ -740,7 +740,7 @@ func testInvitationBatchDuplicateRechecksCurrentInviterAuthority(t *testing.T, s
 	candidate := studentClassInvitationIssueFixture(t, ss, inviter, class, fixture.period, issuedAt).Invitation
 	candidate.TargetEmail = "duplicate-authority-" + model.NewID() + "@example.edu"
 	require.NoError(t, candidate.Validate())
-	endedAt := model.GetMillis() - 1_000
+	endedAt := model.NowUTC().Add(-1_000 * time.Millisecond)
 	_, err := EndRoleBinding(ctx, ss, binding.ID, endedAt)
 	require.NoError(t, err)
 	attempt := saveInvitationLifecycleAuditAttempt(t, ctx, ss, inviter.ID, class.ID.String(), "onboarding_batch.duplicate")
@@ -748,7 +748,7 @@ func testInvitationBatchDuplicateRechecksCurrentInviterAuthority(t *testing.T, s
 	_, err = ss.Invitation().RecordBatchDuplicate(ctx, &store.InvitationBatchDuplicate{
 		Candidate: candidate, ActorUserID: inviter.ID,
 		CanonicalOperation: command.Operation, CanonicalKeyDigest: sha256.Sum256([]byte("canonical-row")),
-		AuditEventID: attempt.ID, AuditAt: endedAt + 1,
+		AuditEventID: attempt.ID, AuditAt: endedAt.Add(1 * time.Millisecond),
 	}, command)
 	require.True(t, store.IsConflict(err), "RecordBatchDuplicate() after inviter authority ended error")
 	current, getErr := ss.Audit().Get(ctx, attempt.ID)
@@ -825,14 +825,14 @@ func testInvitationAdministrationRevokeAndReplaceAreRevisionFenced(t *testing.T,
 		Replacement: changed, Lifetime: model.InvitationLifetime, Occurrence: replacementOccurrence,
 		Delivery: replacementDelivery, DeliveryJob: replacementJob, ActorUserID: inviter.ID,
 		CurrentAuditEventID: supersedeAudit.ID, ReplacementAuditEventID: replacementAudit.ID,
-		AuditAt: model.MillisFromTime(model.NowUTC())}
+		AuditAt: model.NowUTC()}
 
 	revocationOccurrence, revocationDelivery, revocationJob := invitationLifecycleMailFixture(t, current.ID, inviter.ID,
 		model.MailTemplateAccessInvitationRevoked, model.JobTypeMailDeliver, model.NowUTC(), model.NowUTC().Add(24*time.Hour))
 	revocationAudit := saveInvitationLifecycleAuditAttempt(t, ctx, ss, inviter.ID, class.ID.String(), "invitation.revoke")
 	revocation := &store.InvitationRevocation{ID: current.ID, ExpectedRevision: current.Revision, ActorUserID: inviter.ID,
 		RevocationNotice: &store.PreparedMail{Occurrence: revocationOccurrence, Delivery: revocationDelivery, Job: revocationJob},
-		AuditEventID:     revocationAudit.ID, AuditAt: model.MillisFromTime(model.NowUTC())}
+		AuditEventID:     revocationAudit.ID, AuditAt: model.NowUTC()}
 
 	var revoked, replaced *store.InvitationAdministrationRecord
 	var revokeErr, replaceErr error
@@ -894,7 +894,7 @@ func testInvitationAdministrationResendIsRevisionFenced(t *testing.T, ss store.S
 		audit := saveInvitationLifecycleAuditAttempt(t, ctx, ss, inviter.ID, class.ID.String(), "invitation.resend")
 		inputs[index] = &store.InvitationResend{ID: invitation.ID, ExpectedRevision: invitation.Revision,
 			ClaimHash: model.HashInvitationClaim(model.NewCredentialToken()), Occurrence: occurrence, Delivery: delivery,
-			DeliveryJob: job, ActorUserID: inviter.ID, AuditEventID: audit.ID, AuditAt: model.MillisFromTime(model.NowUTC())}
+			DeliveryJob: job, ActorUserID: inviter.ID, AuditEventID: audit.ID, AuditAt: model.NowUTC()}
 	}
 	results := make([]*store.InvitationAdministrationRecord, 2)
 	errors := make([]error, 2)
@@ -965,7 +965,7 @@ func testInvitationAdministrationLifecycle(t *testing.T, ss store.Store) {
 	audit := saveInvitationLifecycleAuditAttempt(t, ctx, ss, inviter.ID, class.ID.String(), "invitation.resend")
 	resent, err := ss.Invitation().Resend(ctx, &store.InvitationResend{ID: invitation.ID, ExpectedRevision: invitation.Revision,
 		ClaimHash: newHash, Occurrence: occurrence, Delivery: delivery, DeliveryJob: job, ActorUserID: inviter.ID,
-		AuditEventID: audit.ID, AuditAt: model.MillisFromTime(model.NowUTC())})
+		AuditEventID: audit.ID, AuditAt: model.NowUTC()})
 	require.NoError(t, err)
 	require.Equal(t, newHash, resent.Invitation.ClaimHash)
 	require.Equal(t, invitation.Revision+1, resent.Invitation.Revision)
@@ -993,7 +993,7 @@ func testInvitationAdministrationLifecycle(t *testing.T, ss store.Store) {
 	revoked, err := ss.Invitation().Revoke(ctx, &store.InvitationRevocation{ID: invitation.ID,
 		ExpectedRevision: resent.Invitation.Revision, ActorUserID: inviter.ID,
 		RevocationNotice: &store.PreparedMail{Occurrence: revocationOccurrence, Delivery: revocationDelivery, Job: revocationJob},
-		AuditEventID:     revocationAudit.ID, AuditAt: model.MillisFromTime(model.NowUTC())})
+		AuditEventID:     revocationAudit.ID, AuditAt: model.NowUTC()})
 	require.NoError(t, err)
 	require.Equal(t, model.InvitationRevoked, revoked.Invitation.State)
 	require.NotNil(t, revoked.Delivery)
@@ -1014,7 +1014,7 @@ func testInvitationAdministrationLifecycle(t *testing.T, ss store.Store) {
 	unsentRevoked, err := ss.Invitation().Revoke(ctx, &store.InvitationRevocation{ID: unsent.ID,
 		ExpectedRevision: unsent.Revision, ActorUserID: unsentInviter.ID,
 		RevocationNotice: &store.PreparedMail{Occurrence: unusedOccurrence, Delivery: unusedDelivery, Job: unusedJob},
-		AuditEventID:     unsentAudit.ID, AuditAt: model.MillisFromTime(model.NowUTC())})
+		AuditEventID:     unsentAudit.ID, AuditAt: model.NowUTC()})
 	require.NoError(t, err)
 	require.Equal(t, model.InvitationRevoked, unsentRevoked.Invitation.State)
 	require.Nil(t, unsentRevoked.Delivery)
@@ -1044,7 +1044,7 @@ func testInvitationAdministrationLifecycle(t *testing.T, ss store.Store) {
 		ExpectedCurrentRevision: current.Revision, Replacement: &samePackage, Lifetime: model.InvitationLifetime,
 		Occurrence: sameOccurrence, Delivery: sameDelivery, DeliveryJob: sameJob, ActorUserID: replacementInviter.ID,
 		CurrentAuditEventID: sameCurrentAudit.ID, ReplacementAuditEventID: sameReplacementAudit.ID,
-		AuditAt: model.MillisFromTime(model.NowUTC())})
+		AuditAt: model.NowUTC()})
 	require.True(t, store.IsConflict(err), "unchanged Replace() error")
 	_, err = ss.Mail().GetDelivery(ctx, sameDelivery.ID)
 	require.True(t, store.IsNotFound(err), "unchanged replacement delivery")
@@ -1070,7 +1070,7 @@ func testInvitationAdministrationLifecycle(t *testing.T, ss store.Store) {
 		ExpectedCurrentRevision: current.Revision, Replacement: candidate, Lifetime: model.InvitationLifetime,
 		Occurrence: replacementOccurrence, Delivery: replacementDelivery, DeliveryJob: replacementJob, ActorUserID: replacementInviter.ID,
 		CurrentAuditEventID: supersedeAudit.ID, ReplacementAuditEventID: replacementAudit.ID,
-		AuditAt: model.MillisFromTime(model.NowUTC())})
+		AuditAt: model.NowUTC()})
 	require.NoError(t, err)
 	require.Equal(t, candidate.ID, replaced.Invitation.ID)
 	require.Equal(t, model.InvitationPending, replaced.Invitation.State)
@@ -1355,7 +1355,7 @@ func scopedRoleInvitationIssueFixture(t *testing.T, ss store.Store, invitation *
 			State: model.MailDeliveryQueued, CreatedAt: at, UpdatedAt: at, MessageDate: at, Deadline: invitation.ExpiresAt,
 			MessageID:        "<scoped-role." + deliveryID.String() + "@example.test>",
 			EncryptedPayload: json.RawMessage(`{"version":1,"key_id":"11111111111111111111111111111111","ciphertext":"secret"}`), Revision: 1},
-		DeliveryJob: job, AuditEventID: attempt.ID, AuditAt: model.MillisFromTime(at)}
+		DeliveryJob: job, AuditEventID: attempt.ID, AuditAt: at}
 }
 
 func scopedRoleInvitationAcceptanceFixture(t *testing.T, ctx context.Context, ss store.Store, invitation *model.Invitation,
@@ -1371,7 +1371,7 @@ func scopedRoleInvitationAcceptanceFixture(t *testing.T, ctx context.Context, ss
 		NodeID: "scoped-role-invitation-store-test"})
 	require.NoError(t, err)
 	return &store.ScopedRoleInvitationAcceptance{ClaimHash: invitation.ClaimHash, UserID: userID, RoleBinding: binding,
-		AuditEventID: attempt.ID, AuditAt: model.MillisFromTime(at),
+		AuditEventID: attempt.ID, AuditAt: at,
 		RequiredActions: []model.Action{model.ActionInvitationCreate, model.ActionRoleBindingManage}}
 }
 
@@ -1924,7 +1924,7 @@ func studentClassInvitationIssueFixture(t *testing.T, ss store.Store, inviter *m
 	return &store.StudentClassInvitationIssue{
 		Invitation: invitation,
 		Occurrence: &model.MailOccurrence{ID: occurrenceID, Kind: model.MailOccurrenceInvitation, TemplateKey: model.MailTemplateAccessStudentClassInvitation, ActorUserID: inviter.ID, CreatedAt: issuedAt},
-		Delivery:   delivery, DeliveryJob: job, AuditEventID: attempt.ID, AuditAt: model.MillisFromTime(issuedAt),
+		Delivery:   delivery, DeliveryJob: job, AuditEventID: attempt.ID, AuditAt: issuedAt,
 	}
 }
 
@@ -1976,7 +1976,7 @@ func testInvitationAcceptStudentClassAtomicAndReplaySafe(t *testing.T, ss store.
 	require.Equal(t, model.MailDeliveryObsoleteCode, obsolete.PublicFailureCode)
 	require.Empty(t, obsolete.EncryptedPayload)
 	progressedAt := accepted.ClassMember.StartsAt.Add(24 * time.Hour)
-	ended, err := ss.ClassMember().SeedEnd(ctx, accepted.ClassMember.ID, accepted.ClassMember.Revision, model.MillisFromTime(progressedAt))
+	ended, err := ss.ClassMember().SeedEnd(ctx, accepted.ClassMember.ID, accepted.ClassMember.Revision, progressedAt)
 	require.NoError(t, err)
 	newMembership := &model.ClassMember{ClassID: class.ID, AcademicPeriodID: fixture.period.ID, UserID: accepted.User.ID,
 		StartsAt: progressedAt, EndsAt: accepted.ClassMember.EndsAt}
@@ -1992,7 +1992,7 @@ func testInvitationAcceptStudentClassAtomicAndReplaySafe(t *testing.T, ss store.
 	require.Equal(t, accepted.Affiliation.ID, replayed.Affiliation.ID)
 	require.Equal(t, ended.ID, replayed.ClassMember.ID)
 	require.NotEqual(t, newMembership.ID, replayed.ClassMember.ID)
-	listed, err := ss.ClassMember().ListByClass(ctx, class.ID, model.MillisFromTime(accepted.ClassMember.StartsAt))
+	listed, err := ss.ClassMember().ListByClass(ctx, class.ID, accepted.ClassMember.StartsAt)
 	require.NoError(t, err)
 	require.Len(t, listed, 1)
 	require.Equal(t, accepted.ClassMember.ID, listed[0].ID)
@@ -2036,7 +2036,7 @@ func studentClassInvitationAcceptanceFixture(t *testing.T, invitation *model.Inv
 		EncryptedPayload: json.RawMessage(`{"version":1,"key_id":"11111111111111111111111111111111","ciphertext":"accepted"}`), Revision: 1,
 	}
 	return &store.StudentClassInvitationAcceptance{
-		ClaimHash: invitation.ClaimHash, AcceptedAt: model.MillisFromTime(acceptedAt),
+		ClaimHash: invitation.ClaimHash, AcceptedAt: acceptedAt,
 		User: user, Settings: settings, PasswordCredential: credential,
 		DefaultProfilePictureJob: defaultJob, Affiliation: affiliation, ClassMember: member,
 		Occurrence: &model.MailOccurrence{ID: occurrenceID, Kind: model.MailOccurrenceInvitation, TemplateKey: model.MailTemplateAccessInvitationAccepted, ActorUserID: invitation.InviterUserID, CreatedAt: acceptedAt},

@@ -88,7 +88,7 @@ func (s *Service) StopDeliveryDetails(ctx context.Context, invocation invocation
 	if err != nil {
 		return nil, err
 	}
-	value, err := s.deps.Persistence.StopDeliveryDetails(ctx, &store.DeliveryDetailsStop{Access: access, Request: command.Request, AuditEventID: audit, AuditAt: model.MillisFromTime(s.deps.Now())}, idempotency)
+	value, err := s.deps.Persistence.StopDeliveryDetails(ctx, &store.DeliveryDetailsStop{Access: access, Request: command.Request, AuditEventID: audit, AuditAt: s.deps.Now()}, idempotency)
 	if err != nil {
 		return nil, s.failAudit(ctx, audit, deliveryStoreError(err))
 	}

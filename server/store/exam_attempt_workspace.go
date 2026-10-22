@@ -9,6 +9,7 @@ package store
 
 import (
 	"context"
+	"time"
 
 	"github.com/sudosylabs/proctor/server/model"
 )
@@ -86,7 +87,7 @@ type ExamAttemptWorkspaceMutation struct {
 	ExpectedWorkspaceCursor *int64
 	ObjectID                model.AttemptWorkspaceObjectID
 	AuditEventID            model.AuditEventID
-	AuditAt                 int64
+	AuditAt                 time.Time
 }
 
 // ExamAttemptWorkspaceMutationResult is the safe acknowledged state. Entry is

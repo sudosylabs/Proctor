@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -107,10 +108,10 @@ func academicLifecycleRevisionOperations(t *testing.T, ctx context.Context, ss s
 					return err
 				}
 				current.PrepareUpdate(model.NowUTC())
-				_, err = ss.AcademicUnit().Update(ctx, &store.AcademicUnitUpdate{Unit: current, AuditEventID: auditID, AuditAt: model.GetMillis()})
+				_, err = ss.AcademicUnit().Update(ctx, &store.AcademicUnitUpdate{Unit: current, AuditEventID: auditID, AuditAt: model.NowUTC()})
 				return err
 			}, func(revision int64, auditID model.AuditEventID) error {
-				_, err := ss.AcademicUnit().Archive(ctx, &store.AcademicUnitArchive{ID: model.AcademicUnitID(resource.ID), ExpectedRevision: revision, ArchiveAt: model.GetMillis() + 1000, AuditEventID: auditID, AuditAt: model.GetMillis()})
+				_, err := ss.AcademicUnit().Archive(ctx, &store.AcademicUnitArchive{ID: model.AcademicUnitID(resource.ID), ExpectedRevision: revision, ArchiveAt: model.NowUTC().Add(1000 * time.Millisecond), AuditEventID: auditID, AuditAt: model.NowUTC()})
 				return err
 			}, func() (int64, string, error) {
 				current, err := ss.AcademicUnit().Get(ctx, model.AcademicUnitID(resource.ID))
@@ -131,10 +132,10 @@ func academicLifecycleRevisionOperations(t *testing.T, ctx context.Context, ss s
 					return err
 				}
 				current.PrepareUpdate(model.NowUTC())
-				_, err = ss.Programme().Update(ctx, &store.ProgrammeUpdate{Programme: current, AuditEventID: auditID, AuditAt: model.GetMillis()})
+				_, err = ss.Programme().Update(ctx, &store.ProgrammeUpdate{Programme: current, AuditEventID: auditID, AuditAt: model.NowUTC()})
 				return err
 			}, func(revision int64, auditID model.AuditEventID) error {
-				_, err := ss.Programme().Archive(ctx, &store.ProgrammeArchive{ID: model.ProgrammeID(resource.ID), ExpectedRevision: revision, ArchiveAt: model.GetMillis() + 1000, AuditEventID: auditID, AuditAt: model.GetMillis()})
+				_, err := ss.Programme().Archive(ctx, &store.ProgrammeArchive{ID: model.ProgrammeID(resource.ID), ExpectedRevision: revision, ArchiveAt: model.NowUTC().Add(1000 * time.Millisecond), AuditEventID: auditID, AuditAt: model.NowUTC()})
 				return err
 			}, func() (int64, string, error) {
 				current, err := ss.Programme().Get(ctx, model.ProgrammeID(resource.ID))
@@ -155,10 +156,10 @@ func academicLifecycleRevisionOperations(t *testing.T, ctx context.Context, ss s
 					return err
 				}
 				current.PrepareUpdate(model.NowUTC())
-				_, err = ss.ProgrammeLevel().Update(ctx, &store.ProgrammeLevelUpdate{Level: current, AuditEventID: auditID, AuditAt: model.GetMillis()})
+				_, err = ss.ProgrammeLevel().Update(ctx, &store.ProgrammeLevelUpdate{Level: current, AuditEventID: auditID, AuditAt: model.NowUTC()})
 				return err
 			}, func(revision int64, auditID model.AuditEventID) error {
-				_, err := ss.ProgrammeLevel().Archive(ctx, &store.ProgrammeLevelArchive{ID: model.ProgrammeLevelID(resource.ID), ExpectedRevision: revision, ArchiveAt: model.GetMillis() + 1000, AuditEventID: auditID, AuditAt: model.GetMillis()})
+				_, err := ss.ProgrammeLevel().Archive(ctx, &store.ProgrammeLevelArchive{ID: model.ProgrammeLevelID(resource.ID), ExpectedRevision: revision, ArchiveAt: model.NowUTC().Add(1000 * time.Millisecond), AuditEventID: auditID, AuditAt: model.NowUTC()})
 				return err
 			}, func() (int64, string, error) {
 				current, err := ss.ProgrammeLevel().Get(ctx, model.ProgrammeLevelID(resource.ID))
@@ -179,10 +180,10 @@ func academicLifecycleRevisionOperations(t *testing.T, ctx context.Context, ss s
 					return err
 				}
 				current.PrepareUpdate(model.NowUTC())
-				_, err = ss.AcademicPeriod().Update(ctx, &store.AcademicPeriodUpdate{Period: current, AuditEventID: auditID, AuditAt: model.GetMillis()})
+				_, err = ss.AcademicPeriod().Update(ctx, &store.AcademicPeriodUpdate{Period: current, AuditEventID: auditID, AuditAt: model.NowUTC()})
 				return err
 			}, func(revision int64, auditID model.AuditEventID) error {
-				_, err := ss.AcademicPeriod().Archive(ctx, &store.AcademicPeriodArchive{ID: model.AcademicPeriodID(resource.ID), ExpectedRevision: revision, ArchiveAt: model.GetMillis() + 1000, AuditEventID: auditID, AuditAt: model.GetMillis()})
+				_, err := ss.AcademicPeriod().Archive(ctx, &store.AcademicPeriodArchive{ID: model.AcademicPeriodID(resource.ID), ExpectedRevision: revision, ArchiveAt: model.NowUTC().Add(1000 * time.Millisecond), AuditEventID: auditID, AuditAt: model.NowUTC()})
 				return err
 			}, func() (int64, string, error) {
 				current, err := ss.AcademicPeriod().Get(ctx, model.AcademicPeriodID(resource.ID))
@@ -205,10 +206,10 @@ func academicLifecycleRevisionOperations(t *testing.T, ctx context.Context, ss s
 					return err
 				}
 				current.PrepareUpdate(model.NowUTC())
-				_, err = ss.Class().Update(ctx, &store.ClassUpdate{Class: current, AuditEventID: auditID, AuditAt: model.GetMillis(), ExpectedRevision: revision, ExpectedAcademicUnitID: unitID})
+				_, err = ss.Class().Update(ctx, &store.ClassUpdate{Class: current, AuditEventID: auditID, AuditAt: model.NowUTC(), ExpectedRevision: revision, ExpectedAcademicUnitID: unitID})
 				return err
 			}, func(revision int64, auditID model.AuditEventID) error {
-				_, err := ss.Class().Archive(ctx, &store.ClassArchive{ID: model.ClassID(resource.ID), ExpectedRevision: revision, ArchiveAt: model.GetMillis() + 1000, AuditEventID: auditID, AuditAt: model.GetMillis(), ExpectedAcademicUnitID: unitID})
+				_, err := ss.Class().Archive(ctx, &store.ClassArchive{ID: model.ClassID(resource.ID), ExpectedRevision: revision, ArchiveAt: model.NowUTC().Add(1000 * time.Millisecond), AuditEventID: auditID, AuditAt: model.NowUTC(), ExpectedAcademicUnitID: unitID})
 				return err
 			}, func() (int64, string, error) {
 				current, err := ss.Class().Get(ctx, model.ClassID(resource.ID))

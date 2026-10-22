@@ -38,7 +38,7 @@ type SecurityPreflightPrepare struct {
 	SourceManifestDigest             string
 	ConfigurationManifestFingerprint string
 	AuditEventID                     model.AuditEventID
-	AuditAt                          int64
+	AuditAt                          time.Time
 }
 type SecurityPreflightPrepared struct {
 	ServerTime                 time.Time
@@ -53,7 +53,7 @@ type SecurityPreflightReport struct {
 	PreflightID  string
 	Report       model.SecurityPreflightReport
 	AuditEventID model.AuditEventID
-	AuditAt      int64
+	AuditAt      time.Time
 }
 
 // SecurityPolicyRecovery returns privileged admission provenance only to the

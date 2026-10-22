@@ -186,7 +186,7 @@ func (s SQLUserStore) RegisterLocal(ctx context.Context, input *store.PublicLoca
 		if err = tx.Get(ctx, &databaseNow, `SELECT clock_timestamp()`); err != nil {
 			return nil, fmt.Errorf("read public registration database time: %w", err)
 		}
-		at := model.TimeUTC(databaseNow).Truncate(time.Millisecond)
+		at := model.TimeUTC(databaseNow)
 		user.CreatedAt, user.UpdatedAt = at, at
 		settings.CreatedAt, settings.UpdatedAt = at, at
 		credential.CreatedAt, credential.UpdatedAt, credential.PasswordChangedAt = at, at, at
@@ -745,7 +745,7 @@ func (s SQLUserStore) get(
 // ExpectedRevision is a user_changed conflict.
 func (s SQLUserStore) UpdateProfile(ctx context.Context, input *store.UserProfileUpdate) (*model.User, error) {
 	if input == nil || !input.UserID.IsValid() || input.ExpectedRevision <= 0 ||
-		!input.AuditEventID.IsValid() || input.AuditAt <= 0 {
+		!input.AuditEventID.IsValid() || input.AuditAt.IsZero() {
 		return nil, store.NewErrInvalidInput("user", "profile_update", nil)
 	}
 	return runSQLTransaction(ctx, s.GetMaster().Begin, "audited user profile update", func(ctx context.Context, tx *sqlxTxWrapper) (*model.User, error) {
@@ -758,7 +758,7 @@ func (s SQLUserStore) UpdateProfile(ctx context.Context, input *store.UserProfil
 		}
 		candidate := *current
 		candidate.ApplyProfileChanges(&input.Changes)
-		candidate.PrepareUpdate(model.TimeFromMillis(input.AuditAt))
+		candidate.PrepareUpdate(model.TimeUTC(input.AuditAt))
 		candidate.Revision = input.ExpectedRevision + 1
 		if err := candidate.Validate(); err != nil {
 			return nil, store.NewErrInvalidInput("user", "value", nil).Wrap(err)
@@ -863,7 +863,7 @@ func (s SQLUserStore) SetDisabled(
 	input *store.UserDisabledStateChange,
 ) (*store.UserDisabledStateResult, error) {
 	if input == nil || !input.ID.IsValid() || input.ExpectedRevision <= 0 ||
-		input.ChangedAt <= 0 || !input.AuditEventID.IsValid() || input.AuditAt <= 0 ||
+		input.ChangedAt.IsZero() || !input.AuditEventID.IsValid() || input.AuditAt.IsZero() ||
 		!validAccessDeploymentCapabilities(input.Capabilities) {
 		return nil, store.NewErrInvalidInput("user", "disabled_state_change", nil)
 	}
@@ -936,7 +936,7 @@ func (s SQLUserStore) SetDisabled(
 			if err != nil {
 				return nil, err
 			}
-			at := model.TimeFromMillis(input.ChangedAt)
+			at := model.TimeUTC(input.ChangedAt)
 			administrator, err := isActiveSystemAdministrator(ctx, tx, input.ID.String(), at)
 			if err != nil {
 				return nil, err
@@ -954,7 +954,7 @@ func (s SQLUserStore) SetDisabled(
 				}
 			}
 		}
-		disabledAt := int64(0)
+		var disabledAt time.Time
 		if input.Disabled {
 			disabledAt = input.ChangedAt
 		}
@@ -1094,15 +1094,15 @@ func setUserDisabled(
 	tx *sqlxTxWrapper,
 	id string,
 	expectedRevision int64,
-	disabledAt int64,
-	updateAt int64,
+	disabledAt time.Time,
+	updateAt time.Time,
 	mailEligibilityRevision int64,
 ) (*userRow, error) {
-	if expectedRevision <= 0 || updateAt <= 0 || disabledAt < 0 ||
-		(disabledAt != 0 && disabledAt != updateAt) || mailEligibilityRevision < 1 {
+	if expectedRevision <= 0 || updateAt.IsZero() ||
+		(!disabledAt.IsZero() && !disabledAt.Equal(updateAt)) || mailEligibilityRevision < 1 {
 		return nil, store.NewErrInvalidInput("user", "disabled_at", disabledAt)
 	}
-	updateTime := model.TimeFromMillis(updateAt)
+	updateTime := model.TimeUTC(updateAt)
 	// Users can carry PostgreSQL-timed or another node's lifecycle instants;
 	// the change never records a modification or disable before them.
 	result, err := tx.Exec(ctx, `
@@ -1112,7 +1112,7 @@ func setUserDisabled(
 		       mail_eligibility_revision = ?, revision = revision + 1
 		 WHERE id = ? AND archived_at IS NULL AND revision = ?
 		   AND ((? AND disabled_at IS NULL) OR (NOT ? AND disabled_at IS NOT NULL))`,
-		updateTime, disabledAt != 0, updateTime, mailEligibilityRevision, id, expectedRevision, disabledAt != 0, disabledAt != 0,
+		updateTime, !disabledAt.IsZero(), updateTime, mailEligibilityRevision, id, expectedRevision, !disabledAt.IsZero(), !disabledAt.IsZero(),
 	)
 	if err != nil {
 		return nil, fmt.Errorf(
@@ -1131,10 +1131,10 @@ func setUserDisabled(
 	return &row, nil
 }
 
-// UpdateLastLogin advances the User's last login and activity times to at (Unix
-// milliseconds) without moving them backwards.
-func (s SQLUserStore) UpdateLastLogin(ctx context.Context, id model.UserID, at int64) error {
-	loginAt := model.TimeFromMillis(at)
+// UpdateLastLogin advances the User's last login and activity times to at
+// without moving them backwards.
+func (s SQLUserStore) UpdateLastLogin(ctx context.Context, id model.UserID, at time.Time) error {
+	loginAt := model.TimeUTC(at)
 	result, err := s.GetMaster().Exec(ctx, `
 		UPDATE users
 		   SET updated_at = GREATEST(updated_at, ?),

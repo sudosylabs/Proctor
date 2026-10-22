@@ -205,7 +205,7 @@ func (s *accessPolicyService) ReplaceAccessPolicy(ctx context.Context, invocatio
 		Value: accessPolicyReplacementAuditValue(command),
 	}, s.deps.Now, func(ctx context.Context, reference mutationAttemptReference) (*store.AccessPolicyReplacementResult, error) {
 		return s.deps.Policies.Replace(ctx, &store.AccessPolicyReplacement{Preflight: *input,
-			ActorID: invocation.Principal().UserID, AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis}, idempotency)
+			ActorID: invocation.Principal().UserID, AuditEventID: reference.ID, AuditAt: reference.MutationAt}, idempotency)
 	}, accessPolicyError)
 	if err != nil {
 		return AccessPolicyView{}, err

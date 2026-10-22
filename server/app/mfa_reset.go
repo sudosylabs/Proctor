@@ -47,7 +47,7 @@ func (s *mfaApplicationService) ResetUserMFA(ctx context.Context, invocation inv
 	if err = s.deps.Security.authorization.Authorize(ctx, invocation, model.ActionUserMFAReset, resource); err != nil {
 		return err
 	}
-	at := model.TimeFromMillis(s.deps.Now().UnixMilli())
+	at := model.TimeUTC(s.deps.Now())
 	prepared, err := s.prepareSecurityNotice(ctx, userID, mail.MFANoticeReset, at)
 	if err != nil {
 		return err

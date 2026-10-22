@@ -8,6 +8,7 @@ package store
 
 import (
 	"errors"
+	"time"
 
 	"github.com/sudosylabs/proctor/server/model"
 )
@@ -24,7 +25,7 @@ type DeliveryDetailsStop struct {
 	Access       CandidateAttemptAccess
 	Request      model.StopDeliveryDetails
 	AuditEventID model.AuditEventID
-	AuditAt      int64
+	AuditAt      time.Time
 }
 
 const DeliveryStopDetailsOperation = "exam.delivery.stop_details"

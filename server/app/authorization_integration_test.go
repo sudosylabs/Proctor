@@ -234,7 +234,7 @@ func TestAuthorizationResolvesCurrentAcademicHierarchy(t *testing.T) {
 	)
 	require.NoError(t, permErr, "lower-scope institution permission")
 	require.False(t, allowed, "lower-scope institution permission")
-	_, err = storetest.EndRoleBinding(ctx, persistence, binding.ID, model.GetMillis())
+	_, err = storetest.EndRoleBinding(ctx, persistence, binding.ID, model.NowUTC())
 	require.NoError(t, err)
 	allowed, permErr = helper.App.Can(
 		ctx, *principal, model.ActionClassView,
@@ -332,7 +332,7 @@ func TestPrincipalPermissionAndUserVisibilityPolicies(t *testing.T) {
 	require.NoError(t, permErr, "view role unexpectedly granted management")
 	require.False(t, allowed, "view role unexpectedly granted management")
 
-	_, err = storetest.EndRoleBinding(ctx, persistence, binding.ID, model.GetMillis())
+	_, err = storetest.EndRoleBinding(ctx, persistence, binding.ID, model.NowUTC())
 	require.NoError(t, err)
 	_, err = helper.App.GetUserProfile(
 		ctx, invocation.New(*principal, metadata), app.GetUserProfileQuery{ID: target.ID},
@@ -472,7 +472,7 @@ func TestAcademicUnitVisibilityIsBoundedAcrossUsersBindingsAndAudits(t *testing.
 		ScopeID: child.ID.String(), StartsAt: model.TimeFromMillis(now - 20_000),
 	})
 	require.NoError(t, err)
-	_, err = storetest.ArchiveRole(ctx, persistence, archivedTargetRole.ID, model.GetMillis())
+	_, err = storetest.ArchiveRole(ctx, persistence, archivedTargetRole.ID, model.NowUTC())
 	require.NoError(t, err)
 	_, err = storetest.SaveRoleBinding(ctx, persistence, &model.RoleBinding{
 		UserID: viewer.ID, RoleID: visibilityRole.ID, ScopeType: model.RoleScopeAcademicUnit,
@@ -614,7 +614,7 @@ func TestAcademicUnitVisibilityIsBoundedAcrossUsersBindingsAndAudits(t *testing.
 	require.Equal(t, model.AuditStatusSuccess, readDecisions[0].Status, "multi-root user read decision = %#v, want matched root %s", readDecisions, root.ID)
 	require.Equal(t, model.RoleScopeAcademicUnit, readDecisions[0].ScopeType, "multi-root user read decision = %#v, want matched root %s", readDecisions, root.ID)
 	require.Equal(t, root.ID.String(), readDecisions[0].ScopeID, "multi-root user read decision = %#v, want matched root %s", readDecisions, root.ID)
-	disableAt := model.GetMillis()
+	disableAt := model.NowUTC()
 	disableAudit, err := persistence.Audit().Save(ctx, &model.AuditEvent{
 		ActorID: viewer.ID, Action: string(model.ActionUserManage),
 		Resource:  model.Resource{Type: model.ResourceUser, ID: unitUser.ID.String()},

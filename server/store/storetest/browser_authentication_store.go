@@ -97,11 +97,11 @@ func TestBrowserAuthenticationStore(t *testing.T, ss store.Store, probe BrowserA
 				input := &store.DesktopAuthorizationAuthentication{
 					BindingHash: model.HashToken(binding), UserID: fixtureUser.ID, AuthenticationMethod: "password",
 					PasswordProof: testPasswordProof(t, ctx, ss, fixtureUser.ID), AuthenticationStrength: test.strength,
-					AuthenticatedAt: model.GetMillis() + test.skew.Milliseconds(),
+					AuthenticatedAt: model.NowUTC().Add(test.skew),
 					Capabilities:    store.AccessDeploymentCapabilities{Providers: map[string]store.AccessProviderCapability{}},
 				}
 				if test.strength == model.AuthenticationMultiFactor {
-					input.MFACompletedAt = input.AuthenticatedAt
+					input.MFACompletedAt = model.OptionalTimeFrom(input.AuthenticatedAt)
 				}
 				authenticated, err := ss.BrowserAuthentication().AuthenticateDesktopAuthorization(ctx, input)
 				require.NoError(t, err)
@@ -112,7 +112,7 @@ func TestBrowserAuthenticationStore(t *testing.T, ss store.Store, probe BrowserA
 				issued, err := ss.BrowserAuthentication().IssueCode(ctx, &store.DesktopAuthorizationCodeIssue{
 					BindingHash: model.HashToken(binding), StateHash: model.HashToken(state), CodeHash: model.HashToken(code),
 					ExpectedUserID: fixtureUser.ID, CodeLifetime: 45 * time.Second, Capabilities: input.Capabilities,
-					AuditEventID: issueAudit.ID, AuditAt: model.GetMillis(),
+					AuditEventID: issueAudit.ID, AuditAt: model.NowUTC(),
 				})
 				require.NoError(t, err)
 				require.False(t, issued.CodeExpiresAt.After(created.ExpiresAt), "code outlives its browser transaction")
@@ -208,7 +208,7 @@ func TestBrowserAuthenticationStore(t *testing.T, ss store.Store, probe BrowserA
 		BindingHash: model.HashToken(binding), StateHash: model.HashToken(state),
 		CodeHash: model.HashToken(code), ExpectedUserID: user.ID, CodeLifetime: 45 * time.Second,
 		Capabilities: store.AccessDeploymentCapabilities{Providers: map[string]store.AccessProviderCapability{}},
-		AuditEventID: model.NewAuditEventID(), AuditAt: model.GetMillis(),
+		AuditEventID: model.NewAuditEventID(), AuditAt: model.NowUTC(),
 	}
 	_, rollbackErr := ss.BrowserAuthentication().IssueCode(ctx, issueInput)
 	require.Error(t, rollbackErr, "IssueCode() succeeded without its durable audit attempt")
@@ -220,7 +220,7 @@ func TestBrowserAuthenticationStore(t *testing.T, ss store.Store, probe BrowserA
 	_, switchErr := ss.BrowserAuthentication().IssueCode(ctx, &switchInput)
 	require.True(t, store.IsNotFound(switchErr), "IssueCode(account switch) error")
 	issueAudit := saveDesktopAuthorizationAudit(t, ctx, ss, institution.ID, user.ID, "issue")
-	issueInput.AuditEventID, issueInput.AuditAt = issueAudit.ID, model.GetMillis()
+	issueInput.AuditEventID, issueInput.AuditAt = issueAudit.ID, model.NowUTC()
 	issueBefore := model.NowUTC()
 	issued, err := ss.BrowserAuthentication().IssueCode(ctx, issueInput)
 	issueAfter := model.NowUTC()
@@ -231,7 +231,7 @@ func TestBrowserAuthenticationStore(t *testing.T, ss store.Store, probe BrowserA
 	_, err = ss.BrowserAuthentication().IssueCode(ctx, &store.DesktopAuthorizationCodeIssue{
 		BindingHash: model.HashToken(binding), StateHash: model.HashToken(state),
 		CodeHash: model.HashToken(model.NewCredentialToken()), ExpectedUserID: user.ID, CodeLifetime: 30 * time.Second,
-		Capabilities: store.AccessDeploymentCapabilities{Providers: map[string]store.AccessProviderCapability{}}, AuditEventID: issueAudit.ID, AuditAt: model.GetMillis(),
+		Capabilities: store.AccessDeploymentCapabilities{Providers: map[string]store.AccessProviderCapability{}}, AuditEventID: issueAudit.ID, AuditAt: model.NowUTC(),
 	})
 	require.True(t, store.IsNotFound(err), "IssueCode(replay) error")
 
@@ -341,14 +341,14 @@ func TestBrowserAuthenticationStore(t *testing.T, ss store.Store, probe BrowserA
 		BindingHash: model.HashToken(disabledBinding), StateHash: model.HashToken(disabledState),
 		CodeHash: model.HashToken(disabledCode), ExpectedUserID: disabledUser.ID, CodeLifetime: 45 * time.Second,
 		Capabilities: store.AccessDeploymentCapabilities{Providers: map[string]store.AccessProviderCapability{}},
-		AuditEventID: disabledIssueAudit.ID, AuditAt: model.GetMillis(),
+		AuditEventID: disabledIssueAudit.ID, AuditAt: model.NowUTC(),
 	})
 	require.NoError(t, err)
 	disableAudit := saveUserProfileAuditAttempt(t, ctx, ss, disabledUser.ID.String())
 	disabled, err := ss.User().SetDisabled(ctx, userDisabledStateChangeWithNotice(t, &store.UserDisabledStateChange{
 		ID: disabledUser.ID, ExpectedRevision: disabledUser.Revision, Disabled: true,
-		ChangedAt: model.GetMillis(), RevocationReason: model.SessionRevocationAccountDisabled, AuditEventID: disableAudit.ID,
-		AuditAt: model.GetMillis(), Capabilities: store.AccessDeploymentCapabilities{Providers: map[string]store.AccessProviderCapability{}},
+		ChangedAt: model.NowUTC(), RevocationReason: model.SessionRevocationAccountDisabled, AuditEventID: disableAudit.ID,
+		AuditAt: model.NowUTC(), Capabilities: store.AccessDeploymentCapabilities{Providers: map[string]store.AccessProviderCapability{}},
 	}))
 	require.NoError(t, err)
 	require.NotNil(t, disabled)
@@ -362,7 +362,7 @@ func TestBrowserAuthenticationStore(t *testing.T, ss store.Store, probe BrowserA
 		BindingHash: model.HashToken(rejectedBinding), UserID: disabledUser.ID,
 		PasswordProof:        testPasswordProof(t, ctx, ss, disabledUser.ID),
 		AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor,
-		AuthenticatedAt: model.GetMillis(),
+		AuthenticatedAt: model.NowUTC(),
 		Capabilities:    store.AccessDeploymentCapabilities{Providers: map[string]store.AccessProviderCapability{}},
 	})
 	require.True(t, store.IsNotFound(err), "AuthenticateDesktopAuthorization(disabled user) error")
@@ -398,7 +398,7 @@ func TestBrowserAuthenticationStore(t *testing.T, ss store.Store, probe BrowserA
 			BindingHash: model.HashToken(issuedBinding), StateHash: model.HashToken(issuedState),
 			CodeHash: model.HashToken(issuedCode), ExpectedUserID: fixture.candidate.ID, CodeLifetime: 45 * time.Second,
 			Capabilities: store.AccessDeploymentCapabilities{Providers: map[string]store.AccessProviderCapability{}},
-			AuditEventID: issueAudit.ID, AuditAt: model.GetMillis(),
+			AuditEventID: issueAudit.ID, AuditAt: model.NowUTC(),
 		})
 		require.NoError(t, issueErr)
 
@@ -414,7 +414,7 @@ func TestBrowserAuthenticationStore(t *testing.T, ss store.Store, probe BrowserA
 			AttemptID: model.NewExamAttemptID(), WorkspaceID: model.NewExamAttemptWorkspaceID(),
 			ParticipationID: model.NewAttemptParticipationID(), ConnectionID: model.NewAttemptConnectionID(),
 			ContinuityCredentialHash: continuity,
-			AuditEventID:             saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.GetMillis(),
+			AuditEventID:             saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.NowUTC(),
 		}
 		prepareExamAttemptConnect(t, ctx, ss, connect)
 		_, connectErr := ss.ExamAttempt().Connect(ctx, connect,
@@ -426,7 +426,7 @@ func TestBrowserAuthenticationStore(t *testing.T, ss store.Store, probe BrowserA
 				BindingHash: model.HashToken(pendingBinding), UserID: fixture.candidate.ID,
 				PasswordProof:        testPasswordProof(t, ctx, ss, fixture.candidate.ID),
 				AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor,
-				AuthenticatedAt: model.GetMillis(),
+				AuthenticatedAt: model.NowUTC(),
 				Capabilities:    store.AccessDeploymentCapabilities{Providers: map[string]store.AccessProviderCapability{}},
 			})
 		require.NoError(t, authenticationErr)
@@ -476,7 +476,7 @@ func bindAndAuthenticateDesktopAuthorization(t *testing.T, ctx context.Context, 
 	result, err := persistence.AuthenticateDesktopAuthorization(ctx, &store.DesktopAuthorizationAuthentication{
 		BindingHash: model.HashToken(binding), UserID: userID, AuthenticationMethod: "password",
 		PasswordProof:          testPasswordProof(t, ctx, ss, userID),
-		AuthenticationStrength: model.AuthenticationSingleFactor, AuthenticatedAt: model.GetMillis(),
+		AuthenticationStrength: model.AuthenticationSingleFactor, AuthenticatedAt: model.NowUTC(),
 		Capabilities: store.AccessDeploymentCapabilities{Providers: map[string]store.AccessProviderCapability{}},
 	})
 	require.NoError(t, err)
@@ -510,7 +510,7 @@ func desktopAuthorizationExchange(at time.Time, code, state, verifier string, au
 		AccessTokenHash:                    model.HashToken(model.NewCredentialToken()), RefreshTokenHash: model.HashToken(model.NewCredentialToken()),
 		AccessLifetime: 5 * time.Minute, RefreshLifetime: time.Hour, IdleLifetime: 30 * time.Minute, AbsoluteLifetime: time.Hour,
 		MaximumActive: 10,
-		Capabilities:  store.AccessDeploymentCapabilities{Providers: map[string]store.AccessProviderCapability{}}, AuditEventID: audit.ID, AuditAt: model.GetMillis()}
+		Capabilities:  store.AccessDeploymentCapabilities{Providers: map[string]store.AccessProviderCapability{}}, AuditEventID: audit.ID, AuditAt: model.NowUTC()}
 }
 
 func storetestDesktopAuthorizationKey() (model.DesktopPublicJWK, string) {

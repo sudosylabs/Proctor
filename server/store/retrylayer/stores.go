@@ -681,7 +681,7 @@ func (s *affiliationStore) Get(ctx context.Context, id model.AffiliationID) (*mo
 func (s *affiliationStore) ListByUser(ctx context.Context, userID model.UserID) ([]*model.Affiliation, error) {
 	return retryCall1(ctx, s.layer, func() ([]*model.Affiliation, error) { return s.AffiliationStore.ListByUser(ctx, userID) })
 }
-func (s *affiliationStore) ListActiveByUser(ctx context.Context, userID model.UserID, at int64) ([]*model.Affiliation, error) {
+func (s *affiliationStore) ListActiveByUser(ctx context.Context, userID model.UserID, at time.Time) ([]*model.Affiliation, error) {
 	return retryCall1(ctx, s.layer, func() ([]*model.Affiliation, error) {
 		return s.AffiliationStore.ListActiveByUser(ctx, userID, at)
 	})
@@ -695,7 +695,7 @@ func (s *academicUnitMemberStore) ListByUser(ctx context.Context, userID model.U
 		return s.AcademicUnitMemberStore.ListByUser(ctx, userID)
 	})
 }
-func (s *academicUnitMemberStore) ListByAcademicUnit(ctx context.Context, academicUnitID model.AcademicUnitID, at int64) ([]*model.AcademicUnitMember, error) {
+func (s *academicUnitMemberStore) ListByAcademicUnit(ctx context.Context, academicUnitID model.AcademicUnitID, at time.Time) ([]*model.AcademicUnitMember, error) {
 	return retryCall1(ctx, s.layer, func() ([]*model.AcademicUnitMember, error) {
 		return s.AcademicUnitMemberStore.ListByAcademicUnit(ctx, academicUnitID, at)
 	})
@@ -712,12 +712,12 @@ func (s *classMemberStore) Get(ctx context.Context, id model.ClassMemberID) (*mo
 func (s *classMemberStore) ListByUser(ctx context.Context, userID model.UserID) ([]*model.ClassMember, error) {
 	return retryCall1(ctx, s.layer, func() ([]*model.ClassMember, error) { return s.ClassMemberStore.ListByUser(ctx, userID) })
 }
-func (s *classMemberStore) ListByClass(ctx context.Context, classID model.ClassID, at int64) ([]*model.ClassMember, error) {
+func (s *classMemberStore) ListByClass(ctx context.Context, classID model.ClassID, at time.Time) ([]*model.ClassMember, error) {
 	return retryCall1(ctx, s.layer, func() ([]*model.ClassMember, error) {
 		return s.ClassMemberStore.ListByClass(ctx, classID, at)
 	})
 }
-func (s *classMemberStore) ListActiveByUser(ctx context.Context, userID model.UserID, at int64) ([]*model.ClassMember, error) {
+func (s *classMemberStore) ListActiveByUser(ctx context.Context, userID model.UserID, at time.Time) ([]*model.ClassMember, error) {
 	return retryCall1(ctx, s.layer, func() ([]*model.ClassMember, error) {
 		return s.ClassMemberStore.ListActiveByUser(ctx, userID, at)
 	})
@@ -795,9 +795,9 @@ func (s *installationStore) Get(ctx context.Context) (*model.InstallationState, 
 	return retryCall1(ctx, s.layer, func() (*model.InstallationState, error) { return s.InstallationStore.Get(ctx) })
 }
 
-func (s *clusterDiscoveryStore) ListLive(ctx context.Context, nowMillis int64) ([]*store.ClusterDiscoveryNode, error) {
+func (s *clusterDiscoveryStore) ListLive(ctx context.Context, liveAt time.Time) ([]*store.ClusterDiscoveryNode, error) {
 	return retryCall1(ctx, s.layer, func() ([]*store.ClusterDiscoveryNode, error) {
-		return s.ClusterDiscoveryStore.ListLive(ctx, nowMillis)
+		return s.ClusterDiscoveryStore.ListLive(ctx, liveAt)
 	})
 }
 

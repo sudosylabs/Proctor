@@ -63,7 +63,7 @@ func (s *mailStoreFake) CancelDelivery(_ context.Context, input *store.MailDeliv
 	if s.delivery == nil || s.delivery.ID != input.ID || s.delivery.Revision != input.ExpectedRevision {
 		return nil, store.NewErrConflict("mail_delivery", "stale", nil)
 	}
-	next, err := s.delivery.Cancel(time.UnixMilli(input.AuditAt))
+	next, err := s.delivery.Cancel(model.TimeUTC(input.AuditAt))
 	if err == nil {
 		s.delivery = next
 	}
@@ -74,7 +74,7 @@ func (s *mailStoreFake) RetryDelivery(_ context.Context, input *store.MailDelive
 	if s.delivery == nil || s.delivery.ID != input.ID || s.delivery.Revision != input.ExpectedRevision {
 		return nil, store.NewErrConflict("mail_delivery", "stale", nil)
 	}
-	next, err := s.delivery.OperatorRetry(time.UnixMilli(input.AuditAt))
+	next, err := s.delivery.OperatorRetry(model.TimeUTC(input.AuditAt))
 	if err == nil {
 		s.delivery = next
 	}

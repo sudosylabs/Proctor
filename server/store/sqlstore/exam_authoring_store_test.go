@@ -73,7 +73,7 @@ func TestPrepareExamAuthoringCreationRejectsBrokenAggregate(t *testing.T) {
 	manager, err := model.NewExamManager(exam.ID, model.NewUserID(), exam.CreatorUserID, at)
 	require.NoError(t, err)
 	_, _, err = prepareExamAuthoringCreation(&store.ExamAuthoringCreation{
-		Exam: exam, Draft: draft, Manager: manager, AuditEventID: model.NewAuditEventID(), AuditAt: model.GetMillis(),
+		Exam: exam, Draft: draft, Manager: manager, AuditEventID: model.NewAuditEventID(), AuditAt: model.NowUTC(),
 	})
 	var invalid *store.ErrInvalidInput
 	require.ErrorAs(t, err, &invalid)

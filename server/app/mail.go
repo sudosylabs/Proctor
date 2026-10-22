@@ -304,7 +304,7 @@ func (s *mailService) mutate(ctx context.Context, invocation invocation.Invocati
 	if err != nil {
 		return MailDeliveryView{}, err
 	}
-	updated, err := apply(ctx, &store.MailDeliveryMutation{ID: delivery.ID, ExpectedRevision: delivery.Revision, AuditEventID: auditID, AuditAt: now.UnixMilli()})
+	updated, err := apply(ctx, &store.MailDeliveryMutation{ID: delivery.ID, ExpectedRevision: delivery.Revision, AuditEventID: auditID, AuditAt: now})
 	if err != nil {
 		_ = s.deps.Audit.Fail(ctx, auditID, "mail.conflict")
 		return MailDeliveryView{}, mailStoreErrors.Translate(err)

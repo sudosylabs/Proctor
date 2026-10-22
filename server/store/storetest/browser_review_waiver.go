@@ -25,14 +25,14 @@ func TestBrowserReviewWaiverStore(t *testing.T, ss store.Store) {
 	require.NoError(t, err)
 	_, err = appendBrowserActivityFixture(t, ctx, ss, &store.BrowserActivityAppend{Access: access, ParticipationID: c.Participation.ID, Generation: c.Participation.Generation, SourceSessionID: source, Events: []model.BrowserActivityEvent{browserActivityEvent(1, model.BrowserActivityOpened, f.revisionID)}})
 	require.NoError(t, err)
-	seal := &store.ExamSubmissionSeal{SubmissionID: model.NewSubmissionID(), Access: store.ExamSubmissionSealAccess{AttemptID: c.Attempt.ID, ParticipationID: c.Participation.ID, Generation: c.Participation.Generation, ConnectionID: c.Connection.ID, CandidateUserID: f.candidate.ID, SessionID: f.session.ID, ContinuityCredentialHash: access.ContinuityCredentialHash, ExpectedCurrentRevisionID: f.revisionID, ExpectedWorkspaceCursor: c.Workspace.Cursor}, AuditEventID: saveExamAttemptAudit(t, ctx, ss, f).ID, AuditAt: model.GetMillis()}
+	seal := &store.ExamSubmissionSeal{SubmissionID: model.NewSubmissionID(), Access: store.ExamSubmissionSealAccess{AttemptID: c.Attempt.ID, ParticipationID: c.Participation.ID, Generation: c.Participation.Generation, ConnectionID: c.Connection.ID, CandidateUserID: f.candidate.ID, SessionID: f.session.ID, ContinuityCredentialHash: access.ContinuityCredentialHash, ExpectedCurrentRevisionID: f.revisionID, ExpectedWorkspaceCursor: c.Workspace.Cursor}, AuditEventID: saveExamAttemptAudit(t, ctx, ss, f).ID, AuditAt: model.NowUTC()}
 	attachSubmissionReceipt(t, ctx, ss, f.candidate, seal)
 	sealed, err := ss.ExamSubmission().Seal(ctx, seal, examCommand(f.candidate.ID, store.ExamSubmissionSealOperation, "waiver-submit", "waiver-submit"))
 	require.NoError(t, err)
 	access.ConnectionID = ""
 	access.ContinuityCredentialHash = ""
 	owner := store.BrowserDeliveryAccess{Access: access, ParticipationID: c.Participation.ID, SourceSessionID: source}
-	_, err = ss.ExamAttempt().SealBrowserDelivery(ctx, &store.BrowserDeliveryFinalDeclaration{Access: owner, Declaration: model.FinalDeliveryDeclaration{DeclarationID: "waiver-final", FinalSequence: 2}, AuditEventID: browserDeliveryAuditFixture(t, ctx, ss, owner), AuditAt: model.GetMillis()}, examCommand(f.candidate.ID, store.BrowserDeliveryFinalOperation, "waiver-final", "waiver-final"))
+	_, err = ss.ExamAttempt().SealBrowserDelivery(ctx, &store.BrowserDeliveryFinalDeclaration{Access: owner, Declaration: model.FinalDeliveryDeclaration{DeclarationID: "waiver-final", FinalSequence: 2}, AuditEventID: browserDeliveryAuditFixture(t, ctx, ss, owner), AuditAt: model.NowUTC()}, examCommand(f.candidate.ID, store.BrowserDeliveryFinalOperation, "waiver-final", "waiver-final"))
 	require.NoError(t, err)
 	closeRecordsSitting(t, ctx, ss, &f)
 	role, err := SaveRole(ctx, ss, &model.Role{Name: "waiver-manager-" + model.NewID(), DisplayName: "Records manager", Permissions: []string{string(model.ActionExamRecordsComplete)}})
@@ -63,7 +63,7 @@ func TestBrowserReviewWaiverStore(t *testing.T, ss store.Store) {
 	sittingScope.SubmissionID = ""
 	_, err = ss.ExamRecords().CompleteRecords(ctx, &store.ExamRecordsCompletion{ExamRecordsMutation: recordsMutation(t, ctx, ss, f.unitID, sittingScope, principal, model.ActionExamRecordsComplete), ExpectedRevision: completion.Completion.Revision, AcknowledgedEvidenceRevision: completion.Completion.EvidenceRevision}, examCommand(f.manager.ID, store.ExamRecordsCompleteOperation, "waiver-complete", "waiver-complete"))
 	require.NoError(t, err)
-	_, err = ss.ExamAttempt().AppendHistoricalBrowserDelivery(ctx, &store.BrowserActivityAppend{Access: access, ParticipationID: c.Participation.ID, Generation: c.Participation.Generation, SourceSessionID: source, PolicyRevisionID: status.PolicyRevisionID, PolicyDigest: status.PolicyDigest, Events: []model.BrowserActivityEvent{browserActivityEvent(2, model.BrowserActivityClosed, f.revisionID)}, AuditEventID: browserDeliveryAuditFixture(t, ctx, ss, owner), AuditAt: model.GetMillis()}, examCommand(f.candidate.ID, store.BrowserDeliveryAppendOperation, "waiver-late", "waiver-late"))
+	_, err = ss.ExamAttempt().AppendHistoricalBrowserDelivery(ctx, &store.BrowserActivityAppend{Access: access, ParticipationID: c.Participation.ID, Generation: c.Participation.Generation, SourceSessionID: source, PolicyRevisionID: status.PolicyRevisionID, PolicyDigest: status.PolicyDigest, Events: []model.BrowserActivityEvent{browserActivityEvent(2, model.BrowserActivityClosed, f.revisionID)}, AuditEventID: browserDeliveryAuditFixture(t, ctx, ss, owner), AuditAt: model.NowUTC()}, examCommand(f.candidate.ID, store.BrowserDeliveryAppendOperation, "waiver-late", "waiver-late"))
 	require.NoError(t, err)
 	completion, err = ss.ExamRecords().GetCompletion(ctx, f.examID, f.sitting.ID)
 	require.NoError(t, err)

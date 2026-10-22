@@ -289,7 +289,7 @@ func (s *Service) SubmitExamAttempt(ctx context.Context, invocation invocation.I
 		notice, expectedRecipientRevision = preparedMail.Notice, preparedMail.ExpectedRecipientRevision
 	}
 	stored, err := s.deps.Submissions.Seal(ctx, &store.ExamSubmissionSeal{SubmissionID: submissionID,
-		Access: access, AuditEventID: auditID, AuditAt: model.MillisFromTime(at), Notice: notice,
+		Access: access, AuditEventID: auditID, AuditAt: at, Notice: notice,
 		ExpectedRecipientRevision: expectedRecipientRevision}, idempotency)
 	if err != nil {
 		return store.ExamSubmissionReceipt{}, s.failAudit(ctx, auditID, err)

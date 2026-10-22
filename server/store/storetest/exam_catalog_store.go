@@ -83,7 +83,7 @@ func testExamCatalogListAndArchive(t *testing.T, ss store.Store) {
 	require.Len(t, exact, 2)
 	require.Equal(t, unit.ID, exact[0].AcademicUnitID)
 	require.Equal(t, unit.ID, exact[1].AcademicUnitID)
-	_, err = EndAcademicUnitMember(ctx, ss, membership.ID, membership.Revision, model.MillisFromTime(membershipBase.Add(5*time.Minute)))
+	_, err = EndAcademicUnitMember(ctx, ss, membership.ID, membership.Revision, membershipBase.Add(5*time.Minute))
 	require.NoError(t, err)
 	revokedMembership, err := ss.ExamAuthoring().List(ctx, store.ExamListOptions{AcademicUnitID: unit.ID, ArchiveFilter: store.ExamArchiveAll, Limit: 50, Visibility: visibility})
 	require.NoError(t, err)
@@ -175,5 +175,5 @@ func newExamArchive(t *testing.T, ctx context.Context, ss store.Store, examID mo
 		ScopeID: exam.AcademicUnitID.String(), Status: model.AuditStatusAttempt, NodeID: "test-node"})
 	require.NoError(t, err)
 	return &store.ExamArchive{ExamID: examID, ActorUserID: actorID, ExpectedRevision: expectedRevision,
-		ArchivedAt: model.MillisFromTime(at), AuditEventID: audit.ID, AuditAt: model.MillisFromTime(at)}
+		ArchivedAt: at, AuditEventID: audit.ID, AuditAt: at}
 }

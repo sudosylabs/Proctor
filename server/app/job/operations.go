@@ -90,7 +90,7 @@ func (t ControlTarget) View() View { return cloneView(t.Projection) }
 // the Job Store transition.
 type AuditReference struct {
 	EventID model.AuditEventID
-	At      int64
+	At      time.Time
 }
 
 func (r *Engine) List(ctx context.Context, query ListQuery) (Page, error) {
@@ -243,7 +243,7 @@ func projectAttempt(record model.JobAttempt) AttemptView {
 	return AttemptView{ID: record.ID, Number: record.Number, Status: record.Status, StartedAt: record.StartedAt, HeartbeatAt: record.HeartbeatAt, LeaseExpiresAt: record.LeaseExpiresAt, CompletedAt: record.CompletedAt, PublicErrorCode: record.PublicErrorCode}
 }
 
-func validAuditReference(audit AuditReference) bool { return audit.EventID != "" && audit.At > 0 }
+func validAuditReference(audit AuditReference) bool { return audit.EventID != "" && !audit.At.IsZero() }
 
 func publicStatus(status model.JobStatus) bool {
 	switch status {

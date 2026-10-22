@@ -108,7 +108,7 @@ func (s *mailService) StartMailRekey(ctx context.Context, invocation invocation.
 		Value: map[string]any{"job_id": job.ID.String(), "primary_key_id": primaryKeyID, "retiring_key_id": retiringKeyID},
 	}, s.deps.Now, func(ctx context.Context, reference mutationAttemptReference) (*store.MailRekeyOperation, error) {
 		return s.rekey.StartRekey(ctx, &store.MailRekeyStart{PrimaryKeyID: primaryKeyID,
-			RetiringKeyID: retiringKeyID, Job: job, AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis})
+			RetiringKeyID: retiringKeyID, Job: job, AuditEventID: reference.ID, AuditAt: reference.MutationAt})
 	}, mailRekeyStoreErrors.Translate)
 	if err != nil {
 		return MailRekeyView{}, err

@@ -41,12 +41,12 @@ func TestAdministratorMFAResetStore(t *testing.T, ss store.Store, probes ...Admi
 	session, _, raw := saveSession(t, ctx, ss, userID.String(), 10)
 	pending := savePendingMFA(t, ctx, ss, userID)
 	at := model.NowUTC()
-	audit, notice := mfaSecurityNoticeFixture(t, ctx, ss, installed.Administrator, model.MailTemplateIdentityMFAEnabled, at.UnixMilli())
+	audit, notice := mfaSecurityNoticeFixture(t, ctx, ss, installed.Administrator, model.MailTemplateIdentityMFAEnabled, at)
 	_, err = ss.MFA().Activate(ctx, &store.MFAActivationMutation{
 		Principal: mfaPrincipal(t, ctx, ss, raw.access), RecentAuthenticationTTL: time.Hour,
 		CredentialID: pending.ID, UserID: userID, TimeStep: time.Now().Unix() / 30,
 		RecoveryCodes: []*model.MFARecoveryCode{{CodeHash: model.HashToken(model.NewCredentialToken())}},
-		SessionID:     session.ID, At: at, AuditEventID: audit.ID, AuditAt: at.UnixMilli(), Notice: notice,
+		SessionID:     session.ID, At: at, AuditEventID: audit.ID, AuditAt: at, Notice: notice,
 	})
 	require.NoError(t, err)
 	passwordBefore, err := ss.PasswordCredential().GetByUser(ctx, userID)
@@ -230,8 +230,8 @@ func TestAdministratorMFAResetExternalStore(t *testing.T, ss store.Store) {
 	require.NoError(t, err)
 	removeAudit := saveAuthenticationMethodAuditAttempt(t, ctx, ss, installed.Administrator.ID.String(), "remove_password")
 	_, err = ss.PasswordCredential().Remove(ctx, &store.PasswordCredentialRemoval{UserID: installed.Administrator.ID,
-		Capabilities: capabilities, ChangedAt: model.GetMillis(), RevocationReason: model.SessionRevocationPasswordRemoved,
-		AuditEventID: removeAudit.ID, AuditAt: model.GetMillis()})
+		Capabilities: capabilities, ChangedAt: model.NowUTC(), RevocationReason: model.SessionRevocationPasswordRemoved,
+		AuditEventID: removeAudit.ID, AuditAt: model.NowUTC()})
 	require.NoError(t, err)
 	input := &store.AdministratorMFAReset{InstitutionID: installed.Institution.ID, UserID: installed.Administrator.ID, MFAEnabled: true}
 	_, err = ss.Installation().ResetAdministratorMFA(ctx, input)

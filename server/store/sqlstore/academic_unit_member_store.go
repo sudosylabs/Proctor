@@ -68,7 +68,7 @@ func academicUnitMemberColumns() []string {
 const academicUnitMemberLifecycleLock = "proctor:academic-unit-member-lifecycle"
 
 func (s SQLAcademicUnitMemberStore) Create(ctx context.Context, input *store.AcademicUnitMemberCreation) (*model.AcademicUnitMember, error) {
-	if input == nil || input.Member == nil || !input.AuditEventID.IsValid() || input.AuditAt <= 0 {
+	if input == nil || input.Member == nil || !input.AuditEventID.IsValid() || input.AuditAt.IsZero() {
 		return nil, store.NewErrInvalidInput("academic_unit_member", "creation", nil)
 	}
 	if !input.Member.ID.IsValid() {
@@ -221,16 +221,16 @@ func (s SQLAcademicUnitMemberStore) ListByUser(ctx context.Context, userID model
 	}).OrderBy("academic_unit_members.start_at DESC", "academic_unit_members.id"))
 }
 
-// ListByAcademicUnit returns the unarchived memberships of unitID. A positive
-// at (Unix milliseconds) restricts the result to memberships active at that
+// ListByAcademicUnit returns the unarchived memberships of unitID. A non-zero
+// at restricts the result to memberships active at that
 // instant; zero returns all of them.
-func (s SQLAcademicUnitMemberStore) ListByAcademicUnit(ctx context.Context, unitID model.AcademicUnitID, at int64) ([]*model.AcademicUnitMember, error) {
+func (s SQLAcademicUnitMemberStore) ListByAcademicUnit(ctx context.Context, unitID model.AcademicUnitID, at time.Time) ([]*model.AcademicUnitMember, error) {
 	query := s.query.Where(sq.Eq{
 		"academic_unit_members.academic_unit_id": unitID,
 		"academic_unit_members.archived_at":      nil,
 	})
-	if at > 0 {
-		activeAt := model.TimeFromMillis(at)
+	if !at.IsZero() {
+		activeAt := model.TimeUTC(at)
 		query = query.Where(sq.LtOrEq{"academic_unit_members.start_at": activeAt}).
 			Where("(academic_unit_members.end_at IS NULL OR academic_unit_members.end_at > ?)", activeAt)
 	}
@@ -255,7 +255,7 @@ func (s SQLAcademicUnitMemberStore) ListActiveByUser(ctx context.Context, userID
 // input.Command, and an audited no-op (input.NoOp set) under a command
 // idempotency key.
 func (s SQLAcademicUnitMemberStore) End(ctx context.Context, input *store.AcademicUnitMemberEnd) (*model.AcademicUnitMember, error) {
-	if input == nil || !input.ID.IsValid() || input.ExpectedRevision <= 0 || input.EndAt <= 0 || !input.AuditEventID.IsValid() || input.AuditAt <= 0 {
+	if input == nil || !input.ID.IsValid() || input.ExpectedRevision <= 0 || input.EndAt.IsZero() || !input.AuditEventID.IsValid() || input.AuditAt.IsZero() {
 		return nil, store.NewErrInvalidInput("academic_unit_member", "end", nil)
 	}
 	execute := func(ctx context.Context, tx *sqlxTxWrapper) (*academicUnitMemberMutationResult, error) {
@@ -282,7 +282,7 @@ func (s SQLAcademicUnitMemberStore) End(ctx context.Context, input *store.Academ
 				return nil, err
 			}
 			payloadKeyID, err = validateRelationshipTransitionMail("academic_unit_member", input.Notice, before.UserID,
-				model.TimeFromMillis(input.EndAt), model.MailTemplateAcademicUnitAssignmentEnded)
+				model.TimeUTC(input.EndAt), model.MailTemplateAcademicUnitAssignmentEnded)
 			if err != nil {
 				return nil, err
 			}
@@ -314,7 +314,7 @@ func (s SQLAcademicUnitMemberStore) End(ctx context.Context, input *store.Academ
 		func(replayed, noOp bool) { input.Replayed, input.NoOp = replayed, noOp }, execute)
 }
 
-func (s SQLAcademicUnitMemberStore) runAcademicUnitMemberMutation(ctx context.Context, operation string, command *store.CommandIdempotency, auditID model.AuditEventID, auditAt int64, setOutput func(bool, bool), execute func(context.Context, *sqlxTxWrapper) (*academicUnitMemberMutationResult, error)) (*model.AcademicUnitMember, error) {
+func (s SQLAcademicUnitMemberStore) runAcademicUnitMemberMutation(ctx context.Context, operation string, command *store.CommandIdempotency, auditID model.AuditEventID, auditAt time.Time, setOutput func(bool, bool), execute func(context.Context, *sqlxTxWrapper) (*academicUnitMemberMutationResult, error)) (*model.AcademicUnitMember, error) {
 	if command == nil {
 		result, err := runSQLTransaction(ctx, s.GetMaster().Begin, operation, execute)
 		if err != nil {
@@ -387,7 +387,7 @@ func (s SQLAcademicUnitMemberStore) getAcademicUnitMemberInTransaction(ctx conte
 	return row.model()
 }
 
-func (s SQLAcademicUnitMemberStore) endAcademicUnitMember(ctx context.Context, tx sqlxExecutor, id model.AcademicUnitMemberID, expectedRevision, endAt int64) (*model.AcademicUnitMember, error) {
+func (s SQLAcademicUnitMemberStore) endAcademicUnitMember(ctx context.Context, tx sqlxExecutor, id model.AcademicUnitMemberID, expectedRevision int64, endAt time.Time) (*model.AcademicUnitMember, error) {
 	var row academicUnitMemberRow
 	if err := tx.GetBuilder(ctx, &row, s.query.Where(sq.Eq{"academic_unit_members.id": id, "academic_unit_members.archived_at": nil})); err != nil {
 		return nil, translateError("academic_unit_member", id.String(), err)
@@ -399,12 +399,11 @@ func (s SQLAcademicUnitMemberStore) endAcademicUnitMember(ctx context.Context, t
 	if current.Revision != expectedRevision {
 		return nil, store.NewErrConflict("academic_unit_member", "academic_unit_member_changed", nil)
 	}
-	startMillis := model.MillisFromTime(current.StartsAt)
-	endMillis := current.EndsAt.Millis()
-	if endAt <= startMillis || (endMillis != 0 && endAt >= endMillis) {
+	endAt = model.TimeUTC(endAt)
+	if !endAt.After(current.StartsAt) || (current.EndsAt.Valid && !endAt.Before(current.EndsAt.Time)) {
 		return nil, store.NewErrConflict("academic_unit_member", "academic_unit_member_end_time", nil)
 	}
-	at := model.TimeFromMillis(endAt)
+	at := model.TimeUTC(endAt)
 	result, err := tx.Exec(ctx, `UPDATE academic_unit_members SET updated_at = GREATEST(updated_at, ?), end_at = ?, revision = revision + 1 WHERE id = ? AND archived_at IS NULL AND revision = ?`, at, at, id, expectedRevision)
 	if err != nil {
 		return nil, fmt.Errorf("end academic unit member: %w", err)
@@ -423,7 +422,7 @@ func (s SQLAcademicUnitMemberStore) endAcademicUnitMember(ctx context.Context, t
 		return nil, fmt.Errorf("archive future Invitation-origin Role Bindings: %w", err)
 	}
 	current.UpdatedAt = latestTime(current.UpdatedAt, at)
-	current.EndsAt = model.OptionalTimeFromMillis(endAt)
+	current.EndsAt = model.OptionalTimeFrom(endAt)
 	current.Revision = expectedRevision + 1
 	return current, nil
 }
@@ -524,14 +523,14 @@ func (r academicUnitMemberRow) model() (*model.AcademicUnitMember, error) {
 var _ store.AcademicUnitMemberStore = (*SQLAcademicUnitMemberStore)(nil)
 
 func (s SQLAcademicUnitMemberStore) ListPageByAcademicUnit(ctx context.Context, options store.AcademicUnitMemberPageOptions) (*store.AcademicUnitMemberPage, error) {
-	if !options.AcademicUnitID.IsValid() || options.ActiveAt < 0 || options.Limit < 1 || options.Limit > 200 ||
+	if !options.AcademicUnitID.IsValid() || options.Limit < 1 || options.Limit > 200 ||
 		options.AfterID.IsZero() != options.AfterUserID.IsZero() ||
 		(!options.AfterID.IsZero() && (!options.AfterID.IsValid() || !options.AfterUserID.IsValid())) {
 		return nil, store.NewErrInvalidInput("academic_unit_member", "page", nil)
 	}
 	query := s.query.Where(sq.Eq{"academic_unit_members.academic_unit_id": options.AcademicUnitID.String(), "academic_unit_members.archived_at": nil})
-	if options.ActiveAt > 0 {
-		at := model.TimeFromMillis(options.ActiveAt)
+	if !options.ActiveAt.IsZero() {
+		at := model.TimeUTC(options.ActiveAt)
 		query = query.Where(sq.LtOrEq{"academic_unit_members.start_at": at}).
 			Where("(academic_unit_members.end_at IS NULL OR academic_unit_members.end_at > ?)", at)
 	}

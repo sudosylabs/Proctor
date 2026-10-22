@@ -34,7 +34,7 @@ type RetentionExpiryReconciliation struct {
 	Kind         model.RetentionExpiryKind
 	RecordID     string
 	AuditEventID model.AuditEventID
-	AuditAt      int64
+	AuditAt      time.Time
 }
 
 type RetentionExpiryResult struct {

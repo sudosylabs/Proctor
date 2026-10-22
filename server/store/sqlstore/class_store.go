@@ -69,7 +69,7 @@ func newSQLClassStore(sqlStore *SQLStore) store.ClassStore {
 }
 
 func (s SQLClassStore) Create(ctx context.Context, input *store.ClassCreation) (*model.Class, error) {
-	if input == nil || input.Class == nil || !input.AuditEventID.IsValid() || input.AuditAt <= 0 {
+	if input == nil || input.Class == nil || !input.AuditEventID.IsValid() || input.AuditAt.IsZero() {
 		return nil, store.NewErrInvalidInput("class", "creation", nil)
 	}
 	if !input.Class.ID.IsValid() {
@@ -238,7 +238,7 @@ func (s SQLClassStore) selectClasses(
 // ExpectedAcademicUnitID; otherwise the update conflicts or is not found.
 func (s SQLClassStore) Update(ctx context.Context, input *store.ClassUpdate) (*model.Class, error) {
 	if input == nil || input.Class == nil || !input.ExpectedAcademicUnitID.IsValid() ||
-		input.ExpectedRevision <= 0 || !input.AuditEventID.IsValid() || input.AuditAt <= 0 {
+		input.ExpectedRevision <= 0 || !input.AuditEventID.IsValid() || input.AuditAt.IsZero() {
 		return nil, store.NewErrInvalidInput("class", "update", nil)
 	}
 	candidate := *input.Class
@@ -304,13 +304,13 @@ func (s SQLClassStore) updateClass(ctx context.Context, candidate *model.Class, 
 // fenced on ExpectedRevision and ExpectedAcademicUnitID.
 func (s SQLClassStore) Archive(ctx context.Context, input *store.ClassArchive) (*model.Class, error) {
 	if input == nil || !input.ID.IsValid() || !input.ExpectedAcademicUnitID.IsValid() ||
-		input.ExpectedRevision <= 0 || input.ArchiveAt <= 0 || !input.AuditEventID.IsValid() || input.AuditAt <= 0 {
+		input.ExpectedRevision <= 0 || input.ArchiveAt.IsZero() || !input.AuditEventID.IsValid() || input.AuditAt.IsZero() {
 		return nil, store.NewErrInvalidInput("class", "archive", nil)
 	}
 	return s.archiveClass(ctx, input.ID, input.ArchiveAt, input.ExpectedRevision, input.ExpectedAcademicUnitID, &academicMutationAudit{eventID: input.AuditEventID, at: input.AuditAt})
 }
 
-func (s SQLClassStore) archiveClass(ctx context.Context, id model.ClassID, archiveAt, expectedRevision int64, expectedUnitID model.AcademicUnitID, audit *academicMutationAudit) (*model.Class, error) {
+func (s SQLClassStore) archiveClass(ctx context.Context, id model.ClassID, archiveAt time.Time, expectedRevision int64, expectedUnitID model.AcademicUnitID, audit *academicMutationAudit) (*model.Class, error) {
 	return runSQLTransaction(ctx, s.GetMaster().Begin, "class archive", func(ctx context.Context, tx *sqlxTxWrapper) (*model.Class, error) {
 		if err := lockProgrammeLifecycle(ctx, tx); err != nil {
 			return nil, err
@@ -341,7 +341,7 @@ func (s SQLClassStore) archiveClass(ctx context.Context, id model.ClassID, archi
 		if dependent {
 			return nil, store.NewErrConflict("class", "class_has_active_dependents", nil)
 		}
-		result, err := tx.Exec(ctx, `UPDATE classes SET updated_at = GREATEST(updated_at, ?), archived_at = GREATEST(created_at, ?), revision = revision + 1 WHERE id = ? AND archived_at IS NULL AND revision = ?`, model.TimeFromMillis(archiveAt), model.TimeFromMillis(archiveAt), id, row.Revision)
+		result, err := tx.Exec(ctx, `UPDATE classes SET updated_at = GREATEST(updated_at, ?), archived_at = GREATEST(created_at, ?), revision = revision + 1 WHERE id = ? AND archived_at IS NULL AND revision = ?`, model.TimeUTC(archiveAt), model.TimeUTC(archiveAt), id, row.Revision)
 		if err != nil {
 			return nil, fmt.Errorf("archive class: %w", err)
 		}

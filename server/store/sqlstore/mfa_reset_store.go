@@ -27,7 +27,7 @@ func (s SQLMFAStore) Reset(ctx context.Context, input *store.MFAAssistedReset) (
 	if input == nil || input.Principal.Validate() != nil || input.Principal.CredentialType != model.CredentialSessionAccess || input.UserID == input.Principal.UserID || !input.UserID.IsValid() || !input.IdentityVerified || strings.TrimSpace(input.Reason) == "" || utf8.RuneCountInString(input.Reason) > 512 || strings.TrimSpace(input.VerificationReference) == "" || utf8.RuneCountInString(input.VerificationReference) > 128 || input.RecentAuthenticationTTL <= 0 || !input.AuditEventID.IsValid() {
 		return nil, store.NewErrInvalidInput("user_mfa_recovery", "reset", nil)
 	}
-	payloadKeyID, err := validateSecurityNoticeMail(input.UserID, input.Notice.Occurrence, input.Notice.Delivery, input.Notice.Job, model.MailTemplateIdentityMFAReset, input.NoticeAt.UnixMilli())
+	payloadKeyID, err := validateSecurityNoticeMail(input.UserID, input.Notice.Occurrence, input.Notice.Delivery, input.Notice.Job, model.MailTemplateIdentityMFAReset, input.NoticeAt)
 	if err != nil {
 		return nil, err
 	}
@@ -86,7 +86,7 @@ func (s SQLMFAStore) Reset(ctx context.Context, input *store.MFAAssistedReset) (
 		if err != nil {
 			return nil, err
 		}
-		if _, err := completeAuditEvent(ctx, tx, input.AuditEventID, model.AuditStatusSuccess, "", encoded, at.UnixMilli()); err != nil {
+		if _, err := completeAuditEvent(ctx, tx, input.AuditEventID, model.AuditStatusSuccess, "", encoded, at); err != nil {
 			return nil, err
 		}
 		return result, nil

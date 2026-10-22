@@ -101,7 +101,7 @@ func testExamManagersAndOwnership(t *testing.T, ss store.Store) {
 	memberships, err := ss.AcademicUnitMember().ListActiveByUser(ctx, later.ID, at.Add(8*time.Minute))
 	require.NoError(t, err)
 	require.Len(t, memberships, 1)
-	_, err = EndAcademicUnitMember(ctx, ss, memberships[0].ID, memberships[0].Revision, model.MillisFromTime(memberships[0].CreatedAt.Add(time.Millisecond)))
+	_, err = EndAcademicUnitMember(ctx, ss, memberships[0].ID, memberships[0].Revision, memberships[0].CreatedAt.Add(time.Millisecond))
 	require.NoError(t, err)
 	_, err = ss.ExamAuthoring().TransferOwner(ctx, newExamManagerMutation(t, ctx, ss, examID, target.ID, later.ID, 5, at.Add(9*time.Minute), false), examCommand(target.ID, "exam.owner.transfer", "ineligible-transfer", "ineligible-transfer-command"))
 	requireConflictConstraint(t, err, "exam_manager_ineligible")
@@ -192,8 +192,8 @@ func newExamManagerMutation(t *testing.T, ctx context.Context, ss store.Store, e
 		ScopeID: exam.AcademicUnitID.String(), Status: model.AuditStatusAttempt, NodeID: "test-node"})
 	require.NoError(t, err)
 	return &store.ExamManagerMutation{ExamID: examID, ActorUserID: actorID, TargetUserID: targetID, ManagerOverride: override,
-		ExpectedRevision: revision, ChangedAt: model.MillisFromTime(at),
-		AuditEventID: audit.ID, AuditAt: model.MillisFromTime(at)}
+		ExpectedRevision: revision, ChangedAt: at,
+		AuditEventID: audit.ID, AuditAt: at}
 }
 
 type examManagerMailRecipient struct {
@@ -204,7 +204,7 @@ type examManagerMailRecipient struct {
 func examManagerMailNotices(t *testing.T, at time.Time, recipients ...examManagerMailRecipient) []store.ExamManagerMail {
 	t.Helper()
 	require.NotEmpty(t, recipients, "Exam Manager mail fixture requires recipients")
-	at = model.TimeFromMillis(model.MillisFromTime(at))
+	at = model.TimeUTC(at)
 	notices := make([]store.ExamManagerMail, 0, len(recipients))
 	for _, recipient := range recipients {
 		occurrence, delivery, job := userTokenMailFixture(t, recipient.userID, model.NewMailOccurrenceID(),

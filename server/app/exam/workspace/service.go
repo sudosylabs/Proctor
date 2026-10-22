@@ -375,7 +375,7 @@ func (s *Service) runMutation(ctx context.Context, invocation invocation.Invocat
 		return Result{}, err
 	}
 	mutation.AuditEventID = auditID
-	mutation.AuditAt = model.MillisFromTime(mutation.ChangedAt)
+	mutation.AuditAt = mutation.ChangedAt
 	result, err := run(ctx, mutation, idempotency)
 	if err != nil {
 		mapped := storeErrors.Translate(err)

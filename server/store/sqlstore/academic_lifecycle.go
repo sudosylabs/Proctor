@@ -10,6 +10,7 @@ package sqlstore
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -20,7 +21,7 @@ import (
 // no audit completion; application commands always supply their pending audit.
 type academicMutationAudit struct {
 	eventID model.AuditEventID
-	at      int64
+	at      time.Time
 }
 
 func (a *academicMutationAudit) complete(ctx context.Context, tx *sqlxTxWrapper, data map[string]any) error {

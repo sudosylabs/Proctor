@@ -15,11 +15,11 @@ import (
 )
 
 // AcademicUnitMemberPageOptions selects a bounded page ordered by (UserID, ID).
-// ActiveAt zero includes history; positive milliseconds select [start, end).
+// A zero ActiveAt includes history; a non-zero instant selects [start, end).
 // The cursor tuple is exclusive and either entirely absent or entirely valid.
 type AcademicUnitMemberPageOptions struct {
 	AcademicUnitID model.AcademicUnitID
-	ActiveAt       int64
+	ActiveAt       time.Time
 	AfterUserID    model.UserID
 	AfterID        model.AcademicUnitMemberID
 	Limit          int
@@ -31,11 +31,11 @@ type AcademicUnitMemberPage struct {
 }
 
 // ClassMemberPageOptions selects a bounded page ordered by (UserID, ID).
-// ActiveAt zero includes history; positive milliseconds select [start, end).
+// A zero ActiveAt includes history; a non-zero instant selects [start, end).
 // The cursor tuple is exclusive and either entirely absent or entirely valid.
 type ClassMemberPageOptions struct {
 	ClassID     model.ClassID
-	ActiveAt    int64
+	ActiveAt    time.Time
 	AfterUserID model.UserID
 	AfterID     model.ClassMemberID
 	Limit       int
@@ -50,7 +50,7 @@ type ClassMemberPage struct {
 type AffiliationCreation struct {
 	Affiliation  *model.Affiliation
 	AuditEventID model.AuditEventID
-	AuditAt      int64
+	AuditAt      time.Time
 	Command      *CommandIdempotency
 	Replayed     bool
 	NoOp         bool
@@ -59,9 +59,9 @@ type AffiliationCreation struct {
 type AffiliationEnd struct {
 	ID               model.AffiliationID
 	ExpectedRevision int64
-	EndAt            int64
+	EndAt            time.Time
 	AuditEventID     model.AuditEventID
-	AuditAt          int64
+	AuditAt          time.Time
 	Command          *CommandIdempotency
 	Replayed         bool
 	NoOp             bool
@@ -73,7 +73,7 @@ type AffiliationStore interface {
 	Save(context.Context, *model.Affiliation) (*model.Affiliation, error)
 	Get(context.Context, model.AffiliationID) (*model.Affiliation, error)
 	ListByUser(context.Context, model.UserID) ([]*model.Affiliation, error)
-	ListActiveByUser(context.Context, model.UserID, int64) ([]*model.Affiliation, error)
+	ListActiveByUser(ctx context.Context, userID model.UserID, at time.Time) ([]*model.Affiliation, error)
 }
 
 // AcademicUnitMemberStore persists organizational membership without roles.
@@ -82,7 +82,7 @@ type AcademicUnitMemberCreation struct {
 	ExpectedRecipientRevision int64
 	Notice                    *PreparedMail
 	AuditEventID              model.AuditEventID
-	AuditAt                   int64
+	AuditAt                   time.Time
 	Command                   *CommandIdempotency
 	Replayed                  bool
 	NoOp                      bool
@@ -93,9 +93,9 @@ type AcademicUnitMemberEnd struct {
 	ExpectedRevision          int64
 	ExpectedRecipientRevision int64
 	Notice                    *PreparedMail
-	EndAt                     int64
+	EndAt                     time.Time
 	AuditEventID              model.AuditEventID
-	AuditAt                   int64
+	AuditAt                   time.Time
 	Command                   *CommandIdempotency
 	Replayed                  bool
 	NoOp                      bool
@@ -107,7 +107,7 @@ type AcademicUnitMemberStore interface {
 	Save(context.Context, *model.AcademicUnitMember) (*model.AcademicUnitMember, error)
 	Get(context.Context, model.AcademicUnitMemberID) (*model.AcademicUnitMember, error)
 	ListByUser(context.Context, model.UserID) ([]*model.AcademicUnitMember, error)
-	ListByAcademicUnit(context.Context, model.AcademicUnitID, int64) ([]*model.AcademicUnitMember, error)
+	ListByAcademicUnit(ctx context.Context, academicUnitID model.AcademicUnitID, at time.Time) ([]*model.AcademicUnitMember, error)
 	ListPageByAcademicUnit(context.Context, AcademicUnitMemberPageOptions) (*AcademicUnitMemberPage, error)
 	// ListActiveByUser uses UTC microsecond precision and the interval [start, end).
 	// Archived memberships are excluded; no active memberships is an empty list.
@@ -132,7 +132,7 @@ type ClassMemberEnrollment struct {
 	Notice                             *PreparedMail
 	AuditEventID                       model.AuditEventID
 	PreviousAuditEventID               model.AuditEventID
-	AuditAt                            int64
+	AuditAt                            time.Time
 	Command                            *CommandIdempotency
 	Replayed                           bool
 	NoOp                               bool
@@ -142,10 +142,10 @@ type ClassMemberEnd struct {
 	ID                        model.ClassMemberID
 	ExpectedRevision          int64
 	ExpectedRecipientRevision int64
-	EndAt                     int64
+	EndAt                     time.Time
 	Notice                    *PreparedMail
 	AuditEventID              model.AuditEventID
-	AuditAt                   int64
+	AuditAt                   time.Time
 	Command                   *CommandIdempotency
 	Replayed                  bool
 	NoOp                      bool
@@ -157,11 +157,11 @@ type ClassMemberStore interface {
 	End(context.Context, *ClassMemberEnd) (*model.ClassMember, error)
 	Get(context.Context, model.ClassMemberID) (*model.ClassMember, error)
 	ListByUser(context.Context, model.UserID) ([]*model.ClassMember, error)
-	ListByClass(context.Context, model.ClassID, int64) ([]*model.ClassMember, error)
+	ListByClass(ctx context.Context, classID model.ClassID, at time.Time) ([]*model.ClassMember, error)
 	ListPageByClass(context.Context, ClassMemberPageOptions) (*ClassMemberPage, error)
-	ListActiveByUser(context.Context, model.UserID, int64) ([]*model.ClassMember, error)
+	ListActiveByUser(ctx context.Context, userID model.UserID, at time.Time) ([]*model.ClassMember, error)
 	// SeedEnroll and SeedEnd are unaudited fixture writes for conformance and
 	// integration tests; production code never calls a Seed operation.
 	SeedEnroll(context.Context, *model.ClassMember) (*ClassEnrollmentResult, error)
-	SeedEnd(context.Context, model.ClassMemberID, int64, int64) (*model.ClassMember, error)
+	SeedEnd(ctx context.Context, id model.ClassMemberID, expectedRevision int64, endAt time.Time) (*model.ClassMember, error)
 }

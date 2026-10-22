@@ -106,7 +106,7 @@ type ExamIntegrityReviewDecisionMutation struct {
 	PrivateRationale         string
 	ChangedAt                time.Time
 	AuditEventID             model.AuditEventID
-	AuditAt                  int64
+	AuditAt                  time.Time
 }
 
 type ExamIntegrityReviewDraftMutation struct {
@@ -119,7 +119,7 @@ type ExamIntegrityReviewDraftMutation struct {
 	StudentRemarksMarkdown string
 	ChangedAt              time.Time
 	AuditEventID           model.AuditEventID
-	AuditAt                int64
+	AuditAt                time.Time
 }
 
 type ExamIntegrityReviewFinalize struct {
@@ -130,7 +130,7 @@ type ExamIntegrityReviewFinalize struct {
 	ExpectedReviewRevision int64
 	ChangedAt              time.Time
 	AuditEventID           model.AuditEventID
-	AuditAt                int64
+	AuditAt                time.Time
 }
 
 type ExamIntegrityReviewRelease struct {
@@ -141,7 +141,7 @@ type ExamIntegrityReviewRelease struct {
 	ExpectedReviewRevision    int64
 	ChangedAt                 time.Time
 	AuditEventID              model.AuditEventID
-	AuditAt                   int64
+	AuditAt                   time.Time
 	CandidateUserID           model.UserID
 	Notice                    *PreparedMail
 	ExpectedRecipientRevision int64

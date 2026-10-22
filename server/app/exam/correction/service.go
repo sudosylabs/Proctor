@@ -234,7 +234,7 @@ func (s *Service) StageExamSittingCorrectionResourceContent(ctx context.Context,
 	if err != nil {
 		return ResourceStage{}, err
 	}
-	stage, err := s.deps.Persistence.ReserveResourceStage(ctx, &store.ExamCorrectionResourceStageReservation{StageID: s.deps.NewStageID(), ExamID: c.ExamID, SittingID: c.SittingID, BaseRevisionID: c.BaseRevisionID, Target: c.Target, ResourceID: resourceID, Entry: entry, FileEntryID: entryID, Revision: revision, Lease: lease, RenditionID: renditionID, ActorUserID: principal.UserID, ManagerOverride: auth.override, CreatedAt: at, AuditEventID: auditID, AuditAt: model.MillisFromTime(at)}, idempotency)
+	stage, err := s.deps.Persistence.ReserveResourceStage(ctx, &store.ExamCorrectionResourceStageReservation{StageID: s.deps.NewStageID(), ExamID: c.ExamID, SittingID: c.SittingID, BaseRevisionID: c.BaseRevisionID, Target: c.Target, ResourceID: resourceID, Entry: entry, FileEntryID: entryID, Revision: revision, Lease: lease, RenditionID: renditionID, ActorUserID: principal.UserID, ManagerOverride: auth.override, CreatedAt: at, AuditEventID: auditID, AuditAt: at}, idempotency)
 	if err != nil {
 		return ResourceStage{}, s.failAudit(ctx, auditID, err)
 	}
@@ -333,7 +333,7 @@ func (s *Service) ApplyExamSittingCorrection(ctx context.Context, invocation inv
 	for i, r := range c.Resources {
 		resources[i] = store.ExamCorrectionResourceManifestItem{ResourceID: r.ResourceID, DisplayName: strings.TrimSpace(r.DisplayName), DescriptionMarkdown: r.DescriptionMarkdown, StageID: r.StageID}
 	}
-	stored, err := s.deps.Persistence.Apply(ctx, &store.ExamCorrectionApplication{InstitutionOrigin: s.deps.InstitutionOrigin, RevisionID: s.deps.NewExamRevisionID(), ExamID: c.ExamID, SittingID: c.SittingID, CurrentRevisionID: c.ExpectedCurrentRevisionID, ExpectedSittingRevision: c.ExpectedSittingRevision, ActorUserID: invocation.Principal().UserID, ManagerOverride: auth.override, InstructionsMarkdown: instructions, BrowserPolicy: browserPolicy, Resources: resources, CandidateSummary: c.CandidateSummary, AcknowledgementRequired: c.AcknowledgementRequired, AffectedCapabilities: append([]model.CandidateCapability{}, c.AffectedCapabilities...), PrivateReason: c.PrivateReason, AppliedAt: at, AuditEventID: auditID, AuditAt: model.MillisFromTime(at)}, idempotency)
+	stored, err := s.deps.Persistence.Apply(ctx, &store.ExamCorrectionApplication{InstitutionOrigin: s.deps.InstitutionOrigin, RevisionID: s.deps.NewExamRevisionID(), ExamID: c.ExamID, SittingID: c.SittingID, CurrentRevisionID: c.ExpectedCurrentRevisionID, ExpectedSittingRevision: c.ExpectedSittingRevision, ActorUserID: invocation.Principal().UserID, ManagerOverride: auth.override, InstructionsMarkdown: instructions, BrowserPolicy: browserPolicy, Resources: resources, CandidateSummary: c.CandidateSummary, AcknowledgementRequired: c.AcknowledgementRequired, AffectedCapabilities: append([]model.CandidateCapability{}, c.AffectedCapabilities...), PrivateReason: c.PrivateReason, AppliedAt: at, AuditEventID: auditID, AuditAt: at}, idempotency)
 	if err != nil {
 		return AppliedCorrection{}, s.failAudit(ctx, auditID, err)
 	}

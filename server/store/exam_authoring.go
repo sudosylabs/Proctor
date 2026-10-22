@@ -126,9 +126,9 @@ type ExamManagerMutation struct {
 	TargetUserID     model.UserID
 	ManagerOverride  bool
 	ExpectedRevision int64
-	ChangedAt        int64
+	ChangedAt        time.Time
 	AuditEventID     model.AuditEventID
-	AuditAt          int64
+	AuditAt          time.Time
 	Notices          []ExamManagerMail
 }
 
@@ -152,9 +152,9 @@ type ExamArchive struct {
 	ActorUserID      model.UserID
 	ManagerOverride  bool
 	ExpectedRevision int64
-	ArchivedAt       int64
+	ArchivedAt       time.Time
 	AuditEventID     model.AuditEventID
-	AuditAt          int64
+	AuditAt          time.Time
 }
 
 type ExamArchiveCommandResult struct {
@@ -169,7 +169,7 @@ type ExamAuthoringCreation struct {
 	Draft        *model.ExamDraft
 	Manager      *model.ExamManager
 	AuditEventID model.AuditEventID
-	AuditAt      int64
+	AuditAt      time.Time
 }
 
 // ExamDraftTextUpdate changes only the authored text fields of one Draft.
@@ -181,9 +181,9 @@ type ExamDraftTextUpdate struct {
 	ExpectedRevision     int64
 	Title                *string
 	InstructionsMarkdown *string
-	UpdatedAt            int64
+	UpdatedAt            time.Time
 	AuditEventID         model.AuditEventID
-	AuditAt              int64
+	AuditAt              time.Time
 }
 
 // ExamDraftFocusLossUpdate replaces only the typed Focus Loss rule. The Store
@@ -195,9 +195,9 @@ type ExamDraftFocusLossUpdate struct {
 	ManagerOverride  bool
 	ExpectedRevision int64
 	FocusLoss        model.FocusLossPolicy
-	UpdatedAt        int64
+	UpdatedAt        time.Time
 	AuditEventID     model.AuditEventID
-	AuditAt          int64
+	AuditAt          time.Time
 }
 
 // ExamDraftNativePolicyUpdate atomically replaces the exact native union under
@@ -208,9 +208,9 @@ type ExamDraftNativePolicyUpdate struct {
 	ManagerOverride  bool
 	ExpectedRevision int64
 	NativePolicy     model.NativeSecurityPolicy
-	UpdatedAt        int64
+	UpdatedAt        time.Time
 	AuditEventID     model.AuditEventID
-	AuditAt          int64
+	AuditAt          time.Time
 }
 
 // ExamDraftBrowserPolicyUpdate replaces the complete canonical Browser Policy
@@ -223,9 +223,9 @@ type ExamDraftBrowserPolicyUpdate struct {
 	ManagerOverride   bool
 	ExpectedRevision  int64
 	Policy            model.BrowserPolicy
-	UpdatedAt         int64
+	UpdatedAt         time.Time
 	AuditEventID      model.AuditEventID
-	AuditAt           int64
+	AuditAt           time.Time
 }
 
 // ExamAuthoringStore owns atomic Exam authoring mutations and bounded reads.

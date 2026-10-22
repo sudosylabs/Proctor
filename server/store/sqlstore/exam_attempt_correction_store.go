@@ -290,7 +290,7 @@ func completeCorrectionAcknowledgementAudit(ctx context.Context, tx *sqlxTxWrapp
 	if err != nil {
 		return err
 	}
-	_, err = completeAuditEvent(ctx, tx, auditID, model.AuditStatusSuccess, "", encoded, model.MillisFromTime(at))
+	_, err = completeAuditEvent(ctx, tx, auditID, model.AuditStatusSuccess, "", encoded, at)
 	return err
 }
 

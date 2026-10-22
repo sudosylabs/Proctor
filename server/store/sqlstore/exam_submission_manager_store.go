@@ -92,7 +92,7 @@ func (s *SQLExamSubmissionStore) EndByManager(ctx context.Context, input *store.
 	if input == nil || !validManagerEndRequest(input.Request) || !validAutomaticExamSubmissionTarget(input.Target) ||
 		input.Target.ExamID != input.Request.ExamID || input.Target.SittingID != input.Request.SittingID ||
 		input.Target.AttemptID != input.Request.AttemptID || !input.SubmissionID.IsValid() ||
-		!input.AuditEventID.IsValid() || input.AuditAt <= 0 || command == nil ||
+		!input.AuditEventID.IsValid() || input.AuditAt.IsZero() || command == nil ||
 		command.Operation != store.ExamSubmissionManagerEndOperation || command.UserID != input.Request.ActorUserID {
 		return nil, store.NewErrInvalidInput("exam_submission", "manager_end", nil)
 	}
@@ -187,7 +187,7 @@ func endExamAttemptByManager(ctx context.Context, tx *sqlxTxWrapper,
 		(row.SittingState != string(model.ExamSittingOpen) && row.SittingState != string(model.ExamSittingPaused)) {
 		return zero, store.NewErrConflict("exam_attempt", "exam_attempt_state", nil)
 	}
-	sealAt := model.TimeFromMillis(input.AuditAt)
+	sealAt := model.TimeUTC(input.AuditAt)
 	var databaseNow time.Time
 	if err = tx.Get(ctx, &databaseNow, `SELECT statement_timestamp()`); err != nil {
 		return zero, fmt.Errorf("read manager-ended Exam Submission decision time: %w", err)

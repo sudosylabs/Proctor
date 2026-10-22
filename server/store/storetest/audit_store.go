@@ -39,12 +39,12 @@ func TestAuditStore(t *testing.T, ss store.Store) {
 	require.NotEmpty(t, string(got.Parameters))
 	completed, err := ss.Audit().Complete(
 		ctx, event.ID, model.AuditStatusSuccess, "", []byte(`{"updated":true}`),
-		model.MillisFromTime(event.UpdatedAt)+1,
+		event.UpdatedAt.Add(1*time.Millisecond),
 	)
 	require.NoError(t, err)
 	require.Equal(t, model.AuditStatusSuccess, completed.Status)
 	_, err = ss.Audit().Complete(
-		ctx, event.ID, model.AuditStatusFail, "late", nil, model.MillisFromTime(event.UpdatedAt)+2,
+		ctx, event.ID, model.AuditStatusFail, "late", nil, event.UpdatedAt.Add(2*time.Millisecond),
 	)
 	require.True(t, store.IsNotFound(err), "second Complete() error")
 	time.Sleep(2 * time.Millisecond)
@@ -200,6 +200,6 @@ func testAuditAbandonedAttempts(t *testing.T, ctx context.Context, ss store.Stor
 	require.Equal(t, model.AuditStatusFail, abandoned.Status)
 	require.Equal(t, model.AuditErrorAttemptAbandoned, abandoned.ErrorCode)
 	require.False(t, abandoned.UpdatedAt.Before(attempt.UpdatedAt), "abandonment never moves updated_at backwards")
-	_, err = ss.Audit().Complete(ctx, attempt.ID, model.AuditStatusSuccess, "", nil, model.MillisFromTime(abandoned.UpdatedAt)+1)
+	_, err = ss.Audit().Complete(ctx, attempt.ID, model.AuditStatusSuccess, "", nil, abandoned.UpdatedAt.Add(1*time.Millisecond))
 	require.True(t, store.IsNotFound(err), "an abandoned attempt is terminal")
 }

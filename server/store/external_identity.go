@@ -36,7 +36,7 @@ type ExternalIdentityLink struct {
 	Identity             *model.ExternalIdentity
 	Capabilities         AccessDeploymentCapabilities
 	AuditEventID         model.AuditEventID
-	AuditAt              int64
+	AuditAt              time.Time
 }
 
 // ExternalIdentityUnlink removes one exact provider identity and revokes only
@@ -45,10 +45,10 @@ type ExternalIdentityUnlink struct {
 	ID               model.ExternalIdentityID
 	UserID           model.UserID
 	Capabilities     AccessDeploymentCapabilities
-	ChangedAt        int64
+	ChangedAt        time.Time
 	RevocationReason model.SessionRevocationReason
 	AuditEventID     model.AuditEventID
-	AuditAt          int64
+	AuditAt          time.Time
 }
 
 type AuthenticationMethodMutationResult struct {

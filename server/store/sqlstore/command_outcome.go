@@ -16,6 +16,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"time"
 
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -346,13 +347,13 @@ func completeCommandBatchDuplicateAudit(ctx context.Context, tx *sqlxTxWrapper, 
 	if err != nil {
 		return err
 	}
-	if _, err = completeAuditEvent(ctx, tx, auditID, model.AuditStatusFail, "onboarding_batch.duplicate", encoded, at.UnixMilli()); err != nil {
+	if _, err = completeAuditEvent(ctx, tx, auditID, model.AuditStatusFail, "onboarding_batch.duplicate", encoded, at); err != nil {
 		return fmt.Errorf("complete batch duplicate audit: %w", err)
 	}
 	return nil
 }
 
-func completeAdministrativeNoOpAudit(ctx context.Context, tx *sqlxTxWrapper, auditID model.AuditEventID, at int64, idField, id string) error {
+func completeAdministrativeNoOpAudit(ctx context.Context, tx *sqlxTxWrapper, auditID model.AuditEventID, at time.Time, idField, id string) error {
 	data, err := model.EncodeAuditData(map[string]any{idField: id, "no_op": true})
 	if err != nil {
 		return err
@@ -363,7 +364,7 @@ func completeAdministrativeNoOpAudit(ctx context.Context, tx *sqlxTxWrapper, aud
 	return nil
 }
 
-func completeAdministrativeReplayAudit(ctx context.Context, tx *sqlxTxWrapper, auditID model.AuditEventID, at int64, idField, id string, noOp bool, originalAuditID string) error {
+func completeAdministrativeReplayAudit(ctx context.Context, tx *sqlxTxWrapper, auditID model.AuditEventID, at time.Time, idField, id string, noOp bool, originalAuditID string) error {
 	data := map[string]any{idField: id, "idempotency_replayed": true, "original_audit_event_id": originalAuditID}
 	if noOp {
 		data["no_op"] = true

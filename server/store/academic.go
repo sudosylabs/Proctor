@@ -32,13 +32,13 @@ type InstitutionStore interface {
 	Get(context.Context, model.InstitutionID) (*model.Institution, error)
 	GetSingleton(context.Context) (*model.Institution, error)
 	Update(context.Context, *InstitutionUpdate) (*model.Institution, error)
-	Archive(context.Context, model.InstitutionID, int64) error
+	Archive(ctx context.Context, id model.InstitutionID, archiveAt time.Time) error
 }
 
 type InstitutionUpdate struct {
 	Institution  *model.Institution
 	AuditEventID model.AuditEventID
-	AuditAt      int64
+	AuditAt      time.Time
 }
 
 // AcademicUnitCreation is the complete durable input for creating an Academic
@@ -46,22 +46,22 @@ type InstitutionUpdate struct {
 type AcademicUnitCreation struct {
 	Unit         *model.AcademicUnit
 	AuditEventID model.AuditEventID
-	AuditAt      int64
+	AuditAt      time.Time
 }
 
 type AcademicUnitUpdate struct {
 	Unit         *model.AcademicUnit
 	AuditEventID model.AuditEventID
-	AuditAt      int64
+	AuditAt      time.Time
 }
 
 type AcademicUnitArchive struct {
 	// ExpectedRevision is optional for compatibility; positive values fence stale callers.
 	ExpectedRevision int64
 	ID               model.AcademicUnitID
-	ArchiveAt        int64
+	ArchiveAt        time.Time
 	AuditEventID     model.AuditEventID
-	AuditAt          int64
+	AuditAt          time.Time
 }
 
 // AcademicNameListOptions selects one page of an academic listing ordered by
@@ -104,22 +104,22 @@ type AcademicUnitStore interface {
 type ProgrammeCreation struct {
 	Programme    *model.Programme
 	AuditEventID model.AuditEventID
-	AuditAt      int64
+	AuditAt      time.Time
 }
 
 type ProgrammeUpdate struct {
 	Programme    *model.Programme
 	AuditEventID model.AuditEventID
-	AuditAt      int64
+	AuditAt      time.Time
 }
 
 type ProgrammeArchive struct {
 	// ExpectedRevision is optional for compatibility; positive values fence stale callers.
 	ExpectedRevision int64
 	ID               model.ProgrammeID
-	ArchiveAt        int64
+	ArchiveAt        time.Time
 	AuditEventID     model.AuditEventID
-	AuditAt          int64
+	AuditAt          time.Time
 }
 
 type ProgrammeStore interface {
@@ -138,22 +138,22 @@ type ProgrammeStore interface {
 type ProgrammeLevelCreation struct {
 	Level        *model.ProgrammeLevel
 	AuditEventID model.AuditEventID
-	AuditAt      int64
+	AuditAt      time.Time
 }
 
 type ProgrammeLevelUpdate struct {
 	Level        *model.ProgrammeLevel
 	AuditEventID model.AuditEventID
-	AuditAt      int64
+	AuditAt      time.Time
 }
 
 type ProgrammeLevelArchive struct {
 	// ExpectedRevision is optional for compatibility; positive values fence stale callers.
 	ExpectedRevision int64
 	ID               model.ProgrammeLevelID
-	ArchiveAt        int64
+	ArchiveAt        time.Time
 	AuditEventID     model.AuditEventID
-	AuditAt          int64
+	AuditAt          time.Time
 }
 
 type ProgrammeLevelStore interface {
@@ -181,22 +181,22 @@ type AcademicPeriodVisibilityScope struct {
 type AcademicPeriodCreation struct {
 	Period       *model.AcademicPeriod
 	AuditEventID model.AuditEventID
-	AuditAt      int64
+	AuditAt      time.Time
 }
 
 type AcademicPeriodUpdate struct {
 	Period       *model.AcademicPeriod
 	AuditEventID model.AuditEventID
-	AuditAt      int64
+	AuditAt      time.Time
 }
 
 type AcademicPeriodArchive struct {
 	// ExpectedRevision is optional for compatibility; positive values fence stale callers.
 	ExpectedRevision int64
 	ID               model.AcademicPeriodID
-	ArchiveAt        int64
+	ArchiveAt        time.Time
 	AuditEventID     model.AuditEventID
-	AuditAt          int64
+	AuditAt          time.Time
 }
 
 type AcademicPeriodStore interface {
@@ -213,7 +213,7 @@ type AcademicPeriodStore interface {
 type ClassCreation struct {
 	Class        *model.Class
 	AuditEventID model.AuditEventID
-	AuditAt      int64
+	AuditAt      time.Time
 }
 
 type ClassUpdate struct {
@@ -221,16 +221,16 @@ type ClassUpdate struct {
 	ExpectedAcademicUnitID model.AcademicUnitID
 	ExpectedRevision       int64
 	AuditEventID           model.AuditEventID
-	AuditAt                int64
+	AuditAt                time.Time
 }
 
 type ClassArchive struct {
 	ID                     model.ClassID
 	ExpectedAcademicUnitID model.AcademicUnitID
 	ExpectedRevision       int64
-	ArchiveAt              int64
+	ArchiveAt              time.Time
 	AuditEventID           model.AuditEventID
-	AuditAt                int64
+	AuditAt                time.Time
 }
 
 type ClassStore interface {

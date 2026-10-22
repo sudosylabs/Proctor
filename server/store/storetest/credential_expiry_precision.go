@@ -65,7 +65,7 @@ func testMFANativeExpiry(t *testing.T, ss store.Store) {
 				CredentialID: model.NewMFACredentialID(), UserID: userID,
 				SessionID: sessionID, At: at, TimeStep: 1,
 				RecoveryCodes: []*model.MFARecoveryCode{{CodeHash: model.HashToken(model.NewCredentialToken())}},
-				AuditEventID:  model.NewAuditEventID(), AuditAt: model.GetMillis(),
+				AuditEventID:  model.NewAuditEventID(), AuditAt: model.NowUTC(),
 			})
 			var invalid *store.ErrInvalidInput
 			require.ErrorAs(t, err, &invalid, "Activate(%s)", at)
@@ -108,12 +108,12 @@ func testMFANativeExpiry(t *testing.T, ss store.Store) {
 						CreatedAt: model.NowUTC(), PendingExpiresAt: model.OptionalTimeFrom(deadline),
 					})
 					require.NoError(t, saveErr)
-					audit, notice := mfaSecurityNoticeFixture(t, ctx, ss, user, model.MailTemplateIdentityMFAEnabled, at.UnixMilli())
+					audit, notice := mfaSecurityNoticeFixture(t, ctx, ss, user, model.MailTemplateIdentityMFAEnabled, at)
 					_, err = ss.MFA().Activate(ctx, &store.MFAActivationMutation{
 						Principal: mfaSessionPrincipal(session, savedCredentials[0]), RecentAuthenticationTTL: time.Hour,
 						CredentialID: pending.ID, UserID: user.ID, TimeStep: time.Now().Unix() / 30,
 						RecoveryCodes: []*model.MFARecoveryCode{{CodeHash: model.HashToken(model.NewCredentialToken())}},
-						SessionID:     session.ID, At: at, AuditEventID: audit.ID, AuditAt: at.UnixMilli(), Notice: notice,
+						SessionID:     session.ID, At: at, AuditEventID: audit.ID, AuditAt: at, Notice: notice,
 					})
 					if !point.valid {
 						current, getErr := ss.MFA().GetByUser(ctx, user.ID)

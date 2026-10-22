@@ -48,7 +48,7 @@ func TestSelfSessionServiceUsesCallerOwnershipAndPostCommitEffects(t *testing.T)
 	// and the write commits before its effect.
 	require.Equal(t, []string{"get", "begin", "revoke", "effects"}, events)
 	require.Equal(t, principal.UserID.String(), persistence.revokedUserID, "revocation = user")
-	require.Equal(t, now.UnixMilli(), persistence.revokedAt, "revocation = user")
+	require.True(t, now.Equal(persistence.revokedAt), "revocation = user")
 	require.Equal(t, principal.UserID.String(), effects.userID)
 	require.Equal(t, []string{session.ID.String()}, effects.sessionIDs)
 	require.Equal(t, []string{"access-hash"}, effects.hashes)
@@ -160,14 +160,14 @@ func TestSelfSessionRevocationsRequireAuditBeforeMutationAndEffects(t *testing.T
 				input := persistence.revocation
 				if input != nil {
 					require.Equal(t, model.AuditEventID(audit.beginID), input.AuditEventID)
-					require.Equal(t, now.UnixMilli(), input.AuditAt)
+					require.True(t, model.TimeUTC(now).Equal(input.AuditAt))
 					require.Nil(t, input.Occurrence)
 					require.Nil(t, input.Delivery)
 					require.Nil(t, input.DeliveryJob)
 				}
 				if input := persistence.allRevocation; input != nil {
 					require.Equal(t, model.AuditEventID(audit.beginID), input.AuditEventID)
-					require.Equal(t, now.UnixMilli(), input.AuditAt)
+					require.True(t, model.TimeUTC(now).Equal(input.AuditAt))
 					require.Nil(t, input.Occurrence)
 					require.Nil(t, input.Delivery)
 					require.Nil(t, input.DeliveryJob)
@@ -228,7 +228,7 @@ type selfSessionStoreFake struct {
 	session       *model.Session
 	hashes        []string
 	revokedUserID string
-	revokedAt     int64
+	revokedAt     time.Time
 	revokeCalls   int
 	listedAt      time.Time
 	revokeErr     error
@@ -263,7 +263,7 @@ func (s *selfSessionStoreFake) Revoke(_ context.Context, input *store.SessionRev
 		}
 		return nil, store.NewErrNotFound("session", input.SessionID.String())
 	}
-	s.session.RevokedAt = model.OptionalTimeFromMillis(input.RevokedAt)
+	s.session.RevokedAt = model.OptionalTimeFrom(input.RevokedAt)
 	return &store.SessionRevocationResult{Session: s.session, TokenHashes: append([]string(nil), s.hashes...)}, nil
 }
 
@@ -278,7 +278,7 @@ func (s *selfSessionStoreFake) RevokeAllForUser(_ context.Context, input *store.
 		input.NoOp = true
 		return &store.UserSessionsRevocationResult{}, nil
 	}
-	s.session.RevokedAt = model.OptionalTimeFromMillis(input.RevokedAt)
+	s.session.RevokedAt = model.OptionalTimeFrom(input.RevokedAt)
 	return &store.UserSessionsRevocationResult{Sessions: []*model.Session{s.session}, TokenHashes: append([]string(nil), s.hashes...)}, nil
 }
 

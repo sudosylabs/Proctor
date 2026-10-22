@@ -908,9 +908,9 @@ func (s *timedInstitutionStore) Update(arg0 context.Context, arg1 *store.Institu
 	})
 }
 
-func (s *timedInstitutionStore) Archive(arg0 context.Context, arg1 model.InstitutionID, arg2 int64) error {
+func (s *timedInstitutionStore) Archive(ctx context.Context, id model.InstitutionID, archiveAt time.Time) error {
 	return timeStoreCall0(s.layer, storeOperation(aggregateInstitution, methodArchive), func() error {
-		return s.next.Archive(arg0, arg1, arg2)
+		return s.next.Archive(ctx, id, archiveAt)
 	})
 }
 
@@ -2210,9 +2210,9 @@ func (s *timedUserStore) SetDisabled(arg0 context.Context, arg1 *store.UserDisab
 	})
 }
 
-func (s *timedUserStore) UpdateLastLogin(arg0 context.Context, arg1 model.UserID, arg2 int64) error {
+func (s *timedUserStore) UpdateLastLogin(ctx context.Context, userID model.UserID, at time.Time) error {
 	return timeStoreCall0(s.layer, storeOperation(aggregateUser, methodUpdateLastLogin), func() error {
-		return s.next.UpdateLastLogin(arg0, arg1, arg2)
+		return s.next.UpdateLastLogin(ctx, userID, at)
 	})
 }
 
@@ -2684,9 +2684,9 @@ func (s *timedUserTokenStore) GetByHash(arg0 context.Context, arg1 string, arg2 
 	})
 }
 
-func (s *timedUserTokenStore) ConsumeEmailVerification(arg0 context.Context, arg1 string, arg2 int64, arg3 *model.AuditEvent) (*store.EmailVerificationResult, error) {
+func (s *timedUserTokenStore) ConsumeEmailVerification(ctx context.Context, tokenHash string, consumedAt time.Time, auditEvent *model.AuditEvent) (*store.EmailVerificationResult, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateUserToken, methodConsumeEmailVerification), func() (*store.EmailVerificationResult, error) {
-		return s.next.ConsumeEmailVerification(arg0, arg1, arg2, arg3)
+		return s.next.ConsumeEmailVerification(ctx, tokenHash, consumedAt, auditEvent)
 	})
 }
 
@@ -3008,9 +3008,9 @@ func (s *timedMFAStore) Activate(arg0 context.Context, arg1 *store.MFAActivation
 	})
 }
 
-func (s *timedMFAStore) ConsumeSecondFactor(arg0 context.Context, arg1 model.UserID, arg2 int64, arg3 string, arg4 int64) error {
+func (s *timedMFAStore) ConsumeSecondFactor(ctx context.Context, userID model.UserID, timeStep int64, recoveryCodeHash string, consumedAt time.Time) error {
 	return timeStoreCall0(s.layer, storeOperation(aggregateMFA, methodConsumeSecondFactor), func() error {
-		return s.next.ConsumeSecondFactor(arg0, arg1, arg2, arg3, arg4)
+		return s.next.ConsumeSecondFactor(ctx, userID, timeStep, recoveryCodeHash, consumedAt)
 	})
 }
 
@@ -3080,9 +3080,9 @@ func (s *timedAffiliationStore) ListByUser(arg0 context.Context, arg1 model.User
 	})
 }
 
-func (s *timedAffiliationStore) ListActiveByUser(arg0 context.Context, arg1 model.UserID, arg2 int64) ([]*model.Affiliation, error) {
+func (s *timedAffiliationStore) ListActiveByUser(ctx context.Context, userID model.UserID, at time.Time) ([]*model.Affiliation, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateAffiliation, methodListActiveByUser), func() ([]*model.Affiliation, error) {
-		return s.next.ListActiveByUser(arg0, arg1, arg2)
+		return s.next.ListActiveByUser(ctx, userID, at)
 	})
 }
 
@@ -3116,9 +3116,9 @@ func (s *timedAcademicUnitMemberStore) ListByUser(arg0 context.Context, arg1 mod
 	})
 }
 
-func (s *timedAcademicUnitMemberStore) ListByAcademicUnit(arg0 context.Context, arg1 model.AcademicUnitID, arg2 int64) ([]*model.AcademicUnitMember, error) {
+func (s *timedAcademicUnitMemberStore) ListByAcademicUnit(ctx context.Context, academicUnitID model.AcademicUnitID, at time.Time) ([]*model.AcademicUnitMember, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateAcademicUnitMember, methodListByAcademicUnit), func() ([]*model.AcademicUnitMember, error) {
-		return s.next.ListByAcademicUnit(arg0, arg1, arg2)
+		return s.next.ListByAcademicUnit(ctx, academicUnitID, at)
 	})
 }
 
@@ -3158,9 +3158,9 @@ func (s *timedClassMemberStore) ListByUser(arg0 context.Context, arg1 model.User
 	})
 }
 
-func (s *timedClassMemberStore) ListByClass(arg0 context.Context, arg1 model.ClassID, arg2 int64) ([]*model.ClassMember, error) {
+func (s *timedClassMemberStore) ListByClass(ctx context.Context, classID model.ClassID, at time.Time) ([]*model.ClassMember, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateClassMember, methodListByClass), func() ([]*model.ClassMember, error) {
-		return s.next.ListByClass(arg0, arg1, arg2)
+		return s.next.ListByClass(ctx, classID, at)
 	})
 }
 
@@ -3170,9 +3170,9 @@ func (s *timedClassMemberStore) ListPageByClass(arg0 context.Context, arg1 store
 	})
 }
 
-func (s *timedClassMemberStore) ListActiveByUser(arg0 context.Context, arg1 model.UserID, arg2 int64) ([]*model.ClassMember, error) {
+func (s *timedClassMemberStore) ListActiveByUser(ctx context.Context, userID model.UserID, at time.Time) ([]*model.ClassMember, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateClassMember, methodListActiveByUser), func() ([]*model.ClassMember, error) {
-		return s.next.ListActiveByUser(arg0, arg1, arg2)
+		return s.next.ListActiveByUser(ctx, userID, at)
 	})
 }
 
@@ -3182,9 +3182,9 @@ func (s *timedClassMemberStore) SeedEnroll(arg0 context.Context, arg1 *model.Cla
 	})
 }
 
-func (s *timedClassMemberStore) SeedEnd(arg0 context.Context, arg1 model.ClassMemberID, arg2 int64, arg3 int64) (*model.ClassMember, error) {
+func (s *timedClassMemberStore) SeedEnd(ctx context.Context, id model.ClassMemberID, expectedRevision int64, endAt time.Time) (*model.ClassMember, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateClassMember, methodSeedEnd), func() (*model.ClassMember, error) {
-		return s.next.SeedEnd(arg0, arg1, arg2, arg3)
+		return s.next.SeedEnd(ctx, id, expectedRevision, endAt)
 	})
 }
 
@@ -3266,9 +3266,9 @@ func (s *timedSessionStore) EnforceExpiry(arg0 context.Context, arg1 model.Sessi
 	})
 }
 
-func (s *timedSessionStore) Withdraw(arg0 context.Context, arg1 model.SessionID, arg2 model.UserID, arg3 int64, arg4 model.SessionRevocationReason) ([]string, error) {
+func (s *timedSessionStore) Withdraw(ctx context.Context, id model.SessionID, userID model.UserID, revokedAt time.Time, reason model.SessionRevocationReason) ([]string, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateSession, methodWithdraw), func() ([]string, error) {
-		return s.next.Withdraw(arg0, arg1, arg2, arg3, arg4)
+		return s.next.Withdraw(ctx, id, userID, revokedAt, reason)
 	})
 }
 
@@ -3422,9 +3422,9 @@ func (s *timedAuditStore) Get(arg0 context.Context, arg1 model.AuditEventID) (*m
 	})
 }
 
-func (s *timedAuditStore) Complete(arg0 context.Context, arg1 model.AuditEventID, arg2 model.AuditStatus, arg3 string, arg4 []byte, arg5 int64) (*model.AuditEvent, error) {
+func (s *timedAuditStore) Complete(ctx context.Context, id model.AuditEventID, status model.AuditStatus, errorCode string, result []byte, updateAt time.Time) (*model.AuditEvent, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateAudit, methodComplete), func() (*model.AuditEvent, error) {
-		return s.next.Complete(arg0, arg1, arg2, arg3, arg4, arg5)
+		return s.next.Complete(ctx, id, status, errorCode, result, updateAt)
 	})
 }
 
@@ -3608,9 +3608,9 @@ func (s *timedClusterDiscoveryStore) Upsert(arg0 context.Context, arg1 *store.Cl
 	})
 }
 
-func (s *timedClusterDiscoveryStore) ListLive(arg0 context.Context, arg1 int64) ([]*store.ClusterDiscoveryNode, error) {
+func (s *timedClusterDiscoveryStore) ListLive(ctx context.Context, liveAt time.Time) ([]*store.ClusterDiscoveryNode, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateClusterDiscovery, methodListLive), func() ([]*store.ClusterDiscoveryNode, error) {
-		return s.next.ListLive(arg0, arg1)
+		return s.next.ListLive(ctx, liveAt)
 	})
 }
 
@@ -3620,9 +3620,9 @@ func (s *timedClusterDiscoveryStore) Delete(arg0 context.Context, arg1 string) e
 	})
 }
 
-func (s *timedClusterDiscoveryStore) DeleteExpired(arg0 context.Context, arg1 int64) (int64, error) {
+func (s *timedClusterDiscoveryStore) DeleteExpired(ctx context.Context, expiredAt time.Time) (int64, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateClusterDiscovery, methodDeleteExpired), func() (int64, error) {
-		return s.next.DeleteExpired(arg0, arg1)
+		return s.next.DeleteExpired(ctx, expiredAt)
 	})
 }
 

@@ -59,7 +59,7 @@ func testSessionListByUserPages(t *testing.T, ss store.Store) {
 		session, _, _ := saveSession(t, ctx, ss, user.ID.String(), 10)
 		saved = append(saved, session)
 	}
-	_, err := ss.Session().Withdraw(ctx, saved[1].ID, user.ID, model.GetMillis()+1, model.SessionRevocationInactiveUser)
+	_, err := ss.Session().Withdraw(ctx, saved[1].ID, user.ID, model.NowUTC().Add(1*time.Millisecond), model.SessionRevocationInactiveUser)
 	require.NoError(t, err)
 
 	var paged []model.SessionID
@@ -128,7 +128,7 @@ func testSessionPurgeRetired(t *testing.T, ss store.Store) {
 	user := saveUser(t, ctx, ss)
 	retired, _, retiredRaw := saveSession(t, ctx, ss, user.ID.String(), 10)
 	live, _, liveRaw := saveSession(t, ctx, ss, user.ID.String(), 10)
-	_, err = ss.Session().Withdraw(ctx, retired.ID, user.ID, model.GetMillis(), model.SessionRevocationInactiveUser)
+	_, err = ss.Session().Withdraw(ctx, retired.ID, user.ID, model.NowUTC(), model.SessionRevocationInactiveUser)
 	require.NoError(t, err)
 
 	// Within the grace nothing is deleted.
@@ -204,7 +204,7 @@ func testSelfSessionRevocationsWithAudit(t *testing.T, ss store.Store) {
 		t.Run(string(reason), func(t *testing.T) {
 			user := saveUser(t, ctx, ss)
 			session, _, raw := saveSession(t, ctx, ss, user.ID.String(), 10)
-			at := model.GetMillis() + 100
+			at := model.NowUTC().Add(100 * time.Millisecond)
 			revoke := func(auditID model.AuditEventID) (*store.SessionRevocationResult, bool, error) {
 				if reason == model.SessionRevocationUserAllSessions {
 					input := &store.UserSessionsRevocation{UserID: user.ID, RevokedAt: at, Reason: reason, AuditEventID: auditID, AuditAt: at}
@@ -235,15 +235,15 @@ func testSelfSessionRevocationsWithAudit(t *testing.T, ss store.Store) {
 			require.NoError(t, err)
 			require.False(t, noop, "self revocation = %#v, no-op", result)
 			require.NotNil(t, result.Session, "self revocation = %#v, no-op", result)
-			require.Equal(t, at, result.Session.RevokedAt.Millis(), "self revocation = %#v, no-op", result)
+			require.True(t, at.Equal(result.Session.RevokedAt.Time), "self revocation = %#v, no-op", result)
 			require.Len(t, result.TokenHashes, 2, "self revocation = %#v, no-op", result)
 			audit, err := ss.Audit().Get(ctx, attempt.ID)
 			require.NoError(t, err)
 			require.Equal(t, model.AuditStatusSuccess, audit.Status)
 			credential, revoked, err := ss.SessionCredential().GetSessionByTokenHash(ctx, model.HashToken(raw.access), model.SessionCredentialAccess)
 			require.NoError(t, err)
-			require.Equal(t, at, credential.RevokedAt.Millis(), "audit succeeded without atomic credential-family revocation")
-			require.Equal(t, at, revoked.RevokedAt.Millis(), "audit succeeded without atomic credential-family revocation")
+			require.True(t, at.Equal(credential.RevokedAt.Time), "audit succeeded without atomic credential-family revocation")
+			require.True(t, at.Equal(revoked.RevokedAt.Time), "audit succeeded without atomic credential-family revocation")
 
 			repeatAttempt := saveSessionAuditAttempt(t, ctx, ss, user.ID.String())
 			repeat, noop, err := revoke(repeatAttempt.ID)
@@ -412,7 +412,7 @@ func testSessionRevoke(t *testing.T, ss store.Store) {
 	before, err := ss.Mail().ListDeliveries(ctx, store.MailDeliveryListOptions{Limit: 200})
 	require.NoError(t, err)
 	session, _, raw := saveSession(t, ctx, ss, user.ID.String(), 10)
-	at := model.GetMillis() + 100
+	at := model.NowUTC().Add(100 * time.Millisecond)
 	other := saveUser(t, ctx, ss)
 	_, err = ss.Session().Withdraw(ctx, session.ID, user.ID, at, model.SessionRevocationUserLogout)
 	require.ErrorAs(t, err, new(*store.ErrInvalidInput))
@@ -430,10 +430,10 @@ func testSessionRevoke(t *testing.T, ss store.Store) {
 		model.SessionCredentialAccess,
 	)
 	require.NoError(t, err)
-	require.Equal(t, at, credential.RevokedAt.Millis(), "revoked credential=%#v session=%#v", credential, got)
-	require.Equal(t, at, got.RevokedAt.Millis(), "revoked credential=%#v session=%#v", credential, got)
+	require.True(t, at.Equal(credential.RevokedAt.Time), "revoked credential=%#v session=%#v", credential, got)
+	require.True(t, at.Equal(got.RevokedAt.Time), "revoked credential=%#v session=%#v", credential, got)
 	require.Equal(t, model.SessionRevocationInactiveUser, got.RevocationReason, "revoked credential=%#v session=%#v", credential, got)
-	active, err := ss.Session().ListActiveByUser(ctx, user.ID, model.TimeFromMillis(at))
+	active, err := ss.Session().ListActiveByUser(ctx, user.ID, model.TimeUTC(at))
 	require.NoError(t, err)
 	require.Empty(t, active)
 	after, err := ss.Mail().ListDeliveries(ctx, store.MailDeliveryListOptions{Limit: 200})
@@ -445,7 +445,7 @@ func testSessionRevokeWithAudit(t *testing.T, ss store.Store) {
 	ctx := context.Background()
 	user := saveUser(t, ctx, ss)
 	session, _, raw := saveSession(t, ctx, ss, user.ID.String(), 10)
-	at := model.GetMillis() + 100
+	at := model.NowUTC().Add(100 * time.Millisecond)
 
 	missingAuditCommand := sessionRevocationWithNotice(t, &store.SessionRevocation{
 		SessionID: session.ID, UserID: user.ID, RevokedAt: at,
@@ -471,7 +471,7 @@ func testSessionRevokeWithAudit(t *testing.T, ss store.Store) {
 	})
 	result, err := ss.Session().Revoke(ctx, command)
 	require.NoError(t, err)
-	require.Equal(t, at, result.Session.RevokedAt.Millis())
+	require.True(t, at.Equal(result.Session.RevokedAt.Time))
 	require.Len(t, result.TokenHashes, 2)
 	delivery, getErr := ss.Mail().GetDelivery(ctx, command.Delivery.ID)
 	require.NoError(t, getErr, "administrative revoke notice = %#v", delivery)
@@ -483,8 +483,8 @@ func testSessionRevokeWithAudit(t *testing.T, ss store.Store) {
 		ctx, model.HashToken(raw.access), model.SessionCredentialAccess,
 	)
 	require.NoError(t, err)
-	require.Equal(t, at, revokedCredential.RevokedAt.Millis(), "revoked credential=%#v session=%#v", revokedCredential, got)
-	require.Equal(t, at, got.RevokedAt.Millis(), "revoked credential=%#v session=%#v", revokedCredential, got)
+	require.True(t, at.Equal(revokedCredential.RevokedAt.Time), "revoked credential=%#v session=%#v", revokedCredential, got)
+	require.True(t, at.Equal(got.RevokedAt.Time), "revoked credential=%#v session=%#v", revokedCredential, got)
 }
 
 func testSessionRevokeAllForUser(t *testing.T, ss store.Store) {
@@ -494,7 +494,7 @@ func testSessionRevokeAllForUser(t *testing.T, ss store.Store) {
 	second, _, _ := saveSession(t, ctx, ss, user.ID.String(), 10)
 	other := saveUser(t, ctx, ss)
 	otherSession, _, _ := saveSession(t, ctx, ss, other.ID.String(), 10)
-	at := model.GetMillis() + 100
+	at := model.NowUTC().Add(100 * time.Millisecond)
 	revocation, err := RevokeAllUserSessions(ctx, ss, user.ID, at)
 	require.NoError(t, err)
 	require.Len(t, revocation.TokenHashes, 4)
@@ -502,7 +502,7 @@ func testSessionRevokeAllForUser(t *testing.T, ss store.Store) {
 	for _, id := range []string{first.ID.String(), second.ID.String()} {
 		got, getErr := ss.Session().Get(ctx, model.SessionID(id))
 		require.NoError(t, getErr)
-		require.Equal(t, at, got.RevokedAt.Millis(), "session %s not revoked: %#v", id, got)
+		require.True(t, at.Equal(got.RevokedAt.Time), "session %s not revoked: %#v", id, got)
 	}
 	gotOther, err := ss.Session().Get(ctx, otherSession.ID)
 	require.NoError(t, err)
@@ -514,7 +514,7 @@ func testSessionRevokeAllForUserWithAudit(t *testing.T, ss store.Store) {
 	user := saveUser(t, ctx, ss)
 	first, _, firstRaw := saveSession(t, ctx, ss, user.ID.String(), 10)
 	second, _, _ := saveSession(t, ctx, ss, user.ID.String(), 10)
-	at := model.GetMillis() + 100
+	at := model.NowUTC().Add(100 * time.Millisecond)
 
 	_, err := ss.Session().RevokeAllForUser(ctx, userSessionsRevocationWithNotice(t, &store.UserSessionsRevocation{
 		UserID: user.ID, RevokedAt: at, Reason: model.SessionRevocationAdministratorAllSessions,
@@ -549,8 +549,8 @@ func testSessionRevokeAllForUserWithAudit(t *testing.T, ss store.Store) {
 	require.Equal(t, model.AuditStatusSuccess, audit.Status)
 	replayAttempt := saveSessionAuditAttempt(t, ctx, ss, user.ID.String())
 	replay := userSessionsRevocationWithNotice(t, &store.UserSessionsRevocation{
-		UserID: user.ID, RevokedAt: at + 1, Reason: model.SessionRevocationAdministratorAllSessions,
-		AuditEventID: replayAttempt.ID, AuditAt: at + 1,
+		UserID: user.ID, RevokedAt: at.Add(1 * time.Millisecond), Reason: model.SessionRevocationAdministratorAllSessions,
+		AuditEventID: replayAttempt.ID, AuditAt: at.Add(1 * time.Millisecond),
 	})
 	replayed, replayErr := ss.Session().RevokeAllForUser(ctx, replay)
 	require.NoError(t, replayErr)
@@ -563,7 +563,7 @@ func testSessionDisabledMailRecordsTerminalAdministrativeNotice(t *testing.T, ss
 	ctx := context.Background()
 	user := saveUser(t, ctx, ss)
 	session, _, _ := saveSession(t, ctx, ss, user.ID.String(), 10)
-	at := model.GetMillis() + 100
+	at := model.NowUTC().Add(100 * time.Millisecond)
 	attempt := saveSessionAuditAttempt(t, ctx, ss, user.ID.String())
 	command := sessionRevocationWithNotice(t, &store.SessionRevocation{
 		SessionID: session.ID, UserID: user.ID, RevokedAt: at,
@@ -741,7 +741,7 @@ func testSessionConcurrentRefreshAndRevokeAll(t *testing.T, ss store.Store) {
 	user := saveUser(t, ctx, ss)
 	session, _, raw := saveSession(t, ctx, ss, user.ID.String(), 10)
 	rotateAt := session.CreatedAt.Add(time.Second)
-	revokeAt := rotateAt.Add(100 * time.Millisecond).UnixMilli()
+	revokeAt := model.TimeUTC(rotateAt.Add(100 * time.Millisecond))
 	newAccessRaw := model.NewCredentialToken()
 	start := make(chan struct{})
 	rotationResult := make(chan error, 1)
@@ -781,7 +781,7 @@ func testSessionConcurrentRefreshAndRevokeAll(t *testing.T, ss store.Store) {
 
 	got, err := ss.Session().Get(ctx, session.ID)
 	require.NoError(t, err)
-	require.Equal(t, revokeAt, got.RevokedAt.Millis())
+	require.True(t, revokeAt.Equal(got.RevokedAt.Time))
 	require.Equal(t, model.SessionRevocationUserAllSessions, got.RevocationReason)
 	active, err := ss.Session().ListActiveByUser(ctx, user.ID, rotateAt)
 	require.NoError(t, err)
@@ -793,7 +793,7 @@ func testSessionConcurrentRefreshAndRevokeAll(t *testing.T, ss store.Store) {
 			model.SessionCredentialAccess,
 		)
 		require.NoError(t, err)
-		require.Equal(t, revokeAt, credential.RevokedAt.Millis())
+		require.True(t, revokeAt.Equal(credential.RevokedAt.Time))
 	}
 }
 

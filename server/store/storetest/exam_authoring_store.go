@@ -212,7 +212,7 @@ func newExamDraftFocusLossUpdate(t *testing.T, ctx context.Context, ss store.Sto
 	require.NoError(t, err)
 	return &store.ExamDraftFocusLossUpdate{
 		ExamID: examID, ActorUserID: actorID, ExpectedRevision: expectedRevision, FocusLoss: focus,
-		UpdatedAt: model.MillisFromTime(at), AuditEventID: audit.ID, AuditAt: model.MillisFromTime(at),
+		UpdatedAt: at, AuditEventID: audit.ID, AuditAt: at,
 	}
 }
 
@@ -229,8 +229,8 @@ func newExamDraftTextUpdate(t *testing.T, ctx context.Context, ss store.Store, e
 	require.NoError(t, err)
 	return &store.ExamDraftTextUpdate{
 		ExamID: examID, ActorUserID: actorID, ExpectedRevision: expectedRevision,
-		Title: title, InstructionsMarkdown: instructions, UpdatedAt: model.MillisFromTime(at),
-		AuditEventID: audit.ID, AuditAt: model.MillisFromTime(at),
+		Title: title, InstructionsMarkdown: instructions, UpdatedAt: at,
+		AuditEventID: audit.ID, AuditAt: at,
 	}
 }
 
@@ -258,7 +258,7 @@ func newExamAuthoringCreation(t *testing.T, ctx context.Context, ss store.Store,
 	require.NoError(t, err)
 	return &store.ExamAuthoringCreation{
 		Exam: exam, Draft: draft, Manager: manager,
-		AuditEventID: audit.ID, AuditAt: model.MillisFromTime(at),
+		AuditEventID: audit.ID, AuditAt: at,
 	}
 }
 
@@ -312,7 +312,7 @@ func newExamDraftNativePolicyUpdate(t *testing.T, ctx context.Context, ss store.
 	require.NoError(t, err)
 	return &store.ExamDraftNativePolicyUpdate{
 		ExamID: examID, ActorUserID: actorID, ExpectedRevision: expectedRevision, NativePolicy: native,
-		UpdatedAt: model.MillisFromTime(at), AuditEventID: audit.ID, AuditAt: model.MillisFromTime(at),
+		UpdatedAt: at, AuditEventID: audit.ID, AuditAt: at,
 	}
 }
 

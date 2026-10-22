@@ -70,7 +70,7 @@ func (s *Service) StartExamAttemptBrowserActivity(ctx context.Context, invocatio
 		return model.BrowserSourceStatus{}, err
 	}
 	input.AuditEventID = auditID
-	input.AuditAt = model.MillisFromTime(s.deps.Now())
+	input.AuditAt = s.deps.Now()
 	status, err := s.deps.Persistence.StartBrowserActivity(ctx, input)
 	if err != nil {
 		var refusal *store.BrowserSourceRefusal
@@ -113,7 +113,7 @@ func (s *Service) AppendExamAttemptBrowserActivity(ctx context.Context, invocati
 	if err != nil {
 		return model.BrowserActivityAcknowledgement{}, err
 	}
-	acknowledgement, err := s.deps.Persistence.AppendBrowserActivity(ctx, &store.BrowserActivityAppend{Access: access, AuditEventID: auditID, AuditAt: model.MillisFromTime(s.deps.Now()),
+	acknowledgement, err := s.deps.Persistence.AppendBrowserActivity(ctx, &store.BrowserActivityAppend{Access: access, AuditEventID: auditID, AuditAt: s.deps.Now(),
 		ParticipationID: command.ParticipationID, Generation: command.Generation, SourceSessionID: command.SourceSessionID, PolicyRevisionID: command.PolicyRevisionID, PolicyDigest: command.PolicyDigest, Events: events})
 	deliveryAccess := store.BrowserDeliveryAccess{Access: access, ParticipationID: command.ParticipationID, SourceSessionID: command.SourceSessionID}
 	if err != nil {

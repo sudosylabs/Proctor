@@ -607,7 +607,7 @@ func (s *Service) ReallowExamAttempt(ctx context.Context, invocation invocation.
 	stored, err := s.deps.Persistence.ReallowAttempt(ctx, &store.ExamAttemptReallow{
 		ExamID: command.ExamID, SittingID: command.SittingID, AttemptID: command.AttemptID, SuspensionID: command.SuspensionID,
 		ActorUserID: principal.UserID, ManagerOverride: override, ExpectedAttemptRevision: command.ExpectedAttemptRevision,
-		PrivateReason: command.PrivateReason, AuditEventID: auditID, AuditAt: model.MillisFromTime(at),
+		PrivateReason: command.PrivateReason, AuditEventID: auditID, AuditAt: at,
 	}, idempotency)
 	if err != nil {
 		return ReallowResult{}, s.failAudit(ctx, auditID, err)
@@ -706,7 +706,7 @@ func (s *Service) expireParticipation(ctx context.Context, due store.ExamAttempt
 	stored, err := s.deps.Persistence.ExpireParticipation(ctx, &store.ExamAttemptParticipationExpiry{
 		AttemptID: due.AttemptID, ParticipationID: due.ParticipationID, Generation: due.Generation,
 		EvidenceID: s.deps.NewEvidence(), FlagID: s.deps.NewFlag(), SuspensionID: s.deps.NewSuspension(),
-		AuditEventID: auditID, AuditAt: model.MillisFromTime(at),
+		AuditEventID: auditID, AuditAt: at,
 	})
 	if err != nil {
 		mapped := storeError(storeErrors, err)
@@ -967,7 +967,7 @@ func (s *Service) ConnectExamAttempt(ctx context.Context, invocation invocation.
 		InitialConfiguration:               cloneAttemptConfigurationPointer(command.InitialConfiguration),
 		DesktopBuild:                       build.Build,
 		DesktopCompatibilityPolicyRevision: build.CompatibilityPolicyRevision,
-		AuditEventID:                       auditID, AuditAt: model.MillisFromTime(at),
+		AuditEventID:                       auditID, AuditAt: at,
 	}, idempotency)
 	if err != nil {
 		return ConnectionResult{}, s.failAudit(ctx, auditID, err)
@@ -1041,7 +1041,7 @@ func (s *Service) CloseExamAttemptConnection(ctx context.Context, invocation inv
 	stored, err := s.deps.Persistence.CloseConnection(ctx, &store.ExamAttemptConnectionClose{
 		ConnectionID: command.ConnectionID, CandidateUserID: invocation.Principal().UserID, SessionID: invocation.Principal().SessionID,
 		Reason: command.Reason, AuditEventID: auditID,
-		AuditAt: model.MillisFromTime(model.TimeUTC(s.deps.Now())),
+		AuditAt: model.TimeUTC(s.deps.Now()),
 	})
 	if err != nil {
 		return ConnectionClosedResult{}, s.failAudit(ctx, auditID, err)

@@ -42,7 +42,7 @@ type ProfilePicturePublication struct {
 	Renditions           []model.FileRendition
 	ChangedAt            time.Time
 	AuditEventID         model.AuditEventID
-	AuditAt              int64
+	AuditAt              time.Time
 }
 
 type ProfilePicturePublicationResult struct {
@@ -86,7 +86,7 @@ type ProfilePictureRemoval struct {
 	ExpectedSHA256            string
 	ChangedAt                 time.Time
 	AuditEventID              model.AuditEventID
-	AuditAt                   int64
+	AuditAt                   time.Time
 }
 
 type FilePurgeCandidateKind string

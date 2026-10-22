@@ -376,11 +376,11 @@ func (noopServingNodeLeaseStore) Delete(context.Context, string, string) error {
 func (noopClusterDiscovery) Upsert(context.Context, *store.ClusterDiscoveryNode) error {
 	return nil
 }
-func (noopClusterDiscovery) ListLive(context.Context, int64) ([]*store.ClusterDiscoveryNode, error) {
+func (noopClusterDiscovery) ListLive(context.Context, time.Time) ([]*store.ClusterDiscoveryNode, error) {
 	return nil, nil
 }
 func (noopClusterDiscovery) Delete(context.Context, string) error { return nil }
-func (noopClusterDiscovery) DeleteExpired(context.Context, int64) (int64, error) {
+func (noopClusterDiscovery) DeleteExpired(context.Context, time.Time) (int64, error) {
 	return 0, nil
 }
 func (s *LifecycleStore) Ping(context.Context) error                      { return nil }

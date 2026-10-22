@@ -15,6 +15,7 @@ package storetest
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -84,7 +85,7 @@ func testClassStoreMutationAuditAtomicity(t *testing.T, ss store.Store) {
 		DisplayName:      "Audited Class",
 	}
 	candidate.PrepareCreate(model.ClassID(model.NewID()), model.NowUTC())
-	created, err := ss.Class().Create(ctx, &store.ClassCreation{Class: candidate, AuditEventID: createAttempt.ID, AuditAt: model.GetMillis()})
+	created, err := ss.Class().Create(ctx, &store.ClassCreation{Class: candidate, AuditEventID: createAttempt.ID, AuditAt: model.NowUTC()})
 	require.NoError(t, err)
 	completed, err := ss.Audit().Get(ctx, createAttempt.ID)
 	require.NoError(t, err)
@@ -97,7 +98,7 @@ func testClassStoreMutationAuditAtomicity(t *testing.T, ss store.Store) {
 		DisplayName:      "Rolled Back",
 	}
 	rolledBackCreate.PrepareCreate(model.ClassID(model.NewID()), model.NowUTC())
-	_, err = ss.Class().Create(ctx, &store.ClassCreation{Class: rolledBackCreate, AuditEventID: model.NewAuditEventID(), AuditAt: model.GetMillis()})
+	_, err = ss.Class().Create(ctx, &store.ClassCreation{Class: rolledBackCreate, AuditEventID: model.NewAuditEventID(), AuditAt: model.NowUTC()})
 	require.Error(t, err, "Create() succeeded without audit attempt")
 	_, err = ss.Class().Get(ctx, rolledBackCreate.ID)
 	require.True(t, store.IsNotFound(err), "create survived rollback")
@@ -106,7 +107,7 @@ func testClassStoreMutationAuditAtomicity(t *testing.T, ss store.Store) {
 	updatedCandidate := *created
 	updatedCandidate.DisplayName = "Updated Class"
 	updatedCandidate.PrepareUpdate(created.UpdatedAt.Add(1_000_000)) // 1ms
-	updated, err := ss.Class().Update(ctx, &store.ClassUpdate{Class: &updatedCandidate, ExpectedAcademicUnitID: fixture.programme.AcademicUnitID, ExpectedRevision: created.Revision, AuditEventID: updateAttempt.ID, AuditAt: model.GetMillis()})
+	updated, err := ss.Class().Update(ctx, &store.ClassUpdate{Class: &updatedCandidate, ExpectedAcademicUnitID: fixture.programme.AcademicUnitID, ExpectedRevision: created.Revision, AuditEventID: updateAttempt.ID, AuditAt: model.NowUTC()})
 	require.NoError(t, err)
 	require.Equal(t, created.Revision+1, updated.Revision, "update revision")
 	staleLegacy := *created
@@ -117,27 +118,27 @@ func testClassStoreMutationAuditAtomicity(t *testing.T, ss store.Store) {
 	staleCandidate := *updated
 	staleCandidate.DisplayName = "Stale Update"
 	staleCandidate.PrepareUpdate(updated.UpdatedAt.Add(1_000_000))
-	_, err = ss.Class().Update(ctx, &store.ClassUpdate{Class: &staleCandidate, ExpectedAcademicUnitID: fixture.programme.AcademicUnitID, ExpectedRevision: created.Revision, AuditEventID: staleAttempt.ID, AuditAt: model.GetMillis()})
+	_, err = ss.Class().Update(ctx, &store.ClassUpdate{Class: &staleCandidate, ExpectedAcademicUnitID: fixture.programme.AcademicUnitID, ExpectedRevision: created.Revision, AuditEventID: staleAttempt.ID, AuditAt: model.NowUTC()})
 	require.True(t, store.IsConflict(err), "stale Update() error")
 	wrongOwnerAttempt := saveClassAuditAttempt(t, ctx, ss, fixture.programme.AcademicUnitID.String())
-	_, err = ss.Class().Archive(ctx, &store.ClassArchive{ID: updated.ID, ExpectedAcademicUnitID: model.NewAcademicUnitID(), ExpectedRevision: updated.Revision, ArchiveAt: model.MillisFromTime(updated.UpdatedAt) + 1, AuditEventID: wrongOwnerAttempt.ID, AuditAt: model.GetMillis()})
+	_, err = ss.Class().Archive(ctx, &store.ClassArchive{ID: updated.ID, ExpectedAcademicUnitID: model.NewAcademicUnitID(), ExpectedRevision: updated.Revision, ArchiveAt: updated.UpdatedAt.Add(1 * time.Millisecond), AuditEventID: wrongOwnerAttempt.ID, AuditAt: model.NowUTC()})
 	require.True(t, store.IsConflict(err), "wrong-owner Archive() error")
 	rolledBack := *updated
 	rolledBack.DisplayName = "Must Roll Back"
 	rolledBack.PrepareUpdate(updated.UpdatedAt.Add(1_000_000))
-	_, err = ss.Class().Update(ctx, &store.ClassUpdate{Class: &rolledBack, ExpectedAcademicUnitID: fixture.programme.AcademicUnitID, ExpectedRevision: updated.Revision, AuditEventID: model.NewAuditEventID(), AuditAt: model.GetMillis()})
+	_, err = ss.Class().Update(ctx, &store.ClassUpdate{Class: &rolledBack, ExpectedAcademicUnitID: fixture.programme.AcademicUnitID, ExpectedRevision: updated.Revision, AuditEventID: model.NewAuditEventID(), AuditAt: model.NowUTC()})
 	require.Error(t, err, "Update() succeeded without audit attempt")
 	persisted, err := ss.Class().Get(ctx, updated.ID)
 	require.NoError(t, err)
 	require.Equal(t, updated.DisplayName, persisted.DisplayName)
 
 	archiveAttempt := saveClassAuditAttempt(t, ctx, ss, fixture.programme.AcademicUnitID.String())
-	archived, err := ss.Class().Archive(ctx, &store.ClassArchive{ID: updated.ID, ExpectedAcademicUnitID: fixture.programme.AcademicUnitID, ExpectedRevision: updated.Revision, ArchiveAt: model.MillisFromTime(updated.UpdatedAt) + 1, AuditEventID: archiveAttempt.ID, AuditAt: model.GetMillis()})
+	archived, err := ss.Class().Archive(ctx, &store.ClassArchive{ID: updated.ID, ExpectedAcademicUnitID: fixture.programme.AcademicUnitID, ExpectedRevision: updated.Revision, ArchiveAt: updated.UpdatedAt.Add(1 * time.Millisecond), AuditEventID: archiveAttempt.ID, AuditAt: model.NowUTC()})
 	require.NoError(t, err)
 	require.Equal(t, updated.Revision+1, archived.Revision, "archive revision")
 	require.True(t, archived.IsArchived())
 	archiveRollback := saveClass(t, ctx, ss, fixture.level.ID.String(), fixture.period.ID.String(), "rolled-back-archive")
-	_, err = ss.Class().Archive(ctx, &store.ClassArchive{ID: archiveRollback.ID, ExpectedAcademicUnitID: fixture.programme.AcademicUnitID, ExpectedRevision: archiveRollback.Revision, ArchiveAt: model.GetMillis(), AuditEventID: model.NewAuditEventID(), AuditAt: model.GetMillis()})
+	_, err = ss.Class().Archive(ctx, &store.ClassArchive{ID: archiveRollback.ID, ExpectedAcademicUnitID: fixture.programme.AcademicUnitID, ExpectedRevision: archiveRollback.Revision, ArchiveAt: model.NowUTC(), AuditEventID: model.NewAuditEventID(), AuditAt: model.NowUTC()})
 	require.Error(t, err, "Archive() succeeded without audit attempt")
 	_, err = ss.Class().Get(ctx, archiveRollback.ID)
 	require.NoError(t, err)
@@ -171,7 +172,7 @@ func testClassStoreSearchAndArchive(t *testing.T, ss store.Store) {
 		require.Len(t, found, 1, "SearchByAcademicUnit(%q)", query)
 		require.Equal(t, class.ID, found[0].ID, "SearchByAcademicUnit(%q)", query)
 	}
-	archived, err := ArchiveClass(ctx, ss, class.ID, model.GetMillis())
+	archived, err := ArchiveClass(ctx, ss, class.ID, model.NowUTC())
 	require.NoError(t, err)
 	require.True(t, archived.IsArchived())
 }

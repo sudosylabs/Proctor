@@ -50,7 +50,7 @@ func (r browserSourceRefusalRecord) Validate() error {
 // different declaration under the same source ID is a conflict, and a refusal
 // is returned as *store.BrowserSourceRefusal.
 func (s *SQLExamAttemptStore) StartBrowserActivity(ctx context.Context, input *store.BrowserActivitySourceStart) (*model.BrowserSourceStatus, error) {
-	if input == nil || input.Declaration().Validate() != nil || !input.AuditEventID.IsValid() || input.AuditAt <= 0 {
+	if input == nil || input.Declaration().Validate() != nil || !input.AuditEventID.IsValid() || input.AuditAt.IsZero() {
 		return nil, store.NewErrInvalidInput("browser_activity", "source_start", nil)
 	}
 	canonical, _ := input.Declaration().Canonical()
@@ -311,7 +311,7 @@ func closeBrowserSource(ctx context.Context, tx *sqlxTxWrapper, id model.Browser
 	}
 	// The millisecond closure instant never precedes the microsecond start,
 	// whose clock may lead the closing lifecycle's instant.
-	closure, err := closure.Close(false, reason, max(row.Allocated, row.Seen), transitionInstant(at, row.Started), nil)
+	closure, err := closure.Close(false, reason, max(row.Allocated, row.Seen), deliveryTransitionInstant(at, row.Started), nil)
 	if err != nil {
 		return err
 	}

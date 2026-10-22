@@ -306,7 +306,7 @@ func (s *Service) finalize(ctx context.Context, invocation invocation.Invocation
 		return store.ExamResourceRecord{}, err
 	}
 	at := model.TimeUTC(s.deps.Now())
-	result, err := s.deps.Persistence.FinalizeUpload(ctx, &store.ExamResourceUploadFinalization{ExamID: resource.ExamID, ActorUserID: invocation.Principal().UserID, ManagerOverride: authorization.override, ExpectedDraftRevision: expected, Resource: resource, LeaseID: leaseID, Rendition: rendition, ChangedAt: at, AuditEventID: auditID, AuditAt: model.MillisFromTime(at)}, idempotency)
+	result, err := s.deps.Persistence.FinalizeUpload(ctx, &store.ExamResourceUploadFinalization{ExamID: resource.ExamID, ActorUserID: invocation.Principal().UserID, ManagerOverride: authorization.override, ExpectedDraftRevision: expected, Resource: resource, LeaseID: leaseID, Rendition: rendition, ChangedAt: at, AuditEventID: auditID, AuditAt: at}, idempotency)
 	if err != nil {
 		return store.ExamResourceRecord{}, s.failAudit(ctx, auditID, err)
 	}
@@ -387,7 +387,7 @@ func (s *Service) metadataMutation(ctx context.Context, invocation invocation.In
 	if c.DescriptionMarkdown != nil {
 		descriptionMarkdown = *c.DescriptionMarkdown
 	}
-	result, err := s.deps.Persistence.UpdateMetadata(ctx, &store.ExamResourceMetadataUpdate{ExamID: c.ExamID, ActorUserID: invocation.Principal().UserID, ManagerOverride: authorization.override, ExpectedDraftRevision: c.ExpectedDraftRevision, ResourceID: c.ResourceID, DisplayName: displayName, DescriptionMarkdown: descriptionMarkdown, ChangedAt: at, AuditEventID: auditID, AuditAt: model.MillisFromTime(at)}, idempotency)
+	result, err := s.deps.Persistence.UpdateMetadata(ctx, &store.ExamResourceMetadataUpdate{ExamID: c.ExamID, ActorUserID: invocation.Principal().UserID, ManagerOverride: authorization.override, ExpectedDraftRevision: c.ExpectedDraftRevision, ResourceID: c.ResourceID, DisplayName: displayName, DescriptionMarkdown: descriptionMarkdown, ChangedAt: at, AuditEventID: auditID, AuditAt: at}, idempotency)
 	if err != nil {
 		return store.ExamResourceRecord{}, s.failAudit(ctx, auditID, err)
 	}
@@ -457,7 +457,7 @@ func (s *Service) ReorderExamResources(ctx context.Context, invocation invocatio
 	if err != nil {
 		return nil, err
 	}
-	result, err := s.deps.Persistence.Reorder(ctx, &store.ExamResourceReorder{ExamID: c.ExamID, ActorUserID: invocation.Principal().UserID, ManagerOverride: authorization.override, ExpectedDraftRevision: c.ExpectedDraftRevision, ResourceIDs: append([]model.ExamResourceID(nil), c.ResourceIDs...), ChangedAt: at, AuditEventID: auditID, AuditAt: model.MillisFromTime(at)}, idempotency)
+	result, err := s.deps.Persistence.Reorder(ctx, &store.ExamResourceReorder{ExamID: c.ExamID, ActorUserID: invocation.Principal().UserID, ManagerOverride: authorization.override, ExpectedDraftRevision: c.ExpectedDraftRevision, ResourceIDs: append([]model.ExamResourceID(nil), c.ResourceIDs...), ChangedAt: at, AuditEventID: auditID, AuditAt: at}, idempotency)
 	if err != nil {
 		return nil, s.failAudit(ctx, auditID, err)
 	}
@@ -498,7 +498,7 @@ func (s *Service) RemoveExamResource(ctx context.Context, invocation invocation.
 	if err != nil {
 		return store.ExamResourceRecord{}, err
 	}
-	result, err := s.deps.Persistence.Remove(ctx, &store.ExamResourceRemoval{ExamID: c.ExamID, ActorUserID: invocation.Principal().UserID, ManagerOverride: authorization.override, ExpectedDraftRevision: c.ExpectedDraftRevision, ResourceID: c.ResourceID, ChangedAt: at, AuditEventID: auditID, AuditAt: model.MillisFromTime(at)}, idempotency)
+	result, err := s.deps.Persistence.Remove(ctx, &store.ExamResourceRemoval{ExamID: c.ExamID, ActorUserID: invocation.Principal().UserID, ManagerOverride: authorization.override, ExpectedDraftRevision: c.ExpectedDraftRevision, ResourceID: c.ResourceID, ChangedAt: at, AuditEventID: auditID, AuditAt: at}, idempotency)
 	if err != nil {
 		return store.ExamResourceRecord{}, s.failAudit(ctx, auditID, err)
 	}

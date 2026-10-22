@@ -81,13 +81,13 @@ func TestAdministratorRecoveryStore(t *testing.T, ss store.Store, probes ...Admi
 	require.NoError(t, ss.ServingNodeLease().Delete(ctx, "stale-serving-node", restartedLeaseID))
 	preservedSession, _, raw := saveSession(t, ctx, ss, installed.Administrator.ID.String(), 10)
 	pendingMFA := savePendingMFA(t, ctx, ss, installed.Administrator.ID)
-	mfaAt := model.MillisFromTime(pendingMFA.CreatedAt) + 1
+	mfaAt := model.TimeUTC(pendingMFA.CreatedAt).Add(1 * time.Millisecond)
 	mfaAudit, mfaNotice := mfaSecurityNoticeFixture(t, ctx, ss, installed.Administrator, model.MailTemplateIdentityMFAEnabled, mfaAt)
 	_, err = ss.MFA().Activate(ctx, &store.MFAActivationMutation{
 		Principal: mfaPrincipal(t, ctx, ss, raw.access), RecentAuthenticationTTL: time.Hour,
 		CredentialID: pendingMFA.ID, UserID: installed.Administrator.ID, TimeStep: time.Now().Unix() / 30,
 		RecoveryCodes: []*model.MFARecoveryCode{{CodeHash: model.HashToken(model.NewCredentialToken())}},
-		SessionID:     preservedSession.ID, At: model.TimeFromMillis(mfaAt), AuditEventID: mfaAudit.ID, AuditAt: mfaAt,
+		SessionID:     preservedSession.ID, At: model.TimeUTC(mfaAt), AuditEventID: mfaAudit.ID, AuditAt: mfaAt,
 		Notice: mfaNotice,
 	})
 	require.NoError(t, err)

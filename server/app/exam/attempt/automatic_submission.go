@@ -107,7 +107,7 @@ func (s *Service) SealForSittingClose(ctx context.Context, system invocation.Sys
 		notice, expectedRecipientRevision = preparedMail.Notice, preparedMail.ExpectedRecipientRevision
 	}
 	stored, err := s.deps.Submissions.SealForSittingClose(ctx, &store.ExamSubmissionAutomaticSeal{
-		Target: target, SubmissionID: proposed, AuditEventID: auditID, AuditAt: model.MillisFromTime(at), Notice: notice,
+		Target: target, SubmissionID: proposed, AuditEventID: auditID, AuditAt: at, Notice: notice,
 		ExpectedRecipientRevision: expectedRecipientRevision,
 	})
 	if err != nil {

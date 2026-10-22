@@ -191,7 +191,7 @@ func (r *Records) begin(ctx context.Context, invocation invocation.Invocation, s
 		return store.ExamRecordsMutation{}, err
 	}
 	return store.ExamRecordsMutation{Scope: scope.Scope, Principal: invocation.Principal(), Action: action,
-		AuditEventID: id, AuditAt: model.MillisFromTime(model.TimeUTC(r.deps.Now()))}, nil
+		AuditEventID: id, AuditAt: model.TimeUTC(r.deps.Now())}, nil
 }
 
 func (r *Records) fail(ctx context.Context, mutation store.ExamRecordsMutation, err error) error {

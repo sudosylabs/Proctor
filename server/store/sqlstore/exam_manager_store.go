@@ -144,8 +144,8 @@ func (s SQLExamAuthoringStore) runManagerMutation(ctx context.Context, label str
 
 func prepareExamManagerMutation(input *store.ExamManagerMutation) (*store.ExamManagerMutation, error) {
 	if input == nil || !input.ExamID.IsValid() || !input.ActorUserID.IsValid() || !input.TargetUserID.IsValid() ||
-		input.ExpectedRevision < 1 || input.ChangedAt <= 0 ||
-		!input.AuditEventID.IsValid() || input.AuditAt <= 0 {
+		input.ExpectedRevision < 1 || input.ChangedAt.IsZero() ||
+		!input.AuditEventID.IsValid() || input.AuditAt.IsZero() {
 		return nil, store.NewErrInvalidInput("exam_manager", "mutation", nil)
 	}
 	prepared := *input
@@ -166,7 +166,7 @@ func addExamManager(ctx context.Context, tx *sqlxTxWrapper, input *store.ExamMan
 	if err := guardExamManagerMutation(ctx, tx, exam, actorIsManager, input, true); err != nil {
 		return nil, err
 	}
-	manager, err := model.NewExamManager(input.ExamID, input.TargetUserID, input.ActorUserID, model.TimeFromMillis(input.ChangedAt))
+	manager, err := model.NewExamManager(input.ExamID, input.TargetUserID, input.ActorUserID, model.TimeUTC(input.ChangedAt))
 	if err != nil {
 		return nil, store.NewErrInvalidInput("exam_manager", "value", nil).Wrap(err)
 	}
@@ -250,11 +250,11 @@ type examManagerMailExpectation struct {
 	key    model.MailTemplateKey
 }
 
-func insertExamManagerMail(ctx context.Context, tx *sqlxTxWrapper, notices []store.ExamManagerMail, expected []examManagerMailExpectation, at int64) error {
+func insertExamManagerMail(ctx context.Context, tx *sqlxTxWrapper, notices []store.ExamManagerMail, expected []examManagerMailExpectation, at time.Time) error {
 	if len(notices) != len(expected) {
 		return store.NewErrInvalidInput("exam_manager", "mail_count", nil)
 	}
-	when := model.TimeFromMillis(at)
+	when := model.TimeUTC(at)
 	seenUsers := make(map[model.UserID]struct{}, len(expected))
 	for index, expectation := range expected {
 		notice := notices[index]
@@ -350,7 +350,7 @@ func getExamManager(ctx context.Context, tx *sqlxTxWrapper, examID model.ExamID,
 }
 
 func completeExamManagerMutation(ctx context.Context, tx *sqlxTxWrapper, exam *model.Exam, manager *model.ExamManager, input *store.ExamManagerMutation) (*store.ExamManagerCommandResult, error) {
-	exam.UpdatedAt = latestTime(exam.UpdatedAt, model.TimeFromMillis(input.ChangedAt))
+	exam.UpdatedAt = latestTime(exam.UpdatedAt, model.TimeUTC(input.ChangedAt))
 	exam.Revision++
 	result, err := tx.Exec(ctx, `UPDATE exams SET owner_user_id = ?, updated_at = GREATEST(updated_at, ?), revision = ? WHERE id = ? AND revision = ?`,
 		exam.OwnerUserID.String(), exam.UpdatedAt, exam.Revision, exam.ID.String(), input.ExpectedRevision)

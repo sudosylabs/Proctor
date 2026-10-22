@@ -102,7 +102,7 @@ func (s *retentionPolicyService) CreateRetentionPreview(ctx context.Context, inv
 		ScopeID: inst.ID.String(), Operation: "preview", Value: map[string]any{"policy_revision": command.ExpectedPolicyRevision}}, s.deps.Now,
 		func(ctx context.Context, reference mutationAttemptReference) (*model.RetentionPreview, error) {
 			return s.deps.Lifecycle.CreatePreview(ctx, &store.RetentionPreviewCreation{
-				RetentionMutation: store.RetentionMutation{Principal: invocation.Principal(), AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis},
+				RetentionMutation: store.RetentionMutation{Principal: invocation.Principal(), AuditEventID: reference.ID, AuditAt: reference.MutationAt},
 				PreviewID:         model.NewRetentionPreviewID(), ExpectedPolicyRevision: command.ExpectedPolicyRevision}, idempotency)
 		}, retentionError)
 	if err != nil {
@@ -149,7 +149,7 @@ func (s *retentionPolicyService) ChangeRetentionControl(ctx context.Context, inv
 			"control_revision": command.ExpectedRevision, "state": string(command.State)}}, s.deps.Now,
 		func(ctx context.Context, reference mutationAttemptReference) (*store.RetentionControlResult, error) {
 			return s.deps.Lifecycle.ChangeControl(ctx, &store.RetentionControlChange{
-				RetentionMutation: store.RetentionMutation{Principal: invocation.Principal(), AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis, RecentAuthenticationTTL: s.deps.RecentAuthenticationTTL},
+				RetentionMutation: store.RetentionMutation{Principal: invocation.Principal(), AuditEventID: reference.ID, AuditAt: reference.MutationAt, RecentAuthenticationTTL: s.deps.RecentAuthenticationTTL},
 				ExpectedRevision:  command.ExpectedRevision, ExpectedPolicyRevision: command.ExpectedPolicyRevision, State: command.State, PreviewID: command.PreviewID}, idempotency)
 		}, retentionError)
 	if err != nil {

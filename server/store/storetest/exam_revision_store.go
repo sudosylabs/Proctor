@@ -300,5 +300,5 @@ func examRevisionPublication(t *testing.T, ctx context.Context, ss store.Store, 
 	audit := saveExamResourceAudit(t, ctx, ss, examID, actorID, unitID)
 	return &store.ExamRevisionPublication{RevisionID: model.NewExamRevisionID(), ExamID: examID, ActorUserID: actorID,
 		ExpectedDraftRevision: expected, Kind: model.ExamRevisionPublicationStandard, PublishedAt: at,
-		AuditEventID: audit.ID, AuditAt: model.MillisFromTime(at)}
+		AuditEventID: audit.ID, AuditAt: at}
 }

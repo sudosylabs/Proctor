@@ -127,7 +127,7 @@ func (s *onboardingImportService) DryRunStudentProgression(ctx context.Context, 
 	created, err := runStudentProgressionAuditedMutation(ctx, s.deps.Audit, invocation, "student_progression.dry_run", id.String(),
 		sourceClass.ID, destinationClass.ID, at, func(ctx context.Context, destinationReference, sourceReference mutationAttemptReference) (*store.OnboardingImport, error) {
 			return s.deps.Imports.CreateOnboardingImport(ctx, &store.OnboardingImportCreation{Import: value, ParseJob: job,
-				AuditEventID: destinationReference.ID, SourceAuditEventID: sourceReference.ID, AuditAt: destinationReference.MutationAtMillis})
+				AuditEventID: destinationReference.ID, SourceAuditEventID: sourceReference.ID, AuditAt: destinationReference.MutationAt})
 		}, studentProgressionError)
 	if err != nil {
 		return OnboardingImportView{}, err
@@ -152,7 +152,7 @@ func runStudentProgressionAuditedMutation[T any](ctx context.Context, audit muta
 				Resource: model.Resource{Type: model.ResourceClass, ID: sourceClassID.String()}, ScopeType: model.RoleScopeClass,
 				ScopeID: sourceClassID.String(), Operation: operation,
 				Value: map[string]any{"student_progression_id": progressionID, "class_id": sourceClassID.String()}}
-			return runAuditedMutation(ctx, audit, source, func() time.Time { return model.TimeFromMillis(destinationReference.MutationAtMillis) },
+			return runAuditedMutation(ctx, audit, source, func() time.Time { return model.TimeUTC(destinationReference.MutationAt) },
 				func(ctx context.Context, sourceReference mutationAttemptReference) (T, error) {
 					return mutate(ctx, destinationReference, sourceReference)
 				}, mapError)
@@ -223,7 +223,7 @@ func (s *onboardingImportService) previewProgression(ctx context.Context, id mod
 	for index, member := range members {
 		row := store.OnboardingImportRow{ImportID: id, RowNumber: index + 1, Reference: member.ID.String(), ScopeType: model.RoleScopeClass,
 			ScopeID: destinationClass.ID.String(), TargetRevision: destinationClass.Revision, UserID: member.UserID, RelationshipID: member.ID.String(),
-			RelationshipRevision: member.Revision, StartsAt: current.EffectiveAt.UnixMilli(), PreviewStatus: model.OnboardingImportRowValid,
+			RelationshipRevision: member.Revision, StartsAt: model.OptionalTimeFrom(current.EffectiveAt), PreviewStatus: model.OnboardingImportRowValid,
 			Status: model.OnboardingImportRowValid, UpdatedAt: current.CreatedAt}
 		if current.SourcePeriodID == current.DestinationPeriodID {
 			row.Operation = string(AcademicAdministrationClassTransfer)
@@ -244,7 +244,7 @@ func (s *onboardingImportService) previewProgression(ctx context.Context, id mod
 			rows = append(rows, row)
 			continue
 		}
-		affiliations, affiliationErr := s.deps.Affiliations.ListActiveByUser(ctx, member.UserID, current.EffectiveAt.UnixMilli())
+		affiliations, affiliationErr := s.deps.Affiliations.ListActiveByUser(ctx, member.UserID, current.EffectiveAt)
 		if affiliationErr != nil {
 			return affiliationErr
 		}
@@ -253,7 +253,7 @@ func (s *onboardingImportService) previewProgression(ctx context.Context, id mod
 			rows = append(rows, row)
 			continue
 		}
-		active, activeErr := s.deps.ClassMembers.ListActiveByUser(ctx, member.UserID, current.EffectiveAt.UnixMilli())
+		active, activeErr := s.deps.ClassMembers.ListActiveByUser(ctx, member.UserID, current.EffectiveAt)
 		if activeErr != nil {
 			return activeErr
 		}

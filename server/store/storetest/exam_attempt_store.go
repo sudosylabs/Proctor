@@ -92,7 +92,7 @@ func TestExamAttemptStore(t *testing.T, ss store.Store, probes ...ExamAttemptSQL
 		DPoPKeyThumbprint: ineligibleSession.DPoPKeyThumbprint, AttemptID: model.NewExamAttemptID(), WorkspaceID: model.NewExamAttemptWorkspaceID(),
 		ParticipationID: model.NewAttemptParticipationID(), ConnectionID: model.NewAttemptConnectionID(),
 		ContinuityCredentialHash: model.HashToken(model.NewCredentialToken()),
-		AuditEventID:             saveExamAttemptAudit(t, ctx, ss, ineligibleFixture).ID, AuditAt: model.GetMillis()}
+		AuditEventID:             saveExamAttemptAudit(t, ctx, ss, ineligibleFixture).ID, AuditAt: model.NowUTC()}
 	prepareExamAttemptConnect(t, ctx, ss, ineligibleInput)
 	_, err := ss.ExamAttempt().Connect(ctx, ineligibleInput,
 		examCommand(ineligible.ID, store.ExamAttemptConnectOperation, "attempt-ineligible", "attempt-ineligible"))
@@ -105,7 +105,7 @@ func TestExamAttemptStore(t *testing.T, ss store.Store, probes ...ExamAttemptSQL
 		DPoPKeyThumbprint: configurationSession.DPoPKeyThumbprint, AttemptID: model.NewExamAttemptID(),
 		WorkspaceID: model.NewExamAttemptWorkspaceID(), ParticipationID: model.NewAttemptParticipationID(),
 		ConnectionID: model.NewAttemptConnectionID(), ContinuityCredentialHash: model.HashToken(model.NewCredentialToken()),
-		AuditEventID: saveExamAttemptAudit(t, ctx, ss, configurationFixture).ID, AuditAt: model.GetMillis()}
+		AuditEventID: saveExamAttemptAudit(t, ctx, ss, configurationFixture).ID, AuditAt: model.NowUTC()}
 	prepareExamAttemptConnect(t, ctx, ss, configurationInput)
 	configurationInput.InitialConfiguration = nil
 	_, err = ss.ExamAttempt().Connect(ctx, configurationInput,
@@ -131,7 +131,7 @@ func TestExamAttemptStore(t *testing.T, ss store.Store, probes ...ExamAttemptSQL
 		DPoPKeyThumbprint: fixture.session.DPoPKeyThumbprint, AttemptID: model.NewExamAttemptID(), WorkspaceID: model.NewExamAttemptWorkspaceID(),
 		ParticipationID: model.NewAttemptParticipationID(), ConnectionID: model.NewAttemptConnectionID(),
 		ContinuityCredentialHash: credentialHash}
-	input.AuditEventID, input.AuditAt = saveExamAttemptAudit(t, ctx, ss, fixture).ID, model.GetMillis()
+	input.AuditEventID, input.AuditAt = saveExamAttemptAudit(t, ctx, ss, fixture).ID, model.NowUTC()
 	prepareExamAttemptConnect(t, ctx, ss, input)
 	stalePolicy := *input
 	stalePolicy.DesktopCompatibilityPolicyRevision++
@@ -175,7 +175,7 @@ func TestExamAttemptStore(t *testing.T, ss store.Store, probes ...ExamAttemptSQL
 	require.NoError(t, err)
 	require.False(t, bytes.Contains(connectedAudit.Result, []byte(credentialHash)), "Connect audit exposed the continuity credential hash")
 	replayInput := *input
-	replayInput.AuditEventID, replayInput.AuditAt = saveExamAttemptAudit(t, ctx, ss, fixture).ID, model.GetMillis()
+	replayInput.AuditEventID, replayInput.AuditAt = saveExamAttemptAudit(t, ctx, ss, fixture).ID, model.NowUTC()
 	replayed, err := ss.ExamAttempt().Connect(ctx, &replayInput, command)
 	require.NoError(t, err)
 	require.True(t, replayed.Replayed)
@@ -216,12 +216,12 @@ func TestExamAttemptStore(t *testing.T, ss store.Store, probes ...ExamAttemptSQL
 	paused, err := ss.ExamSitting().Pause(ctx, &store.ExamSittingManagerTransition{ExamID: fixture.examID,
 		SittingID: fixture.sitting.ID, ActorUserID: fixture.manager.ID, ExpectedRevision: fixture.sitting.Revision,
 		PrivateReason: "verify established candidate read access while paused", ChangedAt: model.NowUTC(),
-		AuditEventID: saveExamSittingAudit(t, ctx, ss, fixture.manager.ID, fixture.examID, fixture.unitID).ID, AuditAt: model.GetMillis()},
+		AuditEventID: saveExamSittingAudit(t, ctx, ss, fixture.manager.ID, fixture.examID, fixture.unitID).ID, AuditAt: model.NowUTC()},
 		examCommand(fixture.manager.ID, "exam.sitting.pause", "attempt-pause", "attempt-pause"))
 	require.NoError(t, err)
 	_, err = ss.ExamAttempt().GetCandidatePresentation(ctx, access)
 	require.NoError(t, err)
-	pausedFocusInput.AuditEventID, pausedFocusInput.AuditAt = saveExamAttemptAudit(t, ctx, ss, fixture).ID, model.GetMillis()
+	pausedFocusInput.AuditEventID, pausedFocusInput.AuditAt = saveExamAttemptAudit(t, ctx, ss, fixture).ID, model.NowUTC()
 	pausedFocus, err := ss.ExamAttempt().RecordFocusLoss(ctx, pausedFocusInput)
 	require.NoError(t, err)
 	require.Equal(t, pausedFocusInput.Sequence, pausedFocus.AcceptedSequence)
@@ -232,7 +232,7 @@ func TestExamAttemptStore(t *testing.T, ss store.Store, probes ...ExamAttemptSQL
 	_, err = ss.ExamAttemptWorkspace().ResolveFile(ctx, access, page.Items[1].EntryID)
 	require.NoError(t, err)
 	pausedReplayInput := *input
-	pausedReplayInput.AuditEventID, pausedReplayInput.AuditAt = saveExamAttemptAudit(t, ctx, ss, fixture).ID, model.GetMillis()
+	pausedReplayInput.AuditEventID, pausedReplayInput.AuditAt = saveExamAttemptAudit(t, ctx, ss, fixture).ID, model.NowUTC()
 	pausedReplay, err := ss.ExamAttempt().Connect(ctx, &pausedReplayInput, command)
 	require.NoError(t, err)
 	require.True(t, pausedReplay.Replayed)
@@ -242,7 +242,7 @@ func TestExamAttemptStore(t *testing.T, ss store.Store, probes ...ExamAttemptSQL
 	freshWhilePaused.AttemptID, freshWhilePaused.WorkspaceID = model.NewExamAttemptID(), model.NewExamAttemptWorkspaceID()
 	freshWhilePaused.ParticipationID, freshWhilePaused.ConnectionID = model.NewAttemptParticipationID(), model.NewAttemptConnectionID()
 	freshWhilePaused.ContinuityCredentialHash = model.HashToken(model.NewCredentialToken())
-	freshWhilePaused.AuditEventID, freshWhilePaused.AuditAt = saveExamAttemptAudit(t, ctx, ss, fixture).ID, model.GetMillis()
+	freshWhilePaused.AuditEventID, freshWhilePaused.AuditAt = saveExamAttemptAudit(t, ctx, ss, fixture).ID, model.NowUTC()
 	_, err = ss.ExamAttempt().Connect(ctx, &freshWhilePaused,
 		examCommand(fixture.candidate.ID, store.ExamAttemptConnectOperation, "attempt-connect-paused", "attempt-connect-paused"))
 	var pausedConflict *store.ErrConflict
@@ -251,7 +251,7 @@ func TestExamAttemptStore(t *testing.T, ss store.Store, probes ...ExamAttemptSQL
 	resumed, err := ss.ExamSitting().Resume(ctx, &store.ExamSittingManagerTransition{ExamID: fixture.examID,
 		SittingID: fixture.sitting.ID, ActorUserID: fixture.manager.ID, ExpectedRevision: paused.Value.Sitting.Revision,
 		PrivateReason: "continue Attempt persistence conformance", ChangedAt: model.NowUTC(),
-		AuditEventID: saveExamSittingAudit(t, ctx, ss, fixture.manager.ID, fixture.examID, fixture.unitID).ID, AuditAt: model.GetMillis()},
+		AuditEventID: saveExamSittingAudit(t, ctx, ss, fixture.manager.ID, fixture.examID, fixture.unitID).ID, AuditAt: model.NowUTC()},
 		examCommand(fixture.manager.ID, "exam.sitting.resume", "attempt-resume", "attempt-resume"))
 	require.NoError(t, err)
 	require.Equal(t, model.ExamSittingOpen, resumed.Value.Sitting.State)
@@ -259,7 +259,7 @@ func TestExamAttemptStore(t *testing.T, ss store.Store, probes ...ExamAttemptSQL
 	openConnectionInput.Security = model.ConnectSecurity{Kind: "resume", ParticipationID: connected.Participation.ID, Generation: connected.Participation.Generation, PolicyDigest: connected.Security.Policy.Digest}
 	openConnectionInput.AttemptID, openConnectionInput.WorkspaceID = model.NewExamAttemptID(), model.NewExamAttemptWorkspaceID()
 	openConnectionInput.ParticipationID, openConnectionInput.ConnectionID = model.NewAttemptParticipationID(), model.NewAttemptConnectionID()
-	openConnectionInput.AuditEventID, openConnectionInput.AuditAt = saveExamAttemptAudit(t, ctx, ss, fixture).ID, model.GetMillis()
+	openConnectionInput.AuditEventID, openConnectionInput.AuditAt = saveExamAttemptAudit(t, ctx, ss, fixture).ID, model.NowUTC()
 	convergedOpen, err := ss.ExamAttempt().Connect(ctx, &openConnectionInput,
 		examCommand(fixture.candidate.ID, store.ExamAttemptConnectOperation, "attempt-open-connection", "attempt-open-connection"))
 	require.NoError(t, err)
@@ -271,7 +271,7 @@ func TestExamAttemptStore(t *testing.T, ss store.Store, probes ...ExamAttemptSQL
 	alternateSessionInput.SessionID = alternateSession.ID
 	alternateSessionInput.DesktopRegistrationID = alternateSession.DesktopRegistrationID
 	alternateSessionInput.DPoPKeyThumbprint = alternateSession.DPoPKeyThumbprint
-	alternateSessionInput.AuditEventID, alternateSessionInput.AuditAt = saveExamAttemptAudit(t, ctx, ss, fixture).ID, model.GetMillis()
+	alternateSessionInput.AuditEventID, alternateSessionInput.AuditAt = saveExamAttemptAudit(t, ctx, ss, fixture).ID, model.NowUTC()
 	_, err = ss.ExamAttempt().Connect(ctx, &alternateSessionInput,
 		examCommand(fixture.candidate.ID, store.ExamAttemptConnectOperation, "attempt-open-other-session", "attempt-open-other-session"))
 	require.True(t, store.IsNotFound(err), "Connect(from Session revoked at active-entry) error")
@@ -331,7 +331,7 @@ func TestExamAttemptStore(t *testing.T, ss store.Store, probes ...ExamAttemptSQL
 
 	closeInput := &store.ExamAttemptConnectionClose{ConnectionID: input.ConnectionID, CandidateUserID: fixture.candidate.ID,
 		SessionID: fixture.session.ID, Reason: model.AttemptConnectionCloseTransport,
-		AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.GetMillis()}
+		AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.NowUTC()}
 	foreignClose := *closeInput
 	foreignClose.SessionID = model.NewSessionID()
 	foreignClose.AuditEventID = saveExamAttemptAudit(t, ctx, ss, fixture).ID
@@ -341,7 +341,7 @@ func TestExamAttemptStore(t *testing.T, ss store.Store, probes ...ExamAttemptSQL
 	require.NoError(t, err)
 	require.True(t, closed.Changed)
 	require.Equal(t, model.AttemptConnectionClosed, closed.Connection.State)
-	closeInput.AuditEventID, closeInput.AuditAt = saveExamAttemptAudit(t, ctx, ss, fixture).ID, model.GetMillis()
+	closeInput.AuditEventID, closeInput.AuditAt = saveExamAttemptAudit(t, ctx, ss, fixture).ID, model.NowUTC()
 	closedAgain, err := ss.ExamAttempt().CloseConnection(ctx, closeInput)
 	require.NoError(t, err)
 	require.False(t, closedAgain.Changed)
@@ -350,7 +350,7 @@ func TestExamAttemptStore(t *testing.T, ss store.Store, probes ...ExamAttemptSQL
 	wrongCredentialInput.AttemptID, wrongCredentialInput.WorkspaceID = model.NewExamAttemptID(), model.NewExamAttemptWorkspaceID()
 	wrongCredentialInput.ParticipationID, wrongCredentialInput.ConnectionID = model.NewAttemptParticipationID(), model.NewAttemptConnectionID()
 	wrongCredentialInput.ContinuityCredentialHash = model.HashToken(model.NewCredentialToken())
-	wrongCredentialInput.AuditEventID, wrongCredentialInput.AuditAt = saveExamAttemptAudit(t, ctx, ss, fixture).ID, model.GetMillis()
+	wrongCredentialInput.AuditEventID, wrongCredentialInput.AuditAt = saveExamAttemptAudit(t, ctx, ss, fixture).ID, model.NowUTC()
 	_, err = ss.ExamAttempt().Connect(ctx, &wrongCredentialInput,
 		examCommand(fixture.candidate.ID, store.ExamAttemptConnectOperation, "attempt-wrong-credential", "attempt-wrong-credential"))
 	requireConflictConstraint(t, err, "attempt_participation_credential")
@@ -359,7 +359,7 @@ func TestExamAttemptStore(t *testing.T, ss store.Store, probes ...ExamAttemptSQL
 	wrongReconnectSession.AttemptID, wrongReconnectSession.WorkspaceID = model.NewExamAttemptID(), model.NewExamAttemptWorkspaceID()
 	wrongReconnectSession.ParticipationID, wrongReconnectSession.ConnectionID = model.NewAttemptParticipationID(), model.NewAttemptConnectionID()
 	wrongReconnectSession.SessionID = model.NewSessionID()
-	wrongReconnectSession.AuditEventID, wrongReconnectSession.AuditAt = saveExamAttemptAudit(t, ctx, ss, fixture).ID, model.GetMillis()
+	wrongReconnectSession.AuditEventID, wrongReconnectSession.AuditAt = saveExamAttemptAudit(t, ctx, ss, fixture).ID, model.NowUTC()
 	_, err = ss.ExamAttempt().Connect(ctx, &wrongReconnectSession,
 		examCommand(fixture.candidate.ID, store.ExamAttemptConnectOperation, "attempt-wrong-session", "attempt-wrong-session"))
 	require.True(t, store.IsNotFound(err), "Connect(reconnect with foreign Session) error")
@@ -368,7 +368,7 @@ func TestExamAttemptStore(t *testing.T, ss store.Store, probes ...ExamAttemptSQL
 	reconnectInput.Security = model.ConnectSecurity{Kind: "resume", ParticipationID: connected.Participation.ID, Generation: connected.Participation.Generation, PolicyDigest: connected.Security.Policy.Digest}
 	reconnectInput.AttemptID, reconnectInput.WorkspaceID = model.NewExamAttemptID(), model.NewExamAttemptWorkspaceID()
 	reconnectInput.ParticipationID, reconnectInput.ConnectionID = model.NewAttemptParticipationID(), model.NewAttemptConnectionID()
-	reconnectInput.AuditEventID, reconnectInput.AuditAt = saveExamAttemptAudit(t, ctx, ss, fixture).ID, model.GetMillis()
+	reconnectInput.AuditEventID, reconnectInput.AuditAt = saveExamAttemptAudit(t, ctx, ss, fixture).ID, model.NowUTC()
 	reconnected, err := ss.ExamAttempt().Connect(ctx, &reconnectInput,
 		examCommand(fixture.candidate.ID, store.ExamAttemptConnectOperation, "attempt-reconnect", "attempt-reconnect"))
 	require.NoError(t, err)
@@ -380,11 +380,11 @@ func TestExamAttemptStore(t *testing.T, ss store.Store, probes ...ExamAttemptSQL
 	require.Equal(t, connected.Participation.Generation, reconnected.Participation.Generation)
 	require.Equal(t, reconnectInput.ConnectionID, reconnected.Connection.ID)
 	closeInput.ConnectionID = reconnected.Connection.ID
-	closeInput.AuditEventID, closeInput.AuditAt = saveExamAttemptAudit(t, ctx, ss, fixture).ID, model.GetMillis()
+	closeInput.AuditEventID, closeInput.AuditAt = saveExamAttemptAudit(t, ctx, ss, fixture).ID, model.NowUTC()
 	_, err = ss.ExamAttempt().CloseConnection(ctx, closeInput)
 	require.NoError(t, err)
 
-	endedAt := model.GetMillis()
+	endedAt := model.NowUTC()
 	endedMembership, err := ss.ClassMember().SeedEnd(ctx, fixture.membership.ID, fixture.membership.Revision, endedAt)
 	require.NoError(t, err)
 	// Membership timestamps have millisecond precision while PostgreSQL decides
@@ -392,22 +392,22 @@ func TestExamAttemptStore(t *testing.T, ss store.Store, probes ...ExamAttemptSQL
 	// boundary before asserting that the just-ended relationship is inactive.
 	time.Sleep(100 * time.Millisecond)
 	revokedReplayInput := *input
-	revokedReplayInput.AuditEventID, revokedReplayInput.AuditAt = saveExamAttemptAudit(t, ctx, ss, fixture).ID, model.GetMillis()
+	revokedReplayInput.AuditEventID, revokedReplayInput.AuditAt = saveExamAttemptAudit(t, ctx, ss, fixture).ID, model.NowUTC()
 	_, err = ss.ExamAttempt().Connect(ctx, &revokedReplayInput, command)
 	require.True(t, store.IsNotFound(err), "Connect(exact replay after membership revoke) error")
 	revokedFreshInput := reconnectInput
 	revokedFreshInput.ConnectionID = model.NewAttemptConnectionID()
-	revokedFreshInput.AuditEventID, revokedFreshInput.AuditAt = saveExamAttemptAudit(t, ctx, ss, fixture).ID, model.GetMillis()
+	revokedFreshInput.AuditEventID, revokedFreshInput.AuditAt = saveExamAttemptAudit(t, ctx, ss, fixture).ID, model.NowUTC()
 	_, err = ss.ExamAttempt().Connect(ctx, &revokedFreshInput,
 		examCommand(fixture.candidate.ID, store.ExamAttemptConnectOperation, "attempt-revoked", "attempt-revoked"))
 	require.True(t, store.IsNotFound(err), "Connect(fresh after membership revoke) error")
 	restored, err := ss.ClassMember().SeedEnroll(ctx, &model.ClassMember{ClassID: fixture.class.ID, UserID: fixture.candidate.ID,
-		StartsAt: model.TimeFromMillis(endedAt)})
+		StartsAt: model.TimeUTC(endedAt)})
 	require.NoError(t, err)
 	fixture.membership = restored.Membership
 	restoredInput := reconnectInput
 	restoredInput.ConnectionID = model.NewAttemptConnectionID()
-	restoredInput.AuditEventID, restoredInput.AuditAt = saveExamAttemptAudit(t, ctx, ss, fixture).ID, model.GetMillis()
+	restoredInput.AuditEventID, restoredInput.AuditAt = saveExamAttemptAudit(t, ctx, ss, fixture).ID, model.NowUTC()
 	restoredConnection, err := ss.ExamAttempt().Connect(ctx, &restoredInput,
 		examCommand(fixture.candidate.ID, store.ExamAttemptConnectOperation, "attempt-restored", "attempt-restored"))
 	require.NoError(t, err)
@@ -415,11 +415,11 @@ func TestExamAttemptStore(t *testing.T, ss store.Store, probes ...ExamAttemptSQL
 	require.True(t, restoredConnection.ConnectionOpened, "Connect(after membership restore) = %#v; ended membership=%#v", restoredConnection, endedMembership)
 	require.Equal(t, connected.Participation.Generation, restoredConnection.Participation.Generation, "Connect(after membership restore) = %#v; ended membership=%#v", restoredConnection, endedMembership)
 	closeInput.ConnectionID = restoredConnection.Connection.ID
-	closeInput.AuditEventID, closeInput.AuditAt = saveExamAttemptAudit(t, ctx, ss, fixture).ID, model.GetMillis()
+	closeInput.AuditEventID, closeInput.AuditAt = saveExamAttemptAudit(t, ctx, ss, fixture).ID, model.NowUTC()
 	_, err = ss.ExamAttempt().CloseConnection(ctx, closeInput)
 	require.NoError(t, err)
 	closedReplayInput := *input
-	closedReplayInput.AuditEventID, closedReplayInput.AuditAt = saveExamAttemptAudit(t, ctx, ss, fixture).ID, model.GetMillis()
+	closedReplayInput.AuditEventID, closedReplayInput.AuditAt = saveExamAttemptAudit(t, ctx, ss, fixture).ID, model.NowUTC()
 	closedReplay, err := ss.ExamAttempt().Connect(ctx, &closedReplayInput, command)
 	require.NoError(t, err)
 	require.True(t, closedReplay.Replayed)
@@ -431,7 +431,7 @@ func TestExamAttemptStore(t *testing.T, ss store.Store, probes ...ExamAttemptSQL
 	if len(probes) != 0 && probes[0].SetParticipationLeaseExpired != nil {
 		probes[0].SetParticipationLeaseExpired(t, ctx, input.ParticipationID)
 		expiredReplay := *input
-		expiredReplay.AuditEventID, expiredReplay.AuditAt = saveExamAttemptAudit(t, ctx, ss, fixture).ID, model.GetMillis()
+		expiredReplay.AuditEventID, expiredReplay.AuditAt = saveExamAttemptAudit(t, ctx, ss, fixture).ID, model.NowUTC()
 		_, replayErr := ss.ExamAttempt().Connect(ctx, &expiredReplay, command)
 		var conflict *store.ErrConflict
 		require.ErrorAs(t, replayErr, &conflict)
@@ -440,7 +440,7 @@ func TestExamAttemptStore(t *testing.T, ss store.Store, probes ...ExamAttemptSQL
 		batchAudit := saveExamAttemptSystemAudit(t, ctx, ss, fixture)
 		batchInput := &store.ExamAttemptParticipationExpiry{AttemptID: connected.Attempt.ID, ParticipationID: connected.Participation.ID,
 			Generation: connected.Participation.Generation, EvidenceID: model.NewIntegrityEvidenceID(), FlagID: model.NewIntegrityFlagID(),
-			SuspensionID: model.NewAttemptSuspensionID(), AuditEventID: batchAudit.ID, AuditAt: model.GetMillis()}
+			SuspensionID: model.NewAttemptSuspensionID(), AuditEventID: batchAudit.ID, AuditAt: model.NowUTC()}
 		batchExpired, batchErr := ss.ExamAttempt().ExpireParticipation(ctx, batchInput)
 		require.NoError(t, batchErr)
 		require.NotEqual(t, otherExpired.Evidence.ID, batchExpired.Evidence.ID, "installation-wide expiry outcomes = %#v, %#v", batchExpired, otherExpired)
@@ -457,15 +457,15 @@ func TestExamAttemptStore(t *testing.T, ss store.Store, probes ...ExamAttemptSQL
 		SittingID: fixture.sitting.ID, ActorUserID: fixture.manager.ID, ExpectedRevision: currentSitting.Sitting.Revision,
 		FinalizeJob:   newExamSittingFinalizeJob(t, fixture.sitting.ID, currentSitting.Sitting.Revision+1, closeAt),
 		PrivateReason: "finish Attempt persistence conformance", ChangedAt: closeAt,
-		AuditEventID: saveExamSittingAudit(t, ctx, ss, fixture.manager.ID, fixture.examID, fixture.unitID).ID, AuditAt: model.GetMillis()},
+		AuditEventID: saveExamSittingAudit(t, ctx, ss, fixture.manager.ID, fixture.examID, fixture.unitID).ID, AuditAt: model.NowUTC()},
 		examCommand(fixture.manager.ID, "exam.sitting.close", "attempt-close-sitting", "attempt-close-sitting"))
 	require.NoError(t, err)
 	closingReplayInput := *input
-	closingReplayInput.AuditEventID, closingReplayInput.AuditAt = saveExamAttemptAudit(t, ctx, ss, fixture).ID, model.GetMillis()
+	closingReplayInput.AuditEventID, closingReplayInput.AuditAt = saveExamAttemptAudit(t, ctx, ss, fixture).ID, model.NowUTC()
 	_, err = ss.ExamAttempt().Connect(ctx, &closingReplayInput, command)
 	requireConflictConstraint(t, err, "exam_sitting_state")
 	unfinished, err := ss.ExamSitting().FinishSealing(ctx, &store.ExamSittingFinishSealing{SittingID: fixture.sitting.ID,
-		AuditEventID: saveExamSittingSystemAudit(t, ctx, ss, fixture.sitting.ID, fixture.unitID).ID, AuditAt: model.GetMillis()})
+		AuditEventID: saveExamSittingSystemAudit(t, ctx, ss, fixture.sitting.ID, fixture.unitID).ID, AuditAt: model.NowUTC()})
 	require.NoError(t, err)
 	require.False(t, unfinished.Changed)
 	require.Equal(t, model.ExamSittingClosing, unfinished.Value.Sitting.State)
@@ -490,7 +490,7 @@ func TestExamAttemptCompatibilityPolicySerialization(
 		DPoPKeyThumbprint: fixture.session.DPoPKeyThumbprint, AttemptID: model.NewExamAttemptID(),
 		WorkspaceID: model.NewExamAttemptWorkspaceID(), ParticipationID: model.NewAttemptParticipationID(),
 		ConnectionID: model.NewAttemptConnectionID(), ContinuityCredentialHash: model.HashToken(model.NewCredentialToken()),
-		AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.GetMillis(),
+		AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.NowUTC(),
 	}
 	prepareExamAttemptConnect(t, ctx, ss, input)
 	command := examCommand(
@@ -528,7 +528,7 @@ func TestExamAttemptConnectCandidateLockOrder(t *testing.T, ss store.Store, prob
 		DPoPKeyThumbprint: fixture.session.DPoPKeyThumbprint, AttemptID: model.NewExamAttemptID(),
 		WorkspaceID: model.NewExamAttemptWorkspaceID(), ParticipationID: model.NewAttemptParticipationID(),
 		ConnectionID: model.NewAttemptConnectionID(), ContinuityCredentialHash: model.HashToken(model.NewCredentialToken()),
-		AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.GetMillis(),
+		AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.NowUTC(),
 	}
 	prepareExamAttemptConnect(t, ctx, ss, input)
 	command := examCommand(fixture.candidate.ID, store.ExamAttemptConnectOperation,
@@ -558,14 +558,14 @@ func TestSessionRevocationAttemptFence(t *testing.T, ss store.Store) {
 		DPoPKeyThumbprint: fixture.session.DPoPKeyThumbprint, AttemptID: model.NewExamAttemptID(),
 		WorkspaceID: model.NewExamAttemptWorkspaceID(), ParticipationID: model.NewAttemptParticipationID(),
 		ConnectionID: model.NewAttemptConnectionID(), ContinuityCredentialHash: credentialHash,
-		AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.GetMillis(),
+		AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.NowUTC(),
 	}
 	prepareExamAttemptConnect(t, ctx, ss, input)
 	connected, err := ss.ExamAttempt().Connect(ctx, input,
 		examCommand(fixture.candidate.ID, store.ExamAttemptConnectOperation, "session-fence-connect", "session-fence-connect"))
 	require.NoError(t, err)
 	_, err = ss.Session().Withdraw(ctx, fixture.session.ID, fixture.candidate.ID,
-		model.GetMillis(), model.SessionRevocationInactiveUser)
+		model.NowUTC(), model.SessionRevocationInactiveUser)
 	require.NoError(t, err)
 	statuses, err := ss.ExamAttempt().ListSittingCandidateStatuses(ctx, store.SittingCandidateStatusListOptions{
 		ExamID: fixture.examID, SittingID: fixture.sitting.ID, ExcludeCandidateUserID: fixture.manager.ID,
@@ -585,7 +585,7 @@ func TestSessionRevocationAttemptFence(t *testing.T, ss store.Store) {
 		SuspensionID: statuses.Items[0].Suspension.ID, ActorUserID: fixture.manager.ID,
 		ExpectedAttemptRevision: statuses.Items[0].Attempt.Revision,
 		PrivateReason:           "verified Session revocation recovery",
-		AuditEventID:            reallowAudit.ID, AuditAt: model.GetMillis(),
+		AuditEventID:            reallowAudit.ID, AuditAt: model.NowUTC(),
 	}, examCommand(fixture.manager.ID, store.ExamAttemptReallowOperation, "session-fence-reallow", "session-fence-reallow"))
 	require.NoError(t, err)
 	require.Equal(t, model.ExamAttemptReady, reallowed.Attempt.State)
@@ -610,7 +610,7 @@ func TestSessionExpiryAttemptFence(t *testing.T, ss store.Store) {
 		DPoPKeyThumbprint: fixture.session.DPoPKeyThumbprint, AttemptID: model.NewExamAttemptID(),
 		WorkspaceID: model.NewExamAttemptWorkspaceID(), ParticipationID: model.NewAttemptParticipationID(),
 		ConnectionID: model.NewAttemptConnectionID(), ContinuityCredentialHash: credentialHash,
-		AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.GetMillis(),
+		AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.NowUTC(),
 	}
 	prepareExamAttemptConnect(t, ctx, ss, input)
 	connected, err := ss.ExamAttempt().Connect(ctx, input,
@@ -658,7 +658,7 @@ func testExamAttemptParticipationExpiry(t *testing.T, ctx context.Context, ss st
 		DesktopRegistrationID: session.DesktopRegistrationID, DPoPKeyThumbprint: session.DPoPKeyThumbprint,
 		AttemptID: model.NewExamAttemptID(), WorkspaceID: model.NewExamAttemptWorkspaceID(), ParticipationID: model.NewAttemptParticipationID(),
 		ConnectionID: model.NewAttemptConnectionID(), ContinuityCredentialHash: credentialHash,
-		AuditEventID: saveExamAttemptAudit(t, ctx, ss, expiryFixture).ID, AuditAt: model.GetMillis()}
+		AuditEventID: saveExamAttemptAudit(t, ctx, ss, expiryFixture).ID, AuditAt: model.NowUTC()}
 	prepareExamAttemptConnect(t, ctx, ss, connect)
 	connected, err := ss.ExamAttempt().Connect(ctx, connect,
 		examCommand(candidate.ID, store.ExamAttemptConnectOperation, "attempt-expiry-connect", "attempt-expiry-connect"))
@@ -708,7 +708,7 @@ func testExamAttemptParticipationExpiry(t *testing.T, ctx context.Context, ss st
 	require.Equal(t, selected.CandidateUserID, resolved.CandidateUserID, "ResolveParticipationExpiry() = %#v, listed = %#v", resolved, selected)
 	failedInput := &store.ExamAttemptParticipationExpiry{AttemptID: connected.Attempt.ID, ParticipationID: connected.Participation.ID,
 		Generation: connected.Participation.Generation, EvidenceID: model.NewIntegrityEvidenceID(), FlagID: model.NewIntegrityFlagID(),
-		SuspensionID: model.NewAttemptSuspensionID(), AuditEventID: model.NewAuditEventID(), AuditAt: model.GetMillis()}
+		SuspensionID: model.NewAttemptSuspensionID(), AuditEventID: model.NewAuditEventID(), AuditAt: model.NowUTC()}
 	_, err = ss.ExamAttempt().ExpireParticipation(ctx, failedInput)
 	require.Error(t, err, "ExpireParticipation(with missing Audit) succeeded")
 	unchanged, err := ss.ExamAttempt().Get(ctx, fixture.examID, connected.Attempt.ID)
@@ -722,11 +722,11 @@ func testExamAttemptParticipationExpiry(t *testing.T, ctx context.Context, ss st
 	audit := saveExamAttemptSystemAudit(t, ctx, ss, expiryFixture)
 	input := &store.ExamAttemptParticipationExpiry{AttemptID: connected.Attempt.ID, ParticipationID: connected.Participation.ID,
 		Generation: connected.Participation.Generation, EvidenceID: model.NewIntegrityEvidenceID(), FlagID: model.NewIntegrityFlagID(),
-		SuspensionID: model.NewAttemptSuspensionID(), AuditEventID: audit.ID, AuditAt: model.GetMillis()}
+		SuspensionID: model.NewAttemptSuspensionID(), AuditEventID: audit.ID, AuditAt: model.NowUTC()}
 	concurrentAudit := saveExamAttemptSystemAudit(t, ctx, ss, expiryFixture)
 	concurrentInput := *input
 	concurrentInput.EvidenceID, concurrentInput.FlagID, concurrentInput.SuspensionID = model.NewIntegrityEvidenceID(), model.NewIntegrityFlagID(), model.NewAttemptSuspensionID()
-	concurrentInput.AuditEventID, concurrentInput.AuditAt = concurrentAudit.ID, model.GetMillis()
+	concurrentInput.AuditEventID, concurrentInput.AuditAt = concurrentAudit.ID, model.NowUTC()
 	results := make(chan *store.ExamAttemptParticipationExpiryResult, 2)
 	errorsFound := make(chan error, 2)
 	start := make(chan struct{})
@@ -798,7 +798,7 @@ func testExamAttemptParticipationExpiry(t *testing.T, ctx context.Context, ss st
 	replayAudit := saveExamAttemptSystemAudit(t, ctx, ss, expiryFixture)
 	replayInput := *input
 	replayInput.EvidenceID, replayInput.FlagID, replayInput.SuspensionID = model.NewIntegrityEvidenceID(), model.NewIntegrityFlagID(), model.NewAttemptSuspensionID()
-	replayInput.AuditEventID, replayInput.AuditAt = replayAudit.ID, model.GetMillis()
+	replayInput.AuditEventID, replayInput.AuditAt = replayAudit.ID, model.NowUTC()
 	replayed, err := ss.ExamAttempt().ExpireParticipation(ctx, &replayInput)
 	require.NoError(t, err)
 	require.NotNil(t, replayed, "ExpireParticipation(replay) = %#v, first = %#v", replayed, expired)
@@ -816,7 +816,7 @@ func testExamAttemptParticipationExpiry(t *testing.T, ctx context.Context, ss st
 	reallowInput := &store.ExamAttemptReallow{ExamID: fixture.examID, SittingID: fixture.sitting.ID,
 		AttemptID: expired.Attempt.ID, SuspensionID: expired.Suspension.ID, ActorUserID: fixture.manager.ID,
 		ExpectedAttemptRevision: expired.Attempt.Revision, PrivateReason: "verified connectivity recovery",
-		AuditEventID: reallowAudit.ID, AuditAt: model.GetMillis()}
+		AuditEventID: reallowAudit.ID, AuditAt: model.NowUTC()}
 	selfReallow := *reallowInput
 	selfReallow.ActorUserID = expired.CandidateUserID
 	selfReallow.ManagerOverride = true
@@ -828,7 +828,7 @@ func testExamAttemptParticipationExpiry(t *testing.T, ctx context.Context, ss st
 	competingAudit := saveExamAttemptReallowAudit(t, ctx, ss, fixture)
 	competingInput := *reallowInput
 	competingInput.PrivateReason = "second manager recovery decision"
-	competingInput.AuditEventID, competingInput.AuditAt = competingAudit.ID, model.GetMillis()
+	competingInput.AuditEventID, competingInput.AuditAt = competingAudit.ID, model.NowUTC()
 	competingCommand := examCommand(fixture.manager.ID, store.ExamAttemptReallowOperation, "attempt-reallow-competing", "attempt-reallow-competing")
 	type reallowOutcome struct {
 		index  int
@@ -881,7 +881,7 @@ func testExamAttemptParticipationExpiry(t *testing.T, ctx context.Context, ss st
 	require.False(t, bytes.Contains(reallowEvent.Result, []byte(reallowInput.PrivateReason)), "ReallowAttempt audit exposed the private reason")
 	reallowReplayAudit := saveExamAttemptReallowAudit(t, ctx, ss, fixture)
 	reallowReplay := *reallowInput
-	reallowReplay.AuditEventID, reallowReplay.AuditAt = reallowReplayAudit.ID, model.GetMillis()
+	reallowReplay.AuditEventID, reallowReplay.AuditAt = reallowReplayAudit.ID, model.NowUTC()
 	replayedReallow, err := ss.ExamAttempt().ReallowAttempt(ctx, &reallowReplay, reallowCommand)
 	require.NoError(t, err)
 	require.NotNil(t, replayedReallow)
@@ -892,7 +892,7 @@ func testExamAttemptParticipationExpiry(t *testing.T, ctx context.Context, ss st
 	expiryAfterReallow := *input
 	expiryAfterReallow.EvidenceID, expiryAfterReallow.FlagID, expiryAfterReallow.SuspensionID =
 		model.NewIntegrityEvidenceID(), model.NewIntegrityFlagID(), model.NewAttemptSuspensionID()
-	expiryAfterReallow.AuditEventID, expiryAfterReallow.AuditAt = expiryAfterReallowAudit.ID, model.GetMillis()
+	expiryAfterReallow.AuditEventID, expiryAfterReallow.AuditAt = expiryAfterReallowAudit.ID, model.NowUTC()
 	retainedExpiry, err := ss.ExamAttempt().ExpireParticipation(ctx, &expiryAfterReallow)
 	require.NoError(t, err)
 	require.NotNil(t, retainedExpiry, "ExpireParticipation(replay after re-allow) = %#v, first = %#v", retainedExpiry, expired)
@@ -918,7 +918,7 @@ func testExamAttemptParticipationExpiry(t *testing.T, ctx context.Context, ss st
 		DesktopRegistrationID: session.DesktopRegistrationID, DPoPKeyThumbprint: session.DPoPKeyThumbprint,
 		AttemptID: model.NewExamAttemptID(), WorkspaceID: model.NewExamAttemptWorkspaceID(), ParticipationID: model.NewAttemptParticipationID(),
 		ConnectionID: model.NewAttemptConnectionID(), ContinuityCredentialHash: model.HashToken(model.NewCredentialToken()),
-		AuditEventID: saveExamAttemptAudit(t, ctx, ss, expiryFixture).ID, AuditAt: model.GetMillis()}
+		AuditEventID: saveExamAttemptAudit(t, ctx, ss, expiryFixture).ID, AuditAt: model.NowUTC()}
 	prepareExamAttemptConnect(t, ctx, ss, nextConnect)
 	next, err := ss.ExamAttempt().Connect(ctx, nextConnect,
 		examCommand(candidate.ID, store.ExamAttemptConnectOperation, "attempt-next-generation", "attempt-next-generation"))
@@ -1077,8 +1077,8 @@ func newExamAttemptFixtureWithCapacity(t *testing.T, ctx context.Context, ss sto
 		require.NoError(t, auditErr)
 		updated, updateErr := ss.ExamAuthoring().UpdateDraftBrowserPolicy(ctx, &store.ExamDraftBrowserPolicyUpdate{
 			ExamID: created.Value.Exam.ID, ActorUserID: manager.ID, ExpectedRevision: draftRevision,
-			Policy: browser.Clone(), UpdatedAt: model.MillisFromTime(now.Add(time.Millisecond)),
-			AuditEventID: audit.ID, AuditAt: model.GetMillis(),
+			Policy: browser.Clone(), UpdatedAt: now.Add(time.Millisecond),
+			AuditEventID: audit.ID, AuditAt: model.NowUTC(),
 		}, examCommand(manager.ID, "exam.draft.browser_policy.configure", "attempt-browser-policy", "attempt-browser-policy"))
 		require.NoError(t, updateErr)
 		draftRevision = updated.Value.Draft.Revision
@@ -1111,7 +1111,7 @@ func newExamAttemptFixtureWithCapacity(t *testing.T, ctx context.Context, ss sto
 		openJob, deadlineJob := newExamSittingLifecycleJobs(t, sitting.ID, 1, start, end)
 		key := "attempt-sitting-" + string(rune('0'+scheduleAttempt))
 		_, err = ss.ExamSitting().Schedule(ctx, &store.ExamSittingSchedule{Sitting: sitting, OpenJob: openJob, DeadlineJob: deadlineJob, ActorUserID: manager.ID,
-			AuditEventID: saveExamSittingAudit(t, ctx, ss, manager.ID, created.Value.Exam.ID, programme.AcademicUnitID).ID, AuditAt: model.GetMillis(),
+			AuditEventID: saveExamSittingAudit(t, ctx, ss, manager.ID, created.Value.Exam.ID, programme.AcademicUnitID).ID, AuditAt: model.NowUTC(),
 			Mail: newExamSittingMailFanout(t, manager.ID, store.ExamSittingMailScheduled, model.MailTemplateExamSittingScheduled)},
 			examCommand(manager.ID, "exam.sitting.schedule", key, key))
 		var conflict *store.ErrConflict
@@ -1122,7 +1122,7 @@ func newExamAttemptFixtureWithCapacity(t *testing.T, ctx context.Context, ss sto
 		break
 	}
 	time.Sleep(time.Until(start) + 100*time.Millisecond)
-	opened, err := ss.ExamSitting().AdvanceDue(ctx, &store.ExamSittingDueAdvance{SittingID: sitting.ID, AuditEventID: saveExamSittingSystemAudit(t, ctx, ss, sitting.ID, programme.AcademicUnitID).ID, AuditAt: model.GetMillis()})
+	opened, err := ss.ExamSitting().AdvanceDue(ctx, &store.ExamSittingDueAdvance{SittingID: sitting.ID, AuditEventID: saveExamSittingSystemAudit(t, ctx, ss, sitting.ID, programme.AcademicUnitID).ID, AuditAt: model.NowUTC()})
 	require.NoError(t, err)
 	require.Equal(t, model.ExamSittingOpen, opened.Value.Sitting.State)
 	candidate := saveUser(t, ctx, ss)
@@ -1148,7 +1148,7 @@ func saveRegisteredDesktopSession(t *testing.T, ctx context.Context, ss store.St
 	_, err = ss.BrowserAuthentication().IssueCode(ctx, &store.DesktopAuthorizationCodeIssue{
 		BindingHash: model.HashToken(binding), StateHash: model.HashToken(state), CodeHash: model.HashToken(code),
 		ExpectedUserID: userID, CodeLifetime: 45 * time.Second, Capabilities: store.AccessDeploymentCapabilities{Providers: map[string]store.AccessProviderCapability{}},
-		AuditEventID: issueAudit.ID, AuditAt: model.GetMillis(),
+		AuditEventID: issueAudit.ID, AuditAt: model.NowUTC(),
 	})
 	require.NoError(t, err)
 	exchangeAudit := saveDesktopAuthorizationAudit(t, ctx, ss, institutionID, userID, "exam-attempt-session-exchange")
@@ -1180,7 +1180,7 @@ func testConcurrentExamAttemptAdmission(t *testing.T, ctx context.Context, ss st
 			DesktopRegistrationID: session.DesktopRegistrationID, DPoPKeyThumbprint: session.DPoPKeyThumbprint,
 			AttemptID: model.NewExamAttemptID(), WorkspaceID: model.NewExamAttemptWorkspaceID(), ParticipationID: model.NewAttemptParticipationID(),
 			ConnectionID: model.NewAttemptConnectionID(), ContinuityCredentialHash: credentialHash,
-			AuditEventID: saveExamAttemptAudit(t, ctx, ss, concurrentFixture).ID, AuditAt: model.GetMillis()}
+			AuditEventID: saveExamAttemptAudit(t, ctx, ss, concurrentFixture).ID, AuditAt: model.NowUTC()}
 		prepareExamAttemptConnect(t, ctx, ss, inputs[index])
 		commands[index] = examCommand(candidate.ID, store.ExamAttemptConnectOperation,
 			"attempt-concurrent-retry", "attempt-concurrent-retry")
@@ -1224,7 +1224,7 @@ func testConcurrentExamAttemptAdmission(t *testing.T, ctx context.Context, ss st
 	require.NotEqual(t, connected[1].ConnectionOpened, connected[0].ConnectionOpened)
 	closeResult, err := ss.ExamAttempt().CloseConnection(ctx, &store.ExamAttemptConnectionClose{ConnectionID: connected[0].Connection.ID,
 		CandidateUserID: candidate.ID, SessionID: session.ID, Reason: model.AttemptConnectionCloseTransport,
-		AuditEventID: saveExamAttemptAudit(t, ctx, ss, concurrentFixture).ID, AuditAt: model.GetMillis()})
+		AuditEventID: saveExamAttemptAudit(t, ctx, ss, concurrentFixture).ID, AuditAt: model.NowUTC()})
 	require.NoError(t, err)
 	require.True(t, closeResult.Changed)
 }

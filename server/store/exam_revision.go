@@ -25,7 +25,7 @@ type ExamRevisionPublication struct {
 	Kind                  model.ExamRevisionPublicationKind
 	PublishedAt           time.Time
 	AuditEventID          model.AuditEventID
-	AuditAt               int64
+	AuditAt               time.Time
 }
 
 type ExamRevisionPublicationResult struct {

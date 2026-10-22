@@ -329,8 +329,8 @@ func (s *desktopAuthorizationService) AuthenticateDesktopAuthorizationSession(ct
 		SourceSessionID: principal.SessionID, SourceCredentialID: model.SessionCredentialID(principal.CredentialID),
 		UserID: principal.UserID, AuthenticationMethod: principal.AuthenticationMethod,
 		AuthenticationProviderID: principal.AuthenticationProviderID, ExternalIdentityID: principal.ExternalIdentityID,
-		AuthenticationStrength: principal.AuthenticationStrength, AuthenticatedAt: principal.AuthenticatedAt.UnixMilli(),
-		MFACompletedAt: principal.MFACompletedAt.Millis(),
+		AuthenticationStrength: principal.AuthenticationStrength, AuthenticatedAt: principal.AuthenticatedAt,
+		MFACompletedAt: principal.MFACompletedAt,
 	})
 	if err != nil || result.Denied {
 		return nil, err
@@ -355,7 +355,7 @@ func (s *desktopAuthorizationService) AuthenticateDesktopAuthorizationLocally(ct
 	result, err := s.authenticate(ctx, command.Binding, store.DesktopAuthorizationAuthentication{
 		PasswordProof: proof.PasswordProof,
 		UserID:        proof.User.ID, AuthenticationMethod: "password", AuthenticationStrength: proof.AuthenticationStrength,
-		AuthenticatedAt: proof.AuthenticatedAt, MFACompletedAt: proof.MFACompletedAt,
+		AuthenticatedAt: model.TimeFromMillis(proof.AuthenticatedAt), MFACompletedAt: model.OptionalTimeFromMillis(proof.MFACompletedAt),
 	})
 	if err != nil {
 		return nil, err
@@ -400,14 +400,15 @@ func (s *desktopAuthorizationService) authenticateExternal(ctx context.Context, 
 		identity.UserID != user.ID || assertion == nil || assertion.ProviderID != identity.Provider {
 		return apperror.New("authentication.desktop_authorization.invalid")
 	}
-	mfaCompletedAt := int64(0)
+	authenticatedAt := model.TimeFromMillis(assertion.AuthenticatedAt)
+	var mfaCompletedAt model.OptionalTime
 	if assertion.AuthenticationStrength == model.AuthenticationMultiFactor {
-		mfaCompletedAt = assertion.AuthenticatedAt
+		mfaCompletedAt = model.OptionalTimeFrom(authenticatedAt)
 	}
 	input := &store.DesktopAuthorizationAuthentication{
 		TransactionID: transactionID, UserID: user.ID, AuthenticationMethod: method,
 		AuthenticationProviderID: identity.Provider, ExternalIdentityID: identity.ID,
-		AuthenticationStrength: assertion.AuthenticationStrength, AuthenticatedAt: assertion.AuthenticatedAt,
+		AuthenticationStrength: assertion.AuthenticationStrength, AuthenticatedAt: authenticatedAt,
 		MFACompletedAt: mfaCompletedAt, Capabilities: accessDeploymentCapabilities(s.deps.Capabilities.Snapshot()),
 	}
 	result, err := s.deps.Transactions.AuthenticateDesktopAuthorization(ctx, input)
@@ -470,7 +471,7 @@ func (s *desktopAuthorizationService) ApproveDesktopAuthorization(ctx context.Co
 		BindingHash: model.HashToken(command.Binding), StateHash: model.HashToken(command.State),
 		CodeHash: model.HashToken(code), ExpectedUserID: current.UserID,
 		CodeLifetime: s.deps.Policy.CodeLifetime,
-		Capabilities: accessDeploymentCapabilities(s.deps.Capabilities.Snapshot()), AuditEventID: audit.ID, AuditAt: at.UnixMilli(),
+		Capabilities: accessDeploymentCapabilities(s.deps.Capabilities.Snapshot()), AuditEventID: audit.ID, AuditAt: at,
 	})
 	if err != nil {
 		failure := desktopAuthorizationStoreErrors.Translate(err)
@@ -580,7 +581,7 @@ func (s *desktopAuthorizationService) ExchangeDesktopAuthorization(ctx context.C
 		AccessLifetime: s.deps.SessionPolicy.AccessTTL, RefreshLifetime: s.deps.SessionPolicy.RefreshTTL,
 		IdleLifetime: s.deps.SessionPolicy.IdleTTL, AbsoluteLifetime: s.deps.SessionPolicy.AbsoluteTTL,
 		MaximumActive: s.deps.SessionPolicy.MaximumPerUser, Capabilities: accessDeploymentCapabilities(s.deps.Capabilities.Snapshot()),
-		AuditEventID: audit.ID, AuditAt: at.UnixMilli(),
+		AuditEventID: audit.ID, AuditAt: at,
 	})
 	if err != nil {
 		failure := desktopAuthorizationStoreErrors.Translate(err)
@@ -614,7 +615,7 @@ func (s *desktopAuthorizationService) ExchangeDesktopAuthorization(ctx context.C
 		withdrawal, auditErr := s.deps.Audit.PrepareWithdrawal(revokeCtx, invocation, result.Session.UserID,
 			institution.ID, result.Session.ID)
 		hashes, revokeErr := s.authentication.deps.Sessions.Withdraw(revokeCtx, result.Session.ID,
-			result.Session.UserID, model.MillisFromTime(s.deps.Now()), model.SessionRevocationDesktopAuthorizationFailed)
+			result.Session.UserID, s.deps.Now(), model.SessionRevocationDesktopAuthorizationFailed)
 		if auditErr == nil && withdrawal != nil {
 			if revokeErr != nil {
 				auditErr = s.deps.Audit.Fail(revokeCtx, withdrawal.ID, "authentication.desktop_authorization.unavailable")

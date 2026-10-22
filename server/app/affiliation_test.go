@@ -54,7 +54,7 @@ func (s *affiliationStoreFake) End(_ context.Context, input *store.AffiliationEn
 		return nil, s.endErr
 	}
 	ended := *s.current
-	ended.EndsAt = model.OptionalTimeFromMillis(input.EndAt)
+	ended.EndsAt = model.OptionalTimeFrom(input.EndAt)
 	ended.Revision = input.ExpectedRevision + 1
 	return &ended, nil
 }
@@ -73,7 +73,7 @@ func TestAffiliationEndFutureRangePreservesRejection(t *testing.T) {
 	require.True(t, ok)
 	require.Equal(t, "resource.not_found", failure.Code())
 	require.Equal(t, "affiliation", failure.Fields()["resource"])
-	require.Equal(t, int64(500), persistence.endInput.EndAt)
+	require.True(t, time.UnixMilli(500).UTC().Equal(persistence.endInput.EndAt))
 }
 
 type affiliationEnrollmentFake struct {
@@ -101,7 +101,7 @@ func TestAffiliationCreateKeepsKindsNonExclusiveAndAudited(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, kind, created.Kind)
 		require.Equal(t, userID, persistence.createInput.Affiliation.UserID.String())
-		require.Equal(t, model.MillisFromTime(created.CreatedAt), persistence.createInput.AuditAt, "creation/audit time")
+		require.True(t, model.TimeUTC(created.CreatedAt).Equal(persistence.createInput.AuditAt), "creation/audit time")
 	}
 	require.Equal(t, 2, clockCalls, "clock calls")
 	// Contract (guardrail 8): authorization precedes the audit, and the audit

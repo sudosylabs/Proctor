@@ -304,7 +304,7 @@ func (s *desktopCompatibilityService) ReplaceDesktopCompatibilityPolicy(
 					ExpectedRevision: command.ExpectedRevision,
 					Settings:         command.Settings,
 					AuditEventID:     reference.ID,
-					AuditAt:          reference.MutationAtMillis,
+					AuditAt:          reference.MutationAt,
 				},
 				idempotency,
 			)

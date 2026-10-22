@@ -155,7 +155,7 @@ func (s SQLInstitutionStore) Update(
 	input *store.InstitutionUpdate,
 ) (*model.Institution, error) {
 	if input == nil || input.Institution == nil ||
-		!input.AuditEventID.IsValid() || input.AuditAt <= 0 {
+		!input.AuditEventID.IsValid() || input.AuditAt.IsZero() {
 		return nil, store.NewErrInvalidInput("institution", "update", nil)
 	}
 	candidate := *input.Institution
@@ -169,7 +169,7 @@ func (s SQLInstitutionStore) updateInstitution(
 	ctx context.Context,
 	candidate *model.Institution,
 	auditEventID model.AuditEventID,
-	auditAt int64,
+	auditAt time.Time,
 ) (*model.Institution, error) {
 	return runSQLTransaction(ctx, s.GetMaster().Begin, "institution update", func(ctx context.Context, tx *sqlxTxWrapper) (*model.Institution, error) {
 		row := newInstitutionRow(candidate)
@@ -218,13 +218,13 @@ func (s SQLInstitutionStore) updateInstitution(
 	})
 }
 
-// Archive archives the Institution at archiveAt (Unix milliseconds), or returns
+// Archive archives the Institution at archiveAt, or returns
 // a not-found error when it is absent or already archived.
-func (s SQLInstitutionStore) Archive(ctx context.Context, id model.InstitutionID, archiveAt int64) error {
-	if archiveAt <= 0 {
+func (s SQLInstitutionStore) Archive(ctx context.Context, id model.InstitutionID, archiveAt time.Time) error {
+	if archiveAt.IsZero() {
 		return store.NewErrInvalidInput("institution", "archived_at", archiveAt)
 	}
-	at := model.TimeFromMillis(archiveAt)
+	at := model.TimeUTC(archiveAt)
 	result, err := s.GetMaster().Exec(
 		ctx,
 		`UPDATE institutions

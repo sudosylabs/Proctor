@@ -47,10 +47,10 @@ func TestValidateSecurityNoticeMailRejectsMismatchedLifecycle(t *testing.T) {
 	require.Error(t, err, "validateSecurityNoticeMail() accepted a non-canonical notice lifetime")
 }
 
-func securityNoticeFixture(t *testing.T, key model.MailTemplateKey) (model.UserID, *model.MailOccurrence, *model.MailDelivery, *model.Job, int64) {
+func securityNoticeFixture(t *testing.T, key model.MailTemplateKey) (model.UserID, *model.MailOccurrence, *model.MailDelivery, *model.Job, time.Time) {
 	t.Helper()
 
-	at := model.TimeFromMillis(model.MillisFromTime(model.NowUTC()))
+	at := model.NowUTC()
 	userID := model.NewUserID()
 	occurrenceID := model.NewMailOccurrenceID()
 	deliveryID := model.NewMailDeliveryID()
@@ -69,5 +69,5 @@ func securityNoticeFixture(t *testing.T, key model.MailTemplateKey) (model.UserI
 	require.NoError(t, err)
 	err = delivery.Validate()
 	require.NoError(t, err)
-	return userID, occurrence, delivery, job, model.MillisFromTime(at)
+	return userID, occurrence, delivery, job, at
 }

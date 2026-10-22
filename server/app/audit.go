@@ -530,7 +530,7 @@ func (s *auditService) CompleteCriticalAction(
 		return nil, domainInvalid("audit.internal", err)
 	}
 	event, err := s.deps.Audits.Complete(
-		ctx, eventID, status, errorCode, encodedResult, s.now().UnixMilli(),
+		ctx, eventID, status, errorCode, encodedResult, s.now(),
 	)
 	if err != nil {
 		return nil, auditUnavailable(err)

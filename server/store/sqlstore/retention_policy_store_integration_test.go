@@ -49,7 +49,7 @@ func TestRetentionPolicyCurrentCredentialAndAssurancePreserveGrace(t *testing.T)
 					ScopeType: model.RoleScopeInstitution, ScopeID: institution.ID.String(), Status: model.AuditStatusAttempt, NodeID: "policy-test"})
 				require.NoError(t, err)
 				return store.RetentionMutation{Principal: f.principal, RecentAuthenticationTTL: time.Hour,
-					AuditEventID: audit.ID, AuditAt: model.MillisFromTime(audit.CreatedAt)}
+					AuditEventID: audit.ID, AuditAt: audit.CreatedAt}
 			}
 			command := func(operation, key string) *store.CommandIdempotency {
 				return &store.CommandIdempotency{UserID: f.principal.UserID, Operation: operation,
@@ -75,7 +75,7 @@ func TestRetentionPolicyCurrentCredentialAndAssurancePreserveGrace(t *testing.T)
 			// Rejected writes must neither cancel grace nor pause live approval.
 			target := mutation(model.ActionAuditView)
 			scheduledID := target.AuditEventID
-			_, err = s.Audit().Complete(ctx, scheduledID, model.AuditStatusSuccess, "", nil, model.GetMillis())
+			_, err = s.Audit().Complete(ctx, scheduledID, model.AuditStatusSuccess, "", nil, model.NowUTC())
 			require.NoError(t, err)
 			_, err = s.GetMaster().Exec(ctx, `UPDATE audit_events SET created_at=clock_timestamp()-INTERVAL '3 days',
 				updated_at=clock_timestamp()-INTERVAL '2 days' WHERE id=?`, scheduledID)
@@ -85,7 +85,7 @@ func TestRetentionPolicyCurrentCredentialAndAssurancePreserveGrace(t *testing.T)
 				ScopeID: institution.ID.String(), Status: model.AuditStatusAttempt, NodeID: "policy-test"})
 			require.NoError(t, err)
 			scheduled, err := s.Retention().ReconcileExpiry(ctx, &store.RetentionExpiryReconciliation{Kind: model.RetentionExpiryAudit,
-				RecordID: scheduledID.String(), AuditEventID: cleanupAudit.ID, AuditAt: model.MillisFromTime(cleanupAudit.CreatedAt)})
+				RecordID: scheduledID.String(), AuditEventID: cleanupAudit.ID, AuditAt: cleanupAudit.CreatedAt})
 			require.NoError(t, err, "audit expiry was not scheduled: %#v", scheduled)
 			require.True(t, scheduled.Scheduled, "audit expiry was not scheduled: %#v", scheduled)
 			defer func() {
@@ -211,7 +211,7 @@ func TestRetentionPolicyReplacementKeepsMonotonicMetadata(t *testing.T) {
 			command := &store.CommandIdempotency{UserID: actor.ID, Operation: "retention_policy.replace",
 				KeyDigest:   sha256.Sum256([]byte(test.name)),
 				Fingerprint: sha256.Sum256([]byte("retention-clock:" + test.name)), Retention: time.Hour, Wait: time.Second}
-			result, replaceErr := persistence.RetentionPolicy().Replace(ctx, &store.RetentionPolicyReplacement{RetentionMutation: store.RetentionMutation{Principal: principal, RecentAuthenticationTTL: time.Hour, AuditEventID: audit.ID, AuditAt: model.MillisFromTime(audit.CreatedAt)}, ExpectedRevision: 1, Settings: test.settings}, command)
+			result, replaceErr := persistence.RetentionPolicy().Replace(ctx, &store.RetentionPolicyReplacement{RetentionMutation: store.RetentionMutation{Principal: principal, RecentAuthenticationTTL: time.Hour, AuditEventID: audit.ID, AuditAt: audit.CreatedAt}, ExpectedRevision: 1, Settings: test.settings}, command)
 			require.NoError(t, replaceErr, "policy metadata ahead of database clock rejected")
 			require.False(t, result.Replayed, "non-monotonic policy transition: %#v, previous=%#v", result, initial)
 			require.Equal(t, test.changed, result.Changed, "non-monotonic policy transition: %#v, previous=%#v", result, initial)
@@ -237,7 +237,7 @@ func TestPolicyReplacementRechecksAdministratorAfterBindingEnd(t *testing.T) {
 		{
 			name: "retention", action: model.ActionRetentionPolicyManage, operation: "retention_policy.replace",
 			replace: func(ctx context.Context, persistence *SQLStore, principal model.Principal, audit *model.AuditEvent, command *store.CommandIdempotency) error {
-				_, err := persistence.RetentionPolicy().Replace(ctx, &store.RetentionPolicyReplacement{RetentionMutation: store.RetentionMutation{Principal: principal, RecentAuthenticationTTL: time.Hour, AuditEventID: audit.ID, AuditAt: model.MillisFromTime(audit.CreatedAt)}, ExpectedRevision: 1, Settings: model.RetentionPolicySettings{SubmissionRetentionDays: 365}}, command)
+				_, err := persistence.RetentionPolicy().Replace(ctx, &store.RetentionPolicyReplacement{RetentionMutation: store.RetentionMutation{Principal: principal, RecentAuthenticationTTL: time.Hour, AuditEventID: audit.ID, AuditAt: audit.CreatedAt}, ExpectedRevision: 1, Settings: model.RetentionPolicySettings{SubmissionRetentionDays: 365}}, command)
 				return err
 			},
 			revision: func(ctx context.Context, persistence *SQLStore) (int64, error) {
@@ -253,7 +253,7 @@ func TestPolicyReplacementRechecksAdministratorAfterBindingEnd(t *testing.T) {
 			replace: func(ctx context.Context, persistence *SQLStore, principal model.Principal, audit *model.AuditEvent, command *store.CommandIdempotency) error {
 				_, err := persistence.DesktopCompatibilityPolicy().Replace(ctx, &store.DesktopCompatibilityPolicyReplacement{ActorID: principal.UserID, ExpectedRevision: 1,
 					Settings:     model.DesktopCompatibilityPolicySettings{MinimumDesktopRelease: "2.0.0", RevokedDesktopBuildIDs: []string{}, Availability: model.DesktopAvailabilityReady},
-					AuditEventID: audit.ID, AuditAt: model.MillisFromTime(audit.CreatedAt)}, command)
+					AuditEventID: audit.ID, AuditAt: audit.CreatedAt}, command)
 				return err
 			},
 			revision: func(ctx context.Context, persistence *SQLStore) (int64, error) {
@@ -336,20 +336,19 @@ func TestPolicyReplacementRechecksAdministratorAfterBindingEnd(t *testing.T) {
 	}
 }
 
-func policyBindingEndAfterWaitingTransaction(t *testing.T, ctx context.Context, ending *sqlxTxWrapper, blockerPID int) int64 {
+func policyBindingEndAfterWaitingTransaction(t *testing.T, ctx context.Context, ending *sqlxTxWrapper, blockerPID int) time.Time {
 	t.Helper()
 	var waitingSince time.Time
 	require.NoError(t, ending.Get(ctx, &waitingSince, `SELECT MIN(xact_start) FROM pg_stat_activity
         WHERE $1=ANY(pg_blocking_pids(pid)) AND query LIKE '%pg_advisory_xact_lock%'`, blockerPID))
-	// End accepts millisecond instants. Ensure its PostgreSQL timestamp is
-	// strictly later than Replace's start even within the same millisecond.
+	// Ensure the End instant is strictly later than Replace's start.
 	ticker := time.NewTicker(time.Millisecond)
 	defer ticker.Stop()
 	for {
 		var databaseNow time.Time
 		require.NoError(t, ending.Get(ctx, &databaseNow, `SELECT clock_timestamp()`))
-		endAt := model.MillisFromTime(databaseNow)
-		if model.TimeFromMillis(endAt).After(waitingSince) {
+		endAt := model.TimeUTC(databaseNow)
+		if endAt.After(waitingSince) {
 			return endAt
 		}
 		select {

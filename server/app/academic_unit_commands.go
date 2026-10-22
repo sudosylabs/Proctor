@@ -204,7 +204,7 @@ func (s *academicUnitCommandService) CreateAcademicUnit(
 		s.deps.Now,
 		func(ctx context.Context, reference mutationAttemptReference) (*store.AcademicUnitCommandResult, error) {
 			input := &store.AcademicUnitCreation{
-				Unit: candidate, AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis,
+				Unit: candidate, AuditEventID: reference.ID, AuditAt: reference.MutationAt,
 			}
 			if idempotency == nil {
 				unit, createErr := s.deps.Store.Create(ctx, input)
@@ -305,7 +305,7 @@ func (s *academicUnitCommandService) UpdateAcademicUnit(
 		s.deps.Now,
 		func(ctx context.Context, reference mutationAttemptReference) (*model.AcademicUnit, error) {
 			return s.deps.Store.Update(ctx, &store.AcademicUnitUpdate{
-				Unit: &candidate, AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis,
+				Unit: &candidate, AuditEventID: reference.ID, AuditAt: reference.MutationAt,
 			})
 		},
 		func(err error) error { return academicUnitStoreErrors.Translate(err) },
@@ -355,8 +355,8 @@ func (s *academicUnitCommandService) ArchiveAcademicUnit(
 		func(ctx context.Context, reference mutationAttemptReference) (*model.AcademicUnit, error) {
 			return s.deps.Store.Archive(ctx, &store.AcademicUnitArchive{
 				ExpectedRevision: current.Revision,
-				ID:               command.ID, ArchiveAt: reference.MutationAtMillis,
-				AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis,
+				ID:               command.ID, ArchiveAt: reference.MutationAt,
+				AuditEventID: reference.ID, AuditAt: reference.MutationAt,
 			})
 		},
 		func(err error) error { return academicUnitStoreErrors.Translate(err) },

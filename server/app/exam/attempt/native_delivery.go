@@ -145,7 +145,7 @@ func (s *Service) DeclareNativeDeliveryGaps(ctx context.Context, invocation invo
 	if err != nil {
 		return nil, err
 	}
-	value, err := s.deps.Persistence.DeclareNativeDeliveryGaps(ctx, &store.NativeDeliveryGapDeclaration{Access: access, Declaration: command.Declaration, AuditEventID: audit, AuditAt: model.MillisFromTime(s.deps.Now())}, idempotency)
+	value, err := s.deps.Persistence.DeclareNativeDeliveryGaps(ctx, &store.NativeDeliveryGapDeclaration{Access: access, Declaration: command.Declaration, AuditEventID: audit, AuditAt: s.deps.Now()}, idempotency)
 	if err != nil {
 		var capacity *model.DeliveryMetadataCapacity
 		if errors.As(err, &capacity) {
@@ -192,7 +192,7 @@ func (s *Service) SealNativeDelivery(ctx context.Context, invocation invocation.
 	if err != nil {
 		return nil, err
 	}
-	value, err := s.deps.Persistence.SealNativeDelivery(ctx, &store.NativeDeliveryFinalDeclaration{Access: access, Declaration: command.Declaration, AuditEventID: audit, AuditAt: model.MillisFromTime(s.deps.Now())}, idempotency)
+	value, err := s.deps.Persistence.SealNativeDelivery(ctx, &store.NativeDeliveryFinalDeclaration{Access: access, Declaration: command.Declaration, AuditEventID: audit, AuditAt: s.deps.Now()}, idempotency)
 	if err != nil {
 		var capacity *model.DeliveryMetadataCapacity
 		if errors.As(err, &capacity) {
@@ -238,7 +238,7 @@ func (s *Service) UpdateNativeDeliverySummary(ctx context.Context, invocation in
 	if err != nil {
 		return nil, err
 	}
-	value, err := s.deps.Persistence.UpdateNativeDeliverySummary(ctx, &store.NativeDeliverySummaryUpdate{Access: access, Summary: command.Summary, AuditEventID: audit, AuditAt: model.MillisFromTime(s.deps.Now())}, idempotency)
+	value, err := s.deps.Persistence.UpdateNativeDeliverySummary(ctx, &store.NativeDeliverySummaryUpdate{Access: access, Summary: command.Summary, AuditEventID: audit, AuditAt: s.deps.Now()}, idempotency)
 	if err != nil {
 		return nil, s.failAudit(ctx, audit, s.nativeDeliveryFailure(ctx, access, err))
 	}
@@ -308,7 +308,7 @@ func (s *Service) AppendNativeDelivery(ctx context.Context, invocation invocatio
 	if err != nil {
 		return nil, err
 	}
-	value, err := s.deps.Persistence.AppendNativeDelivery(ctx, &store.NativeDeliveryAppend{Access: access, Batch: command.Batch, DesktopBuild: build, AuditEventID: audit, AuditAt: model.MillisFromTime(s.deps.Now())}, idempotency)
+	value, err := s.deps.Persistence.AppendNativeDelivery(ctx, &store.NativeDeliveryAppend{Access: access, Batch: command.Batch, DesktopBuild: build, AuditEventID: audit, AuditAt: s.deps.Now()}, idempotency)
 	if err != nil {
 		var capacity *model.DeliveryMetadataCapacity
 		if errors.As(err, &capacity) {

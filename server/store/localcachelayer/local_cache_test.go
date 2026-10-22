@@ -576,5 +576,5 @@ func newLayerWithCacheAndFanout(
 }
 
 func academicPeriodUpdate(period *model.AcademicPeriod) *store.AcademicPeriodUpdate {
-	return &store.AcademicPeriodUpdate{Period: period, AuditEventID: model.NewAuditEventID(), AuditAt: 1}
+	return &store.AcademicPeriodUpdate{Period: period, AuditEventID: model.NewAuditEventID(), AuditAt: time.UnixMilli(1).UTC()}
 }

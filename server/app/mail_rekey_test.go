@@ -113,7 +113,7 @@ func TestStartMailRekeyRequiresStrongRecentSessionAndEnqueuesAuditedJob(t *testi
 	require.Equal(t, sealer.PrimaryKeyID(), persistence.input.PrimaryKeyID, "view=%#v input=%#v audit=%#v woke", view, persistence.input, auditor.attempt)
 	require.Equal(t, oldSealerKeyID(t, oldKey), persistence.input.RetiringKeyID, "view=%#v input=%#v audit=%#v woke", view, persistence.input, auditor.attempt)
 	require.Equal(t, model.AuditEventID(auditor.beginID), persistence.input.AuditEventID, "view=%#v input=%#v audit=%#v woke", view, persistence.input, auditor.attempt)
-	require.Equal(t, now.UnixMilli(), persistence.input.AuditAt, "view=%#v input=%#v audit=%#v woke", view, persistence.input, auditor.attempt)
+	require.True(t, model.TimeUTC(now).Equal(persistence.input.AuditAt), "view=%#v input=%#v audit=%#v woke", view, persistence.input, auditor.attempt)
 	require.Equal(t, persistence.input.Job.ID, view.JobID, "view=%#v input=%#v audit=%#v woke", view, persistence.input, auditor.attempt)
 	require.Equal(t, sealer.PrimaryKeyID(), view.PrimaryKeyID, "view=%#v input=%#v audit=%#v woke", view, persistence.input, auditor.attempt)
 	require.Equal(t, oldSealerKeyID(t, oldKey), view.RetiringKeyID, "view=%#v input=%#v audit=%#v woke", view, persistence.input, auditor.attempt)

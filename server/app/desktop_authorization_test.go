@@ -645,7 +645,7 @@ type desktopAuthorizationSessionStoreStub struct {
 	reason        model.SessionRevocationReason
 }
 
-func (s *desktopAuthorizationSessionStoreStub) Withdraw(_ context.Context, sessionID model.SessionID, userID model.UserID, _ int64, reason model.SessionRevocationReason) ([]string, error) {
+func (s *desktopAuthorizationSessionStoreStub) Withdraw(_ context.Context, sessionID model.SessionID, userID model.UserID, _ time.Time, reason model.SessionRevocationReason) ([]string, error) {
 	s.revokedID, s.revokedUserID, s.reason = sessionID.String(), userID.String(), reason
 	return []string{model.HashToken("revoked-access")}, nil
 }

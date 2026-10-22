@@ -301,7 +301,7 @@ func TestInvitationAcceptanceAndAuthenticationMethodMutationUseGlobalUserOrder(t
 			Capabilities: store.AccessDeploymentCapabilities{
 				Providers: map[string]store.AccessProviderCapability{},
 			},
-			AuditEventID: audit.ID, AuditAt: model.GetMillis(),
+			AuditEventID: audit.ID, AuditAt: model.NowUTC(),
 		})
 		enrollResult <- enrollmentOutcome{result: result, err: enrollErr}
 	}()

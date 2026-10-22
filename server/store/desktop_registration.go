@@ -9,6 +9,7 @@ package store
 
 import (
 	"context"
+	"time"
 
 	"github.com/sudosylabs/proctor/server/model"
 )
@@ -16,9 +17,9 @@ import (
 type DesktopRegistrationRevocation struct {
 	RegistrationID model.DesktopRegistrationID
 	UserID         model.UserID
-	RevokedAt      int64
+	RevokedAt      time.Time
 	AuditEventID   model.AuditEventID
-	AuditAt        int64
+	AuditAt        time.Time
 }
 
 type DesktopRegistrationRevocationResult struct {

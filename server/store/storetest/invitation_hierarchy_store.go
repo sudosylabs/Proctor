@@ -88,7 +88,7 @@ func replaceInvitationClassAuthorityWithUnit(
 	issuedAt time.Time,
 ) {
 	t.Helper()
-	_, err := EndRoleBinding(ctx, ss, binding.ID, model.GetMillis())
+	_, err := EndRoleBinding(ctx, ss, binding.ID, model.NowUTC())
 	require.NoError(t, err)
 	_, err = SaveRoleBinding(ctx, ss, &model.RoleBinding{
 		UserID: inviter.ID, RoleID: role.ID, ScopeType: model.RoleScopeAcademicUnit,

@@ -135,7 +135,7 @@ func clusteredMailRekeyStart(t *testing.T, ctx context.Context, persistence stor
 		NodeID: "mail-rekey-node-a", ClientType: string(model.SessionClientWeb), AuthMethod: "password"})
 	require.NoError(t, err)
 	return &store.MailRekeyStart{PrimaryKeyID: primaryKeyID, RetiringKeyID: retiringKeyID, Job: job,
-		AuditEventID: attempt.ID, AuditAt: model.GetMillis()}
+		AuditEventID: attempt.ID, AuditAt: model.NowUTC()}
 }
 
 func clusteredMailRekeyClaimToken(t *testing.T) model.JobClaimToken {

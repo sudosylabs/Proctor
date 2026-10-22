@@ -514,7 +514,7 @@ func validateAccessPolicyPreflight(input *store.AccessPolicyPreflight) error {
 }
 
 func validateAccessPolicyReplacement(input *store.AccessPolicyReplacement, command *store.CommandIdempotency) error {
-	if input == nil || !input.ActorID.IsValid() || !input.AuditEventID.IsValid() || input.AuditAt <= 0 ||
+	if input == nil || !input.ActorID.IsValid() || !input.AuditEventID.IsValid() || input.AuditAt.IsZero() ||
 		command == nil || command.UserID != input.ActorID || command.Operation != "access_policy.replace" ||
 		command.Retention <= 0 || command.Wait <= 0 {
 		return store.NewErrInvalidInput("access_policy", "replacement", nil)

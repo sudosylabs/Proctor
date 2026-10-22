@@ -334,7 +334,7 @@ func (s *SQLExamSubmissionStore) Seal(ctx context.Context, input *store.ExamSubm
 	command *store.CommandIdempotency,
 ) (*store.ExamSubmissionSealResult, error) {
 	if input == nil || command == nil || command.Operation != store.ExamSubmissionSealOperation || command.UserID != input.Access.CandidateUserID || !input.SubmissionID.IsValid() ||
-		!validExamSubmissionSealAccess(input.Access) || !input.AuditEventID.IsValid() || input.AuditAt <= 0 {
+		!validExamSubmissionSealAccess(input.Access) || !input.AuditEventID.IsValid() || input.AuditAt.IsZero() {
 		return nil, store.NewErrInvalidInput("exam_submission", "seal", nil)
 	}
 	prepared := *input
@@ -421,7 +421,7 @@ func sealExamSubmission(ctx context.Context, tx *sqlxTxWrapper, input *store.Exa
 	if input.Access.FinalFocusLossSequence < integrityTail.AcceptedSequence {
 		return zero, store.NewErrConflict("focus_loss_signal", "focus_loss_sequence", nil)
 	}
-	sealAt := model.TimeFromMillis(input.AuditAt)
+	sealAt := model.TimeUTC(input.AuditAt)
 	if sealAt.After(databaseNow) {
 		return zero, store.NewErrConflict("exam_submission", "seal_time", nil)
 	}
@@ -736,7 +736,7 @@ func persistSubmittedExamAttempt(ctx context.Context, tx *sqlxTxWrapper, attempt
 }
 
 func completeExamSubmissionAudit(ctx context.Context, tx *sqlxTxWrapper, outcome examSubmissionSealOutcome,
-	auditID model.AuditEventID, auditAt int64, replayed bool, originalAuditID string,
+	auditID model.AuditEventID, auditAt time.Time, replayed bool, originalAuditID string,
 ) error {
 	data := map[string]any{"exam_submission_id": outcome.Receipt.SubmissionID.String(), "exam_attempt_id": outcome.Receipt.AttemptID.String(),
 		"exam_sitting_id": outcome.SittingID, "candidate_user_id": outcome.CandidateID,

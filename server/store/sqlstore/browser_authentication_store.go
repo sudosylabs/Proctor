@@ -221,8 +221,8 @@ func (s SQLBrowserAuthenticationStore) AuthenticateDesktopAuthorization(ctx cont
 		}
 		// Fresh local proof gets one database authentication instant. Provider
 		// history can only move back to that instant; Session history stays exact.
-		authenticatedAt := model.TimeFromMillis(input.AuthenticatedAt)
-		mfaCompletedAt := model.OptionalTimeFromMillis(input.MFACompletedAt)
+		authenticatedAt := model.TimeUTC(input.AuthenticatedAt)
+		mfaCompletedAt := input.MFACompletedAt.UTC()
 		if source != nil {
 			authenticatedAt, mfaCompletedAt = source.AuthenticatedAt, source.MFACompletedAt
 		}
@@ -932,7 +932,7 @@ func validateDesktopAuthorizationAuthentication(input *store.DesktopAuthorizatio
 	validSelector := input != nil && ((model.IsValidTokenHash(input.BindingHash) && input.TransactionID.IsZero()) ||
 		(input.BindingHash == "" && input.TransactionID.IsValid()))
 	if !validSelector || !input.UserID.IsValid() ||
-		!input.AuthenticationStrength.IsValid() || input.AuthenticatedAt <= 0 ||
+		!input.AuthenticationStrength.IsValid() || input.AuthenticatedAt.IsZero() ||
 		!validAccessDeploymentCapabilities(input.Capabilities) {
 		return store.NewErrInvalidInput("browser_authentication_transaction", "authentication", nil)
 	}
@@ -955,8 +955,8 @@ func validateDesktopAuthorizationAuthentication(input *store.DesktopAuthorizatio
 	} else if !model.IsValidIdentityProviderID(input.AuthenticationProviderID) || !input.ExternalIdentityID.IsValid() {
 		return store.NewErrInvalidInput("browser_authentication_transaction", "authentication_path", nil)
 	}
-	if (input.AuthenticationStrength == model.AuthenticationSingleFactor && input.MFACompletedAt != 0) ||
-		(input.AuthenticationStrength == model.AuthenticationMultiFactor && input.MFACompletedAt < input.AuthenticatedAt) {
+	if (input.AuthenticationStrength == model.AuthenticationSingleFactor && input.MFACompletedAt.Valid) ||
+		(input.AuthenticationStrength == model.AuthenticationMultiFactor && (!input.MFACompletedAt.Valid || input.MFACompletedAt.Time.Before(input.AuthenticatedAt))) {
 		return store.NewErrInvalidInput("browser_authentication_transaction", "mfa_completed_at", nil)
 	}
 	return nil
@@ -966,7 +966,7 @@ func validateDesktopAuthorizationCodeIssue(input *store.DesktopAuthorizationCode
 	if input == nil || !model.IsValidTokenHash(input.BindingHash) ||
 		!model.IsValidTokenHash(input.StateHash) || !model.IsValidTokenHash(input.CodeHash) || !input.ExpectedUserID.IsValid() || input.CodeLifetime <= 0 ||
 		input.CodeLifetime > model.DesktopAuthorizationCodeLifetime ||
-		!input.AuditEventID.IsValid() || input.AuditAt <= 0 || !validAccessDeploymentCapabilities(input.Capabilities) {
+		!input.AuditEventID.IsValid() || input.AuditAt.IsZero() || !validAccessDeploymentCapabilities(input.Capabilities) {
 		return store.NewErrInvalidInput("browser_authentication_transaction", "code_issue", nil)
 	}
 	return nil
@@ -980,7 +980,7 @@ func validateDesktopAuthorizationExchange(input *store.DesktopAuthorizationExcha
 		input.IdleLifetime <= 0 || input.AbsoluteLifetime <= 0 || input.AccessLifetime > input.IdleLifetime ||
 		input.IdleLifetime > input.AbsoluteLifetime || input.RefreshLifetime > input.AbsoluteLifetime ||
 		input.MaximumActive < 1 || !input.AuditEventID.IsValid() ||
-		input.AuditAt <= 0 || !validAccessDeploymentCapabilities(input.Capabilities) ||
+		input.AuditAt.IsZero() || !validAccessDeploymentCapabilities(input.Capabilities) ||
 		input.ExpectedPublicJWK.Validate() != nil || !model.IsValidDPoPKeyThumbprint(input.ExpectedKeyThumbprint) ||
 		!model.IsValidDesktopRelease(input.DesktopRelease) || !model.IsValidDesktopBuildID(input.DesktopBuildID) ||
 		!input.DesktopPlatform.IsValid() || !input.DesktopArchitecture.IsValid() || input.DesktopRealtimeProtocol < 1 ||

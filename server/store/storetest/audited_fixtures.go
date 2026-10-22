@@ -9,6 +9,7 @@ package storetest
 
 import (
 	"context"
+	"time"
 
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -22,7 +23,7 @@ const FixtureAuditAction = "storetest.fixture"
 // beginFixtureAudit persists the actorless attempt an audited Store mutation
 // requires and completes. Fixtures use it where they need state rather than an
 // assertion about the mutation's own audit record.
-func beginFixtureAudit(ctx context.Context, ss store.Store) (model.AuditEventID, int64, error) {
+func beginFixtureAudit(ctx context.Context, ss store.Store) (model.AuditEventID, time.Time, error) {
 	scope := model.NewID()
 	event, err := ss.Audit().Save(ctx, &model.AuditEvent{
 		Action:   FixtureAuditAction,
@@ -30,9 +31,9 @@ func beginFixtureAudit(ctx context.Context, ss store.Store) (model.AuditEventID,
 		ScopeID: scope, Status: model.AuditStatusAttempt, NodeID: "storetest-fixture",
 	})
 	if err != nil {
-		return "", 0, err
+		return "", time.Time{}, err
 	}
-	return event.ID, model.GetMillis(), nil
+	return event.ID, model.NowUTC(), nil
 }
 
 // UpdateInstitution applies a fixture update through the audited Store
@@ -81,7 +82,7 @@ func UpdateAcademicUnit(ctx context.Context, ss store.Store, unit *model.Academi
 }
 
 // ArchiveAcademicUnit archives a fixture Academic Unit without a revision fence.
-func ArchiveAcademicUnit(ctx context.Context, ss store.Store, id model.AcademicUnitID, archiveAt int64) (*model.AcademicUnit, error) {
+func ArchiveAcademicUnit(ctx context.Context, ss store.Store, id model.AcademicUnitID, archiveAt time.Time) (*model.AcademicUnit, error) {
 	auditID, at, err := beginFixtureAudit(ctx, ss)
 	if err != nil {
 		return nil, err
@@ -118,7 +119,7 @@ func UpdateProgramme(ctx context.Context, ss store.Store, programme *model.Progr
 }
 
 // ArchiveProgramme archives a fixture Programme without a revision fence.
-func ArchiveProgramme(ctx context.Context, ss store.Store, id model.ProgrammeID, archiveAt int64) (*model.Programme, error) {
+func ArchiveProgramme(ctx context.Context, ss store.Store, id model.ProgrammeID, archiveAt time.Time) (*model.Programme, error) {
 	auditID, at, err := beginFixtureAudit(ctx, ss)
 	if err != nil {
 		return nil, err
@@ -156,7 +157,7 @@ func UpdateProgrammeLevel(ctx context.Context, ss store.Store, level *model.Prog
 }
 
 // ArchiveProgrammeLevel archives a fixture Programme Level without a revision fence.
-func ArchiveProgrammeLevel(ctx context.Context, ss store.Store, id model.ProgrammeLevelID, archiveAt int64) (*model.ProgrammeLevel, error) {
+func ArchiveProgrammeLevel(ctx context.Context, ss store.Store, id model.ProgrammeLevelID, archiveAt time.Time) (*model.ProgrammeLevel, error) {
 	auditID, at, err := beginFixtureAudit(ctx, ss)
 	if err != nil {
 		return nil, err
@@ -194,7 +195,7 @@ func UpdateAcademicPeriod(ctx context.Context, ss store.Store, period *model.Aca
 }
 
 // ArchiveAcademicPeriod archives a fixture Academic Period without a revision fence.
-func ArchiveAcademicPeriod(ctx context.Context, ss store.Store, id model.AcademicPeriodID, archiveAt int64) (*model.AcademicPeriod, error) {
+func ArchiveAcademicPeriod(ctx context.Context, ss store.Store, id model.AcademicPeriodID, archiveAt time.Time) (*model.AcademicPeriod, error) {
 	auditID, at, err := beginFixtureAudit(ctx, ss)
 	if err != nil {
 		return nil, err
@@ -239,7 +240,7 @@ func UpdateClass(ctx context.Context, ss store.Store, class *model.Class) (*mode
 }
 
 // ArchiveClass archives the current revision of a fixture Class.
-func ArchiveClass(ctx context.Context, ss store.Store, id model.ClassID, archiveAt int64) (*model.Class, error) {
+func ArchiveClass(ctx context.Context, ss store.Store, id model.ClassID, archiveAt time.Time) (*model.Class, error) {
 	current, err := ss.Class().Get(ctx, id)
 	if err != nil {
 		return nil, err
@@ -259,7 +260,7 @@ func ArchiveClass(ctx context.Context, ss store.Store, id model.ClassID, archive
 }
 
 // EndAffiliation ends a fixture Affiliation through the audited Store operation.
-func EndAffiliation(ctx context.Context, ss store.Store, id model.AffiliationID, expectedRevision, endAt int64) (*model.Affiliation, error) {
+func EndAffiliation(ctx context.Context, ss store.Store, id model.AffiliationID, expectedRevision int64, endAt time.Time) (*model.Affiliation, error) {
 	auditID, at, err := beginFixtureAudit(ctx, ss)
 	if err != nil {
 		return nil, err
@@ -271,7 +272,7 @@ func EndAffiliation(ctx context.Context, ss store.Store, id model.AffiliationID,
 
 // EndAcademicUnitMember ends a fixture Academic Unit membership through the
 // audited Store operation.
-func EndAcademicUnitMember(ctx context.Context, ss store.Store, id model.AcademicUnitMemberID, expectedRevision, endAt int64) (*model.AcademicUnitMember, error) {
+func EndAcademicUnitMember(ctx context.Context, ss store.Store, id model.AcademicUnitMemberID, expectedRevision int64, endAt time.Time) (*model.AcademicUnitMember, error) {
 	auditID, at, err := beginFixtureAudit(ctx, ss)
 	if err != nil {
 		return nil, err
@@ -311,7 +312,7 @@ func UpdateRole(ctx context.Context, ss store.Store, role *model.Role) (*model.R
 }
 
 // ArchiveRole archives a fixture Role through the audited Store operation.
-func ArchiveRole(ctx context.Context, ss store.Store, id model.RoleID, archiveAt int64) (*model.Role, error) {
+func ArchiveRole(ctx context.Context, ss store.Store, id model.RoleID, archiveAt time.Time) (*model.Role, error) {
 	auditID, at, err := beginFixtureAudit(ctx, ss)
 	if err != nil {
 		return nil, err
@@ -340,7 +341,7 @@ func SaveRoleBinding(ctx context.Context, ss store.Store, binding *model.RoleBin
 }
 
 // EndRoleBinding ends a fixture Role Binding through the audited Store operation.
-func EndRoleBinding(ctx context.Context, ss store.Store, id model.RoleBindingID, endAt int64) (*model.RoleBinding, error) {
+func EndRoleBinding(ctx context.Context, ss store.Store, id model.RoleBindingID, endAt time.Time) (*model.RoleBinding, error) {
 	auditID, at, err := beginFixtureAudit(ctx, ss)
 	if err != nil {
 		return nil, err
@@ -350,7 +351,7 @@ func EndRoleBinding(ctx context.Context, ss store.Store, id model.RoleBindingID,
 
 // RevokeAllUserSessions revokes every Session of a fixture User through the
 // audited self-revocation operation, which needs no security notice.
-func RevokeAllUserSessions(ctx context.Context, ss store.Store, userID model.UserID, revokedAt int64) (*store.UserSessionsRevocationResult, error) {
+func RevokeAllUserSessions(ctx context.Context, ss store.Store, userID model.UserID, revokedAt time.Time) (*store.UserSessionsRevocationResult, error) {
 	auditID, at, err := beginFixtureAudit(ctx, ss)
 	if err != nil {
 		return nil, err

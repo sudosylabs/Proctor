@@ -58,13 +58,13 @@ func invitationAuthoritySQLProbe(t *testing.T, primary *SQLStore) storetest.Invi
 		},
 		ArchiveTeacherUnitBeforeAccept: func(t *testing.T, ctx context.Context, unit *model.AcademicUnit, operation func() error) error {
 			return runInvitationAuthorityMutationFirst(t, ctx, primary, "teacher_invitation_unit_archive", "academic_units", "UPDATE academic_units", 8154700260827, func() error {
-				_, err := storetest.ArchiveAcademicUnit(ctx, secondary, unit.ID, model.GetMillis())
+				_, err := storetest.ArchiveAcademicUnit(ctx, secondary, unit.ID, model.NowUTC())
 				return err
 			}, operation)
 		},
 		ArchiveTeacherUnitBeforeMail: func(t *testing.T, ctx context.Context, unit *model.AcademicUnit, operation func() error) error {
 			return runInvitationAuthorityMutationFirst(t, ctx, primary, "teacher_invitation_mail_unit_archive", "academic_units", "UPDATE academic_units", 8154700260828, func() error {
-				_, err := storetest.ArchiveAcademicUnit(ctx, secondary, unit.ID, model.GetMillis())
+				_, err := storetest.ArchiveAcademicUnit(ctx, secondary, unit.ID, model.NowUTC())
 				return err
 			}, operation)
 		},
@@ -80,8 +80,8 @@ func invitationAuthoritySQLProbe(t *testing.T, primary *SQLStore) storetest.Invi
 			audit := saveInvitationAuthorityAudit(t, ctx, secondary, inviter.ID, string(model.ActionUserManage), model.ResourceUser, inviter.ID.String(), model.RoleScopeInstitution, invitationTestInstitutionID(t, ctx, secondary).String())
 			return runInvitationAuthorityMutationFirst(t, ctx, primary, "invitation_disable", "users", "UPDATE users", 8154700260822, func() error {
 				_, err := secondary.User().SetDisabled(ctx, storetest.UserDisabledStateChangeWithNotice(t, &store.UserDisabledStateChange{
-					ID: inviter.ID, ExpectedRevision: inviter.Revision, Disabled: true, ChangedAt: model.GetMillis(),
-					RevocationReason: model.SessionRevocationAccountDisabled, AuditEventID: audit.ID, AuditAt: model.GetMillis(),
+					ID: inviter.ID, ExpectedRevision: inviter.Revision, Disabled: true, ChangedAt: model.NowUTC(),
+					RevocationReason: model.SessionRevocationAccountDisabled, AuditEventID: audit.ID, AuditAt: model.NowUTC(),
 					Capabilities: store.AccessDeploymentCapabilities{Providers: map[string]store.AccessProviderCapability{}},
 				}))
 				return err
@@ -90,9 +90,9 @@ func invitationAuthoritySQLProbe(t *testing.T, primary *SQLStore) storetest.Invi
 		EndBindingBeforeAccept: func(t *testing.T, ctx context.Context, binding *model.RoleBinding, operation func() error) error {
 			audit := saveInvitationAuthorityAudit(t, ctx, secondary, binding.UserID, string(model.ActionRoleBindingManage), model.ResourceClass, binding.ScopeID, binding.ScopeType, binding.ScopeID)
 			return runInvitationAuthorityMutationFirst(t, ctx, primary, "invitation_binding_end", "role_bindings", "UPDATE role_bindings", 8154700260823, func() error {
-				endedAt := model.GetMillis() - 1_000
+				endedAt := model.NowUTC().Add(-1_000 * time.Millisecond)
 				_, err := secondary.RoleBinding().End(ctx, &store.RoleBindingEnd{
-					ID: binding.ID, EndAt: endedAt, AuditEventID: audit.ID, AuditAt: model.GetMillis(),
+					ID: binding.ID, EndAt: endedAt, AuditEventID: audit.ID, AuditAt: model.NowUTC(),
 					Capabilities: store.AccessDeploymentCapabilities{Providers: map[string]store.AccessProviderCapability{}},
 				})
 				return err
@@ -103,7 +103,7 @@ func invitationAuthoritySQLProbe(t *testing.T, primary *SQLStore) storetest.Invi
 			audit := saveInvitationAuthorityAudit(t, ctx, secondary, invitationRoleActorID(t, ctx, secondary, role.ID), string(model.ActionRoleManage), model.ResourceInstitution, institutionID.String(), model.RoleScopeInstitution, institutionID.String())
 			return runInvitationAuthorityMutationFirst(t, ctx, primary, "invitation_role_archive", "roles", "UPDATE roles", 8154700260824, func() error {
 				_, err := secondary.Role().Archive(ctx, &store.RoleArchive{
-					ID: role.ID, ArchiveAt: model.GetMillis(), AuditEventID: audit.ID, AuditAt: model.GetMillis(),
+					ID: role.ID, ArchiveAt: model.NowUTC(), AuditEventID: audit.ID, AuditAt: model.NowUTC(),
 				})
 				return err
 			}, operation)

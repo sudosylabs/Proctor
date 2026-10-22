@@ -141,8 +141,8 @@ func TestExternalAuthenticationCompletionIsolatesDesktopPurpose(t *testing.T) {
 				require.Equal(t, identity.ID, proof.ExternalIdentityID)
 				require.Equal(t, "campus", proof.AuthenticationProviderID)
 				require.Equal(t, "oidc", proof.AuthenticationMethod)
-				require.Equal(t, at.UnixMilli(), proof.AuthenticatedAt)
-				require.Equal(t, at.UnixMilli(), proof.MFACompletedAt)
+				require.True(t, model.TimeUTC(at).Equal(proof.AuthenticatedAt))
+				require.Equal(t, model.OptionalTimeFrom(model.TimeUTC(at)), proof.MFACompletedAt)
 			} else {
 				require.Nil(t, transactions.authenticated, "%s authenticated a Desktop transaction", purpose)
 			}

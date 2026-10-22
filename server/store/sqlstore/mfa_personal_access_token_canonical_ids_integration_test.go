@@ -112,13 +112,13 @@ func TestMFAActivationRejectsCorruptionBeforeCommit(t *testing.T) {
 		"UPDATE mfa_credentials SET encrypted_secret = '' WHERE id = ?", pending.ID.String(),
 	)
 	require.NoError(t, err)
-	activationAt := model.MillisFromTime(pending.CreatedAt) + 1
+	activationAt := model.TimeUTC(pending.CreatedAt).Add(1 * time.Millisecond)
 	audit, notice := mfaSQLSecurityNoticeFixture(t, ctx, persistence, user, model.MailTemplateIdentityMFAEnabled, activationAt)
 	_, err = persistence.MFA().Activate(ctx, &store.MFAActivationMutation{
 		Principal: mfaSQLPrincipal(session, sessionCredentials[0]), RecentAuthenticationTTL: time.Hour,
 		CredentialID: pending.ID, UserID: user.ID, TimeStep: time.Now().Unix() / 30,
 		RecoveryCodes: []*model.MFARecoveryCode{{CodeHash: model.HashToken("mfa-corruption-recovery")}},
-		SessionID:     session.ID, At: model.TimeFromMillis(activationAt), AuditEventID: audit.ID, AuditAt: activationAt, Notice: notice,
+		SessionID:     session.ID, At: model.TimeUTC(activationAt), AuditEventID: audit.ID, AuditAt: activationAt, Notice: notice,
 	})
 	var persisted *persistedStateError
 	require.ErrorAs(t, err, &persisted, "Activate() error")
@@ -137,14 +137,14 @@ func TestMFAActivationRejectsCorruptionBeforeCommit(t *testing.T) {
 	require.False(t, gotSession.MFACompletedAt.Valid)
 }
 
-func mfaSQLSecurityNoticeFixture(t *testing.T, ctx context.Context, persistence *SQLStore, user *model.User, key model.MailTemplateKey, at int64) (*model.AuditEvent, store.MFASecurityNotice) {
+func mfaSQLSecurityNoticeFixture(t *testing.T, ctx context.Context, persistence *SQLStore, user *model.User, key model.MailTemplateKey, at time.Time) (*model.AuditEvent, store.MFASecurityNotice) {
 	t.Helper()
 	scopeID := model.NewID()
 	audit, err := persistence.Audit().Save(ctx, &model.AuditEvent{ActorID: user.ID, Action: "mfa.security_transition",
 		Resource: model.Resource{Type: model.ResourceUser, ID: user.ID.String()}, ScopeType: model.RoleScopeInstitution,
 		ScopeID: scopeID, Status: model.AuditStatusAttempt, NodeID: "mfa-integration"})
 	require.NoError(t, err)
-	when := model.TimeFromMillis(at)
+	when := model.TimeUTC(at)
 	deliveryID, occurrenceID, jobID := model.NewMailDeliveryID(), model.NewMailOccurrenceID(), model.NewJobID()
 	command, err := model.EncodeMailDeliveryCommand(model.MailDeliveryCommand{DeliveryID: deliveryID})
 	require.NoError(t, err)

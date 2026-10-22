@@ -84,7 +84,7 @@ func TestAuthenticationTerminalCommitsRecheckCurrentAccessPolicy(t *testing.T) {
 	))
 	require.ErrorIs(t, err, store.ErrAuthenticationMethodDisabled)
 	completion := authenticationPolicyTestResetCompletion(t, user, resetToken.TokenHash, "encoded-new-password",
-		model.GetMillis(), authenticationPolicyTestCompletionAudit(institution.ID.String()))
+		model.NowUTC(), authenticationPolicyTestCompletionAudit(institution.ID.String()))
 	_, err = persistence.UserToken().ConsumePasswordReset(ctx, completion)
 	require.ErrorIs(t, err, store.ErrAuthenticationMethodDisabled)
 	unchangedCredential, err := persistence.PasswordCredential().GetByUser(ctx, user.ID)
@@ -144,9 +144,9 @@ func authenticationPolicyTestIssue(t *testing.T, ctx context.Context, persistenc
 	return persistence.UserToken().Issue(ctx, &store.UserTokenMailIssue{Token: token, Occurrence: occurrence, Delivery: delivery, Job: job, AuditEvent: audit})
 }
 
-func authenticationPolicyTestResetCompletion(t *testing.T, user *model.User, tokenHash, passwordHash string, at int64, audit *model.AuditEvent) *store.PasswordResetCompletion {
+func authenticationPolicyTestResetCompletion(t *testing.T, user *model.User, tokenHash, passwordHash string, at time.Time, audit *model.AuditEvent) *store.PasswordResetCompletion {
 	t.Helper()
-	when := model.TimeFromMillis(at)
+	when := model.TimeUTC(at)
 	occurrence, delivery, job := authenticationPolicyTestMail(t, user.ID, model.NewMailOccurrenceID(), model.MailOccurrenceSecurityNotice, model.MailTemplateIdentityPasswordChanged, model.JobTypeMailDeliver, when, when.Add(24*time.Hour))
 	return &store.PasswordResetCompletion{TokenHash: tokenHash, PasswordHash: passwordHash, At: at, RevocationReason: model.SessionRevocationPasswordReset, AuditEvent: audit, Occurrence: occurrence, Delivery: delivery, Job: job}
 }

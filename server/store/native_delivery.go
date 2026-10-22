@@ -7,7 +7,11 @@
 
 package store
 
-import "github.com/sudosylabs/proctor/server/model"
+import (
+	"time"
+
+	"github.com/sudosylabs/proctor/server/model"
+)
 
 // NativeDeliveryAccess supplies current authenticated User/key ownership.
 // Connection/continuity and generation are required while the stream is live;
@@ -24,19 +28,19 @@ type NativeDeliveryGapDeclaration struct {
 	Access       NativeDeliveryAccess
 	Declaration  model.DeclareDeliveryGaps
 	AuditEventID model.AuditEventID
-	AuditAt      int64
+	AuditAt      time.Time
 }
 type NativeDeliveryFinalDeclaration struct {
 	Access       NativeDeliveryAccess
 	Declaration  model.FinalDeliveryDeclaration
 	AuditEventID model.AuditEventID
-	AuditAt      int64
+	AuditAt      time.Time
 }
 type NativeDeliverySummaryUpdate struct {
 	Access       NativeDeliveryAccess
 	Summary      model.UnretainedDeliverySummary
 	AuditEventID model.AuditEventID
-	AuditAt      int64
+	AuditAt      time.Time
 }
 
 const (
@@ -57,7 +61,7 @@ type NativeDeliveryAppend struct {
 	Batch        model.NativeSecurityBatch
 	DesktopBuild model.DesktopBuildTuple
 	AuditEventID model.AuditEventID
-	AuditAt      int64
+	AuditAt      time.Time
 }
 
 const NativeDeliveryAppendOperation = "exam.native_delivery.append"

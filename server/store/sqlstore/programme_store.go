@@ -71,7 +71,7 @@ func (s SQLProgrammeStore) Create(
 	input *store.ProgrammeCreation,
 ) (*model.Programme, error) {
 	if input == nil || input.Programme == nil ||
-		!input.AuditEventID.IsValid() || input.AuditAt <= 0 {
+		!input.AuditEventID.IsValid() || input.AuditAt.IsZero() {
 		return nil, store.NewErrInvalidInput("programme", "creation", nil)
 	}
 	if !input.Programme.ID.IsValid() {
@@ -237,7 +237,7 @@ func (s SQLProgrammeStore) Update(
 	input *store.ProgrammeUpdate,
 ) (*model.Programme, error) {
 	if input == nil || input.Programme == nil ||
-		!input.AuditEventID.IsValid() || input.AuditAt <= 0 {
+		!input.AuditEventID.IsValid() || input.AuditAt.IsZero() {
 		return nil, store.NewErrInvalidInput("programme", "update", nil)
 	}
 	candidate := *input.Programme
@@ -251,14 +251,14 @@ func (s SQLProgrammeStore) Archive(
 	ctx context.Context,
 	input *store.ProgrammeArchive,
 ) (*model.Programme, error) {
-	if input == nil || !input.ID.IsValid() || input.ArchiveAt <= 0 || input.ExpectedRevision < 0 ||
-		!input.AuditEventID.IsValid() || input.AuditAt <= 0 {
+	if input == nil || !input.ID.IsValid() || input.ArchiveAt.IsZero() || input.ExpectedRevision < 0 ||
+		!input.AuditEventID.IsValid() || input.AuditAt.IsZero() {
 		return nil, store.NewErrInvalidInput("programme", "archive", nil)
 	}
 	return s.archiveProgramme(ctx, input.ID, input.ArchiveAt, input.ExpectedRevision, &academicMutationAudit{eventID: input.AuditEventID, at: input.AuditAt})
 }
 
-func (s SQLProgrammeStore) archiveProgramme(ctx context.Context, id model.ProgrammeID, archiveAt, expectedRevision int64, audit *academicMutationAudit) (*model.Programme, error) {
+func (s SQLProgrammeStore) archiveProgramme(ctx context.Context, id model.ProgrammeID, archiveAt time.Time, expectedRevision int64, audit *academicMutationAudit) (*model.Programme, error) {
 	return runSQLTransaction(ctx, s.GetMaster().Begin, "programme archive", func(ctx context.Context, tx *sqlxTxWrapper) (*model.Programme, error) {
 		if err := lockProgrammeLifecycle(ctx, tx); err != nil {
 			return nil, err
@@ -284,7 +284,7 @@ func (s SQLProgrammeStore) archiveProgramme(ctx context.Context, id model.Progra
 		}
 		result, err := tx.Exec(ctx, `
 			UPDATE programmes SET updated_at = GREATEST(updated_at, ?), archived_at = GREATEST(created_at, ?), revision = revision + 1
-			 WHERE id = ? AND archived_at IS NULL AND revision = ?`, model.TimeFromMillis(archiveAt), model.TimeFromMillis(archiveAt), id, row.Revision)
+			 WHERE id = ? AND archived_at IS NULL AND revision = ?`, model.TimeUTC(archiveAt), model.TimeUTC(archiveAt), id, row.Revision)
 		if err != nil {
 			return nil, fmt.Errorf("archive programme: %w", err)
 		}

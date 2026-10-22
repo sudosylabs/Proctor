@@ -89,8 +89,8 @@ type OnboardingImportRow struct {
 	LastName                        string
 	Locale                          string
 	Timezone                        string
-	StartsAt                        int64
-	EndsAt                          int64
+	StartsAt                        model.OptionalTime
+	EndsAt                          model.OptionalTime
 	PreviewStatus                   model.OnboardingImportRowStatus
 	PreviewCode                     string
 	Status                          model.OnboardingImportRowStatus
@@ -105,7 +105,7 @@ type OnboardingImportCreation struct {
 	ParseJob           *model.Job
 	AuditEventID       model.AuditEventID
 	SourceAuditEventID model.AuditEventID
-	AuditAt            int64
+	AuditAt            time.Time
 }
 
 type OnboardingImportPreviewCompletion struct {
@@ -129,7 +129,7 @@ type OnboardingImportCommit struct {
 	At                 time.Time
 	AuditEventID       model.AuditEventID
 	SourceAuditEventID model.AuditEventID
-	AuditAt            int64
+	AuditAt            time.Time
 }
 
 type OnboardingImportCancellation struct {
@@ -139,7 +139,7 @@ type OnboardingImportCancellation struct {
 	At                 time.Time
 	AuditEventID       model.AuditEventID
 	SourceAuditEventID model.AuditEventID
-	AuditAt            int64
+	AuditAt            time.Time
 }
 
 type OnboardingImportRowCompletion struct {

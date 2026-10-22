@@ -6,7 +6,11 @@
 // ---------------------------------------------------------------------------------------------
 package store
 
-import "github.com/sudosylabs/proctor/server/model"
+import (
+	"time"
+
+	"github.com/sudosylabs/proctor/server/model"
+)
 
 const DeliveryExpireOperation = "exam.delivery.expire"
 
@@ -31,5 +35,5 @@ func (d DeliveryExpiryDue) Valid() bool {
 type DeliveryExpiry struct {
 	Due          DeliveryExpiryDue
 	AuditEventID model.AuditEventID
-	AuditAt      int64
+	AuditAt      time.Time
 }

@@ -78,7 +78,7 @@ func TestDesktopAuthorizationRejectsSourceCredentialExpiringDuringUserLockWait(t
 				BindingHash: model.HashToken(binding), UserID: user.ID,
 				SourceSessionID: source.ID, SourceCredentialID: access.ID,
 				AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor,
-				AuthenticatedAt: source.AuthenticatedAt.UnixMilli(),
+				AuthenticatedAt: source.AuthenticatedAt,
 				Capabilities:    store.AccessDeploymentCapabilities{Providers: map[string]store.AccessProviderCapability{}},
 			})
 		completed <- authenticationOutcome{result: result, err: authenticationErr}

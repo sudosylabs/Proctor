@@ -26,57 +26,57 @@ func TestAcademicUnitMemberStore(t *testing.T, ss store.Store) {
 	institution := saveInstitution(t, ctx, ss)
 	unit := saveAcademicUnit(t, ctx, ss, institution.ID.String(), "", "member-unit")
 	user := saveUser(t, ctx, ss)
-	start := model.GetMillis() + 1000
+	start := model.NowUTC().Add(1000 * time.Millisecond)
 	saved, err := ss.AcademicUnitMember().Save(ctx, &model.AcademicUnitMember{
-		AcademicUnitID: unit.ID, UserID: user.ID, StartsAt: model.TimeFromMillis(start),
+		AcademicUnitID: unit.ID, UserID: user.ID, StartsAt: model.TimeUTC(start),
 	})
 	require.NoError(t, err)
-	active, err := ss.AcademicUnitMember().ListByAcademicUnit(ctx, unit.ID, start+1)
+	active, err := ss.AcademicUnitMember().ListByAcademicUnit(ctx, unit.ID, start.Add(1*time.Millisecond))
 	require.NoError(t, err)
 	require.Len(t, active, 1)
 	require.Equal(t, saved.ID, active[0].ID)
-	byUser, err := ss.AcademicUnitMember().ListActiveByUser(ctx, user.ID, model.TimeFromMillis(start+1))
+	byUser, err := ss.AcademicUnitMember().ListActiveByUser(ctx, user.ID, model.TimeUTC(start.Add(1*time.Millisecond)))
 	require.NoError(t, err)
 	require.Len(t, byUser, 1)
 	require.Equal(t, unit.ID, byUser[0].AcademicUnitID)
 	_, err = ss.AcademicUnitMember().Save(ctx, &model.AcademicUnitMember{
-		AcademicUnitID: unit.ID, UserID: user.ID, StartsAt: model.TimeFromMillis(start + 2),
+		AcademicUnitID: unit.ID, UserID: user.ID, StartsAt: model.TimeUTC(start.Add(2 * time.Millisecond)),
 	})
 	var conflict *store.ErrConflict
 	require.ErrorAs(t, err, &conflict)
-	ended, err := EndAcademicUnitMember(ctx, ss, saved.ID, saved.Revision, start+10)
+	ended, err := EndAcademicUnitMember(ctx, ss, saved.ID, saved.Revision, start.Add(10*time.Millisecond))
 	require.NoError(t, err)
-	require.Equal(t, start+10, ended.EndsAt.Millis())
+	require.True(t, start.Add(10*time.Millisecond).Equal(ended.EndsAt.Time))
 	history, err := ss.AcademicUnitMember().ListByUser(ctx, user.ID)
 	require.NoError(t, err)
 	require.Len(t, history, 1)
 	require.True(t, history[0].EndsAt.Valid)
 	_, err = ss.AcademicUnitMember().Save(ctx, &model.AcademicUnitMember{
-		AcademicUnitID: unit.ID, UserID: user.ID, StartsAt: model.TimeFromMillis(start + 10),
+		AcademicUnitID: unit.ID, UserID: user.ID, StartsAt: model.TimeUTC(start.Add(10 * time.Millisecond)),
 	})
 	require.NoError(t, err)
 	auditedUser := saveUser(t, ctx, ss)
 	createAttempt := saveAcademicUnitAuditAttempt(t, ctx, ss, unit.ID.String())
-	candidate := &model.AcademicUnitMember{AcademicUnitID: unit.ID, UserID: auditedUser.ID, StartsAt: model.TimeFromMillis(start)}
+	candidate := &model.AcademicUnitMember{AcademicUnitID: unit.ID, UserID: auditedUser.ID, StartsAt: model.TimeUTC(start)}
 	candidate.PrepareCreate(model.NewAcademicUnitMemberID(), model.NowUTC())
 	createNotice := classMemberPreparedMail(t, &model.ClassMember{UserID: auditedUser.ID},
 		model.MailTemplateAcademicUnitAssigned, candidate.CreatedAt)
 	created, err := ss.AcademicUnitMember().Create(ctx, &store.AcademicUnitMemberCreation{Member: candidate,
 		ExpectedRecipientRevision: auditedUser.Revision, Notice: createNotice,
-		AuditEventID: createAttempt.ID, AuditAt: model.GetMillis()})
+		AuditEventID: createAttempt.ID, AuditAt: model.NowUTC()})
 	require.NoError(t, err)
 	require.NoError(t, requireClassMemberMail(t, ctx, ss, createNotice, model.MailTemplateAcademicUnitAssigned))
 	endAttempt := saveAcademicUnitAuditAttempt(t, ctx, ss, unit.ID.String())
-	endAt := model.TimeFromMillis(start + 20)
+	endAt := model.TimeUTC(start.Add(20 * time.Millisecond))
 	endNotice := classMemberPreparedMail(t, &model.ClassMember{UserID: auditedUser.ID},
 		model.MailTemplateAcademicUnitAssignmentEnded, endAt)
 	endedAudited, err := ss.AcademicUnitMember().End(ctx, &store.AcademicUnitMemberEnd{ID: created.ID,
 		ExpectedRevision: created.Revision, ExpectedRecipientRevision: auditedUser.Revision, Notice: endNotice,
-		EndAt: start + 20, AuditEventID: endAttempt.ID, AuditAt: model.GetMillis()})
+		EndAt: start.Add(20 * time.Millisecond), AuditEventID: endAttempt.ID, AuditAt: model.NowUTC()})
 	require.NoError(t, err)
 	require.NoError(t, requireClassMemberMail(t, ctx, ss, endNotice, model.MailTemplateAcademicUnitAssignmentEnded))
 	require.Equal(t, created.Revision+1, endedAudited.Revision)
-	_, err = EndAcademicUnitMember(ctx, ss, created.ID, created.Revision, start+21)
+	_, err = EndAcademicUnitMember(ctx, ss, created.ID, created.Revision, start.Add(21*time.Millisecond))
 	require.True(t, store.IsConflict(err), "stale End() error")
 }
 
@@ -124,15 +124,15 @@ func testAcademicUnitMemberEndBeforeModification(t *testing.T, ss store.Store) {
 	institution := saveInstitution(t, ctx, ss)
 	unit := saveAcademicUnit(t, ctx, ss, institution.ID.String(), "", "member-backdated-"+model.NewID())
 	user := saveUser(t, ctx, ss)
-	now := model.GetMillis()
+	now := model.NowUTC()
 	saved, err := ss.AcademicUnitMember().Save(ctx, &model.AcademicUnitMember{
-		AcademicUnitID: unit.ID, UserID: user.ID, StartsAt: model.TimeFromMillis(now - 2_000_000),
+		AcademicUnitID: unit.ID, UserID: user.ID, StartsAt: now.Add(-2_000_000 * time.Millisecond),
 	})
 	require.NoError(t, err)
-	endAt := now - 1_000_000
+	endAt := now.Add(-1_000_000 * time.Millisecond)
 	ended, err := EndAcademicUnitMember(ctx, ss, saved.ID, saved.Revision, endAt)
 	require.NoError(t, err)
-	require.Equal(t, endAt, ended.EndsAt.Millis(), "End(before creation) = %#v, created %#v", ended, saved)
+	require.True(t, endAt.Equal(ended.EndsAt.Time), "End(before creation) = %#v, created %#v", ended, saved)
 	require.True(t, ended.UpdatedAt.Equal(saved.UpdatedAt), "End(before creation) = %#v, created %#v", ended, saved)
 	stored, err := ss.AcademicUnitMember().Get(ctx, saved.ID)
 	require.NoError(t, err)

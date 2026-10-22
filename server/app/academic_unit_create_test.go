@@ -193,7 +193,7 @@ func TestAcademicUnitCreateRootCommitsAuditBeforePublishing(t *testing.T) {
 	require.Equal(t, createdID, creator.input.Unit.ID.String())
 	require.Equal(t, "engineering", creator.input.Unit.Name)
 	require.Equal(t, model.AuditEventID(auditor.beginID), creator.input.AuditEventID)
-	require.Equal(t, int64(500), creator.input.AuditAt)
+	require.True(t, time.UnixMilli(500).UTC().Equal(creator.input.AuditAt))
 	require.Equal(t, saved.ID.String(), effects.unitID, "published unit = %q, want %q", effects.unitID, saved.ID)
 	assertAcademicUnitCreateEvents(t, events, "authorize", "audit-begin", "store", "effect")
 }

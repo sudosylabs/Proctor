@@ -44,7 +44,7 @@ func TestStageResourceContentReservesBeforeDeterministicWriteAndReturnsAuthorita
 	// reservation before it becomes ready.
 	require.Equal(t, []string{"access", "membership", "authorize", "audit.begin", "reserve", "content.store", "ready"}, f.order)
 	require.NotEmpty(t, f.persistence.reservation.AuditEventID)
-	require.GreaterOrEqual(t, f.persistence.reservation.AuditAt, int64(1))
+	require.False(t, f.persistence.reservation.AuditAt.IsZero())
 	require.Equal(t, model.ActionExamSittingManage, f.authorizer.action, "authorization")
 	require.Equal(t, model.Resource{Type: model.ResourceExamSitting, ID: f.sittingID.String()}, f.authorizer.resource, "authorization")
 	require.False(t, f.persistence.reservation.ManagerOverride, "authorization")

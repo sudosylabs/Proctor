@@ -67,7 +67,7 @@ func TestRetentionStore(t *testing.T, ss store.Store, probe RetentionSQLProbe) {
 	mutation := func(action model.Action) store.RetentionMutation {
 		a, err := ss.Audit().Save(ctx, &model.AuditEvent{ActorID: principal.UserID, SessionID: principal.SessionID, Action: string(action), Resource: model.Resource{Type: model.ResourceInstitution, ID: f.institutionID.String()}, ScopeType: model.RoleScopeInstitution, ScopeID: f.institutionID.String(), Status: model.AuditStatusAttempt, NodeID: "retention-test"})
 		require.NoError(t, err)
-		return store.RetentionMutation{Principal: principal, AuditEventID: a.ID, AuditAt: model.GetMillis(), RecentAuthenticationTTL: 10 * time.Minute}
+		return store.RetentionMutation{Principal: principal, AuditEventID: a.ID, AuditAt: model.NowUTC(), RecentAuthenticationTTL: 10 * time.Minute}
 	}
 	preview := func(key string) *model.RetentionPreview {
 		p, err := ss.Retention().CreatePreview(ctx, &store.RetentionPreviewCreation{RetentionMutation: mutation(model.ActionRetentionPolicyView), PreviewID: model.NewRetentionPreviewID(), ExpectedPolicyRevision: policy.Revision}, examCommand(f.manager.ID, store.RetentionPreviewOperation, key, key))
@@ -110,7 +110,7 @@ func TestRetentionStore(t *testing.T, ss store.Store, probe RetentionSQLProbe) {
 	reconcile := func(expected store.RetentionReconciliationResult) {
 		a, err := ss.Audit().Save(ctx, &model.AuditEvent{Action: string(model.ActionRetentionCleanupManage), Resource: model.Resource{Type: model.ResourceSubmission, ID: subID.String()}, ScopeType: model.RoleScopeInstitution, ScopeID: f.institutionID.String(), Status: model.AuditStatusAttempt, NodeID: "retention-job"})
 		require.NoError(t, err)
-		result, err := ss.Retention().ReconcileSubmission(ctx, &store.RetentionReconciliation{SubmissionID: subID, AuditEventID: a.ID, AuditAt: model.GetMillis()})
+		result, err := ss.Retention().ReconcileSubmission(ctx, &store.RetentionReconciliation{SubmissionID: subID, AuditEventID: a.ID, AuditAt: model.NowUTC()})
 		require.NoError(t, err)
 		require.NotNil(t, result, "reconcile")
 		require.Equal(t, expected, *result, "reconcile")
@@ -252,7 +252,7 @@ func TestRetentionStore(t *testing.T, ss store.Store, probe RetentionSQLProbe) {
 	}
 	go func() {
 		<-startRace
-		r, e := peer.ReconcileSubmission(ctx, &store.RetentionReconciliation{SubmissionID: subID, AuditEventID: raceAudit.ID, AuditAt: model.GetMillis()})
+		r, e := peer.ReconcileSubmission(ctx, &store.RetentionReconciliation{SubmissionID: subID, AuditEventID: raceAudit.ID, AuditAt: model.NowUTC()})
 		retireResult <- r
 		retireError <- e
 	}()
@@ -291,7 +291,7 @@ func TestRetentionStore(t *testing.T, ss store.Store, probe RetentionSQLProbe) {
 		require.True(t, store.IsConflict(err), "retired integrity remained readable")
 	}
 	sealInput.AuditEventID = saveExamAttemptAudit(t, ctx, ss, f).ID
-	sealInput.AuditAt = model.GetMillis()
+	sealInput.AuditAt = model.NowUTC()
 	result, err := ss.ExamSubmission().Seal(ctx, sealInput, sealKey)
 	if err == nil {
 		require.Nil(t, result, "seal retry exposed a retired receipt")
@@ -331,12 +331,12 @@ func newRetentionFixture(t *testing.T, ctx context.Context, ss store.Store) (exa
 	require.NoError(t, err)
 	_, err = ss.ExamAttemptWorkspace().MarkObjectReady(ctx, &store.ExamAttemptWorkspaceObjectReady{Access: access, ObjectID: object.ID, ContentVersion: model.NewWorkspaceContentVersion(), Content: model.AttemptWorkspaceContent{MediaType: "text/plain", SizeBytes: 12, SHA256: strings.Repeat("a", 64)}})
 	require.NoError(t, err)
-	created, err := ss.ExamAttemptWorkspace().ApplyMutation(ctx, &store.ExamAttemptWorkspaceMutation{Access: access, Operation: model.AttemptWorkspaceMutationCreateFile, EntryID: model.NewAttemptWorkspaceEntryID(), DestinationPath: "private-answer.txt", ObjectID: object.ID, AuditEventID: saveExamAttemptAudit(t, ctx, ss, f).ID, AuditAt: model.GetMillis()}, examCommand(f.candidate.ID, store.ExamAttemptWorkspaceMutationOperation, "retention-file", "retention-file"))
+	created, err := ss.ExamAttemptWorkspace().ApplyMutation(ctx, &store.ExamAttemptWorkspaceMutation{Access: access, Operation: model.AttemptWorkspaceMutationCreateFile, EntryID: model.NewAttemptWorkspaceEntryID(), DestinationPath: "private-answer.txt", ObjectID: object.ID, AuditEventID: saveExamAttemptAudit(t, ctx, ss, f).ID, AuditAt: model.NowUTC()}, examCommand(f.candidate.ID, store.ExamAttemptWorkspaceMutationOperation, "retention-file", "retention-file"))
 	require.NoError(t, err)
 	sealAccess := store.ExamSubmissionSealAccess{AttemptID: connected.Attempt.ID, ParticipationID: connected.Participation.ID, Generation: connected.Participation.Generation, ConnectionID: connected.Connection.ID, CandidateUserID: f.candidate.ID, SessionID: f.session.ID, ContinuityCredentialHash: focus.ContinuityCredentialHash, ExpectedCurrentRevisionID: f.sitting.ExamRevisionID, ExpectedWorkspaceCursor: created.Change.Cursor}
 	target, err := ss.ExamSubmission().ResolveSealTarget(ctx, sealAccess)
 	require.NoError(t, err)
-	input := &store.ExamSubmissionSeal{SubmissionID: model.NewSubmissionID(), Access: sealAccess, AuditEventID: saveExamAttemptAudit(t, ctx, ss, f).ID, AuditAt: model.MillisFromTime(target.SealAt)}
+	input := &store.ExamSubmissionSeal{SubmissionID: model.NewSubmissionID(), Access: sealAccess, AuditEventID: saveExamAttemptAudit(t, ctx, ss, f).ID, AuditAt: target.SealAt}
 	attachSubmissionReceipt(t, ctx, ss, f.candidate, input)
 	key := examCommand(f.candidate.ID, store.ExamSubmissionSealOperation, "retention-seal", "retention-seal")
 	sealed, err := ss.ExamSubmission().Seal(ctx, input, key)

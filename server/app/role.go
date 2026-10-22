@@ -136,7 +136,7 @@ func (s *roleService) CreateRole(ctx context.Context, invocation invocation.Invo
 		s.deps.Now,
 		func(ctx context.Context, reference mutationAttemptReference) (*model.Role, error) {
 			return s.deps.Roles.Save(ctx, &store.RoleCreation{
-				Role: candidate, AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis,
+				Role: candidate, AuditEventID: reference.ID, AuditAt: reference.MutationAt,
 			})
 		},
 		roleStoreErrors.Translate,
@@ -193,7 +193,7 @@ func (s *roleService) UpdateRole(ctx context.Context, invocation invocation.Invo
 		s.deps.Now,
 		func(ctx context.Context, reference mutationAttemptReference) (*model.Role, error) {
 			return s.deps.Roles.Update(ctx, &store.RoleUpdate{
-				Role: candidate, AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis,
+				Role: candidate, AuditEventID: reference.ID, AuditAt: reference.MutationAt,
 			})
 		},
 		roleStoreErrors.Translate,
@@ -249,8 +249,8 @@ func (s *roleService) ArchiveRole(ctx context.Context, invocation invocation.Inv
 		s.deps.Now,
 		func(ctx context.Context, reference mutationAttemptReference) (*model.Role, error) {
 			return s.deps.Roles.Archive(ctx, &store.RoleArchive{
-				ID: id, ArchiveAt: reference.MutationAtMillis,
-				AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis,
+				ID: id, ArchiveAt: reference.MutationAt,
+				AuditEventID: reference.ID, AuditAt: reference.MutationAt,
 			})
 		},
 		roleStoreErrors.Translate,

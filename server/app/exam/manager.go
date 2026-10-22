@@ -171,7 +171,7 @@ func (a *Authoring) changeManager(ctx context.Context, invocation invocation.Inv
 	}
 	// Mail and mutation records retain their existing millisecond contract;
 	// current membership decisions above use the full domain precision.
-	at := model.TimeFromMillis(model.MillisFromTime(decisionAt))
+	at := model.TimeUTC(decisionAt)
 	notices, err := a.prepareManagerNotices(ctx, access.Exam.OwnerUserID, command.UserID, snapshot.Draft.Title, at, transition)
 	if err != nil {
 		mapped := apperror.New("exam.unavailable").Wrap(err)
@@ -183,7 +183,7 @@ func (a *Authoring) changeManager(ctx context.Context, invocation invocation.Inv
 	result, err := mutate(ctx, &store.ExamManagerMutation{
 		ExamID: command.ExamID, ActorUserID: principal.UserID, TargetUserID: command.UserID,
 		ManagerOverride: action == model.ActionExamManageOverride, ExpectedRevision: command.ExpectedExamRevision,
-		ChangedAt: model.MillisFromTime(at), AuditEventID: auditID, AuditAt: model.MillisFromTime(at), Notices: notices,
+		ChangedAt: at, AuditEventID: auditID, AuditAt: at, Notices: notices,
 	}, idempotency)
 	if err != nil {
 		mapped := examStoreErrors.Translate(err)

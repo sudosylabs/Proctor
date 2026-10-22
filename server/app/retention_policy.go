@@ -147,7 +147,7 @@ func (s *retentionPolicyService) ReplaceRetentionPolicy(
 				&store.RetentionPolicyReplacement{
 					RetentionMutation: store.RetentionMutation{
 						Principal: invocation.Principal(), RecentAuthenticationTTL: s.deps.RecentAuthenticationTTL,
-						AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis,
+						AuditEventID: reference.ID, AuditAt: reference.MutationAt,
 					},
 					ExpectedRevision: command.ExpectedRevision,
 					Settings:         command.Settings,

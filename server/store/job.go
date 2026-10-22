@@ -93,7 +93,7 @@ type JobMutation struct {
 	ID               model.JobID
 	ExpectedRevision int64
 	AuditEventID     model.AuditEventID
-	AuditAt          int64
+	AuditAt          time.Time
 }
 
 type JobRetentionPolicy struct {

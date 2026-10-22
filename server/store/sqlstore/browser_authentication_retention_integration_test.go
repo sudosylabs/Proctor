@@ -138,8 +138,8 @@ func TestDesktopAuthorizationExchangeSerializesWithConcurrentUserDisable(t *test
 	disableResult := make(chan disableOutcome, 1)
 	// The fixture asserts, so it is built on the test goroutine.
 	disable := storetest.UserDisabledStateChangeWithNotice(t, &store.UserDisabledStateChange{
-		ID: user.ID, ExpectedRevision: user.Revision, Disabled: true, ChangedAt: model.GetMillis(),
-		RevocationReason: model.SessionRevocationAccountDisabled, AuditEventID: disableAudit.ID, AuditAt: model.GetMillis(),
+		ID: user.ID, ExpectedRevision: user.Revision, Disabled: true, ChangedAt: model.NowUTC(),
+		RevocationReason: model.SessionRevocationAccountDisabled, AuditEventID: disableAudit.ID, AuditAt: model.NowUTC(),
 		Capabilities: store.AccessDeploymentCapabilities{Providers: map[string]store.AccessProviderCapability{}},
 	})
 	go func() {
@@ -206,8 +206,8 @@ func TestDesktopAuthorizationIssueCodeSerializesWithConcurrentUserDisableAcrossN
 	disableResult := make(chan disableOutcome, 1)
 	// The fixture asserts, so it is built on the test goroutine.
 	disable := storetest.UserDisabledStateChangeWithNotice(t, &store.UserDisabledStateChange{
-		ID: user.ID, ExpectedRevision: user.Revision, Disabled: true, ChangedAt: model.GetMillis(),
-		RevocationReason: model.SessionRevocationAccountDisabled, AuditEventID: disableAudit.ID, AuditAt: model.GetMillis(),
+		ID: user.ID, ExpectedRevision: user.Revision, Disabled: true, ChangedAt: model.NowUTC(),
+		RevocationReason: model.SessionRevocationAccountDisabled, AuditEventID: disableAudit.ID, AuditAt: model.NowUTC(),
 		Capabilities: store.AccessDeploymentCapabilities{Providers: map[string]store.AccessProviderCapability{}},
 	})
 	go func() {
@@ -226,7 +226,7 @@ func TestDesktopAuthorizationIssueCodeSerializesWithConcurrentUserDisableAcrossN
 			BindingHash: model.HashToken(binding), StateHash: model.HashToken(state), CodeHash: model.HashToken(model.NewCredentialToken()),
 			ExpectedUserID: user.ID, CodeLifetime: 45 * time.Second,
 			Capabilities: store.AccessDeploymentCapabilities{Providers: map[string]store.AccessProviderCapability{}},
-			AuditEventID: issueAudit.ID, AuditAt: model.GetMillis(),
+			AuditEventID: issueAudit.ID, AuditAt: model.NowUTC(),
 		})
 		issueResult <- issueOutcome{result: result, err: issueErr}
 	}()
@@ -265,7 +265,7 @@ func TestDesktopAuthorizationRejectsArchivedUsersWithoutConsumingProofsOrCodes(t
 	issueAudit := saveDesktopAuthorizationAuditForSQLTest(t, ctx, persistence, institution.ID, user.ID, "archived-issue")
 	issue := &store.DesktopAuthorizationCodeIssue{BindingHash: model.HashToken(binding), StateHash: model.HashToken(state), CodeHash: model.HashToken(code),
 		ExpectedUserID: user.ID, CodeLifetime: 45 * time.Second, Capabilities: store.AccessDeploymentCapabilities{Providers: map[string]store.AccessProviderCapability{}},
-		AuditEventID: issueAudit.ID, AuditAt: model.GetMillis()}
+		AuditEventID: issueAudit.ID, AuditAt: model.NowUTC()}
 	result, issueErr := persistence.BrowserAuthentication().IssueCode(ctx, issue)
 	require.Nil(t, result, "IssueCode(archived User)")
 	require.True(t, store.IsNotFound(issueErr), "IssueCode(archived User)")
@@ -273,7 +273,7 @@ func TestDesktopAuthorizationRejectsArchivedUsersWithoutConsumingProofsOrCodes(t
 	_, err = persistence.GetMaster().Exec(ctx, `UPDATE users SET archived_at=NULL WHERE id=?`, user.ID.String())
 	require.NoError(t, err)
 	issueAudit = saveDesktopAuthorizationAuditForSQLTest(t, ctx, persistence, institution.ID, user.ID, "issue-after-unarchive")
-	issue.AuditEventID, issue.AuditAt = issueAudit.ID, model.GetMillis()
+	issue.AuditEventID, issue.AuditAt = issueAudit.ID, model.NowUTC()
 	_, err = persistence.BrowserAuthentication().IssueCode(ctx, issue)
 	require.NoError(t, err)
 
@@ -291,7 +291,7 @@ func TestDesktopAuthorizationRejectsArchivedUsersWithoutConsumingProofsOrCodes(t
 	_, err = persistence.GetMaster().Exec(ctx, `UPDATE users SET archived_at=NULL WHERE id=?`, user.ID.String())
 	require.NoError(t, err)
 	exchangeAudit = saveDesktopAuthorizationAuditForSQLTest(t, ctx, persistence, institution.ID, user.ID, "exchange-after-unarchive")
-	exchange.AuditEventID, exchange.AuditAt = exchangeAudit.ID, model.GetMillis()
+	exchange.AuditEventID, exchange.AuditAt = exchangeAudit.ID, model.NowUTC()
 	exchanged, exchangeErr = persistence.BrowserAuthentication().Exchange(ctx, exchange)
 	require.NoError(t, exchangeErr, "Exchange after unarchive did not retain code")
 	require.NotNil(t, exchanged, "Exchange after unarchive did not retain code")
@@ -324,20 +324,20 @@ func TestDesktopAuthorizationRejectsMismatchedOrArchivedExternalIdentity(t *test
 	result, authenticationErr := persistence.BrowserAuthentication().AuthenticateDesktopAuthorization(ctx,
 		&store.DesktopAuthorizationAuthentication{BindingHash: model.HashToken(binding), UserID: user.ID,
 			AuthenticationMethod: "oidc", AuthenticationProviderID: "campus-cas", ExternalIdentityID: otherIdentity.ID,
-			AuthenticationStrength: model.AuthenticationSingleFactor, AuthenticatedAt: model.GetMillis(), Capabilities: capabilities})
+			AuthenticationStrength: model.AuthenticationSingleFactor, AuthenticatedAt: model.NowUTC(), Capabilities: capabilities})
 	require.Nil(t, result, "AuthenticateDesktopAuthorization(mismatched identity)")
 	require.ErrorIs(t, authenticationErr, store.ErrAuthenticationMethodDisabled, "AuthenticateDesktopAuthorization(mismatched identity)")
 	result, authenticationErr = persistence.BrowserAuthentication().AuthenticateDesktopAuthorization(ctx,
 		&store.DesktopAuthorizationAuthentication{BindingHash: model.HashToken(binding), UserID: user.ID,
 			AuthenticationMethod: "oidc", AuthenticationProviderID: "campus-cas", ExternalIdentityID: identity.ID,
-			AuthenticationStrength: model.AuthenticationSingleFactor, AuthenticatedAt: model.GetMillis(), Capabilities: capabilities})
+			AuthenticationStrength: model.AuthenticationSingleFactor, AuthenticatedAt: model.NowUTC(), Capabilities: capabilities})
 	require.NoError(t, authenticationErr, "AuthenticateDesktopAuthorization(matched identity)")
 	require.NotNil(t, result, "AuthenticateDesktopAuthorization(matched identity)")
 	require.False(t, result.Denied, "AuthenticateDesktopAuthorization(matched identity)")
 	issue := &store.DesktopAuthorizationCodeIssue{BindingHash: model.HashToken(binding), StateHash: model.HashToken(state),
 		CodeHash: model.HashToken(code), ExpectedUserID: user.ID, CodeLifetime: 45 * time.Second,
 		Capabilities: store.AccessDeploymentCapabilities{Providers: map[string]store.AccessProviderCapability{"campus-cas": {}}},
-		AuditEventID: issueAudit.ID, AuditAt: model.GetMillis()}
+		AuditEventID: issueAudit.ID, AuditAt: model.NowUTC()}
 	_, err = persistence.BrowserAuthentication().IssueCode(ctx, issue)
 	require.NoError(t, err)
 	_, err = persistence.GetMaster().Exec(ctx, `UPDATE external_identities SET archived_at=clock_timestamp() WHERE id=?`, identity.ID.String())
@@ -352,7 +352,7 @@ func TestDesktopAuthorizationRejectsMismatchedOrArchivedExternalIdentity(t *test
 	_, err = persistence.GetMaster().Exec(ctx, `UPDATE external_identities SET archived_at=NULL WHERE id=?`, identity.ID.String())
 	require.NoError(t, err)
 	exchangeAudit = saveDesktopAuthorizationAuditForSQLTest(t, ctx, persistence, institution.ID, user.ID, "external-exchange-after-restore")
-	exchange.AuditEventID, exchange.AuditAt = exchangeAudit.ID, model.GetMillis()
+	exchange.AuditEventID, exchange.AuditAt = exchangeAudit.ID, model.NowUTC()
 	exchanged, exchangeErr = persistence.BrowserAuthentication().Exchange(ctx, exchange)
 	require.NoError(t, exchangeErr, "Exchange after identity restore did not retain code")
 	require.NotNil(t, exchanged, "Exchange after identity restore did not retain code")
@@ -389,7 +389,7 @@ func TestDesktopAuthorizationMaximumActiveSessionConflictDoesNotConsumeCode(t *t
 	_, err = persistence.GetMaster().Exec(ctx, `UPDATE sessions SET revoked_at=clock_timestamp(),revocation_reason='user_session' WHERE id=?`, existing.ID.String())
 	require.NoError(t, err)
 	exchangeAudit = saveDesktopAuthorizationAuditForSQLTest(t, ctx, persistence, institution.ID, user.ID, "exchange-after-session-slot")
-	exchange.AuditEventID, exchange.AuditAt = exchangeAudit.ID, model.GetMillis()
+	exchange.AuditEventID, exchange.AuditAt = exchangeAudit.ID, model.NowUTC()
 	result, err = persistence.BrowserAuthentication().Exchange(ctx, exchange)
 	require.NoError(t, err, "Exchange after freeing slot did not retain code %s", created.ID)
 	require.NotNil(t, result, "Exchange after freeing slot did not retain code %s", created.ID)
@@ -434,7 +434,7 @@ func TestDesktopAuthorizationRevalidatesSourceWebSessionProof(t *testing.T) {
 			require.NoError(t, err)
 			input := &store.DesktopAuthorizationAuthentication{
 				BindingHash: model.HashToken(binding), UserID: user.ID, AuthenticationMethod: "password",
-				AuthenticationStrength: model.AuthenticationSingleFactor, AuthenticatedAt: model.GetMillis(),
+				AuthenticationStrength: model.AuthenticationSingleFactor, AuthenticatedAt: model.NowUTC(),
 				SourceSessionID: source.ID, SourceCredentialID: access.ID,
 				Capabilities: store.AccessDeploymentCapabilities{Providers: map[string]store.AccessProviderCapability{}},
 			}
@@ -446,7 +446,7 @@ func TestDesktopAuthorizationRevalidatesSourceWebSessionProof(t *testing.T) {
 					    idle_expires_at=idle_expires_at+interval '1 hour',expires_at=expires_at+interval '1 hour'
 					WHERE id=?`, source.ID.String())
 			case "revoked session":
-				_, err = persistence.Session().Withdraw(ctx, source.ID, user.ID, model.GetMillis(), model.SessionRevocationInactiveUser)
+				_, err = persistence.Session().Withdraw(ctx, source.ID, user.ID, model.NowUTC(), model.SessionRevocationInactiveUser)
 			case "expired session":
 				_, err = persistence.GetMaster().Exec(ctx, `UPDATE sessions SET expires_at=statement_timestamp(),idle_expires_at=statement_timestamp() WHERE id=?`, source.ID.String())
 			case "idle expired session":
@@ -646,8 +646,8 @@ func TestDesktopAuthorizationCreatesAndRevokesBoundDesktopRegistration(t *testin
 
 	revokeAudit := saveDesktopAuthorizationAuditForSQLTest(t, ctx, persistence, institution.ID, user.ID, "registration-revoke")
 	revoked, err := persistence.DesktopRegistration().Revoke(ctx, &store.DesktopRegistrationRevocation{
-		RegistrationID: exchanged.Registration.ID, UserID: user.ID, RevokedAt: model.GetMillis(),
-		AuditEventID: revokeAudit.ID, AuditAt: model.GetMillis(),
+		RegistrationID: exchanged.Registration.ID, UserID: user.ID, RevokedAt: model.NowUTC(),
+		AuditEventID: revokeAudit.ID, AuditAt: model.NowUTC(),
 	})
 	require.NoError(t, err)
 	require.False(t, revoked.AlreadyRevoked)
@@ -684,7 +684,7 @@ func issueDesktopAuthorizationForSQLTest(t *testing.T, ctx context.Context, pers
 	_, err = persistence.BrowserAuthentication().IssueCode(ctx, &store.DesktopAuthorizationCodeIssue{
 		BindingHash: model.HashToken(binding), StateHash: model.HashToken(state), CodeHash: model.HashToken(code), ExpectedUserID: userID, CodeLifetime: 45 * time.Second,
 		Capabilities: store.AccessDeploymentCapabilities{Providers: map[string]store.AccessProviderCapability{}},
-		AuditEventID: audit.ID, AuditAt: model.GetMillis(),
+		AuditEventID: audit.ID, AuditAt: model.NowUTC(),
 	})
 	require.NoError(t, err, "issue Desktop authorization code")
 	return created, code, state, verifier
@@ -714,7 +714,7 @@ func bindAndAuthenticateDesktopAuthorizationForSQLTest(t *testing.T, ctx context
 		&store.DesktopAuthorizationAuthentication{BindingHash: model.HashToken(binding), UserID: userID,
 			PasswordProof:        passwordProof,
 			AuthenticationMethod: method, AuthenticationProviderID: providerID, ExternalIdentityID: identityID,
-			AuthenticationStrength: model.AuthenticationSingleFactor, AuthenticatedAt: model.GetMillis(), Capabilities: capabilities})
+			AuthenticationStrength: model.AuthenticationSingleFactor, AuthenticatedAt: model.NowUTC(), Capabilities: capabilities})
 	require.NoError(t, err, "AuthenticateDesktopAuthorization()")
 	require.NotNil(t, result, "AuthenticateDesktopAuthorization()")
 	require.False(t, result.Denied, "AuthenticateDesktopAuthorization()")
@@ -747,7 +747,7 @@ func desktopAuthorizationExchangeForSQLTest(code, state, verifier string, audit 
 		AccessTokenHash:                    model.HashToken(model.NewCredentialToken()), RefreshTokenHash: model.HashToken(model.NewCredentialToken()),
 		AccessLifetime: 5 * time.Minute, RefreshLifetime: time.Hour, IdleLifetime: 30 * time.Minute, AbsoluteLifetime: time.Hour,
 		MaximumActive: 10, Capabilities: store.AccessDeploymentCapabilities{Providers: map[string]store.AccessProviderCapability{}},
-		AuditEventID: audit.ID, AuditAt: model.GetMillis()}
+		AuditEventID: audit.ID, AuditAt: model.NowUTC()}
 }
 
 func desktopAuthorizationKeyForSQLTest() (model.DesktopPublicJWK, string) {

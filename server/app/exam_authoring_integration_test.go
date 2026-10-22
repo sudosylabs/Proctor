@@ -150,14 +150,14 @@ func TestExamAuthoringIntegration(t *testing.T) {
 	managers, appErr := helper.App.ListExamManagers(ctx, managerInvocation, exam.ListManagersQuery{ExamID: created.Exam.ID, Limit: 50})
 	require.NoError(t, appErr, "Manager list = %#v", managers)
 	require.Len(t, managers.Items, 2, "Manager list = %#v", managers)
-	managerBindingEndedAt := model.GetMillis() - 500
+	managerBindingEndedAt := model.NowUTC().Add(-500 * time.Millisecond)
 	_, err = storetest.EndRoleBinding(ctx, persistence, managerBinding.ID, managerBindingEndedAt)
 	require.NoError(t, err)
 	_, appErr = helper.App.ListExamManagers(ctx, managerInvocation, exam.ListManagersQuery{ExamID: created.Exam.ID, Limit: 50})
 	require.True(t, apperror.Is(appErr, "resource.not_found"), "Manager after role revocation error = %v", appErr)
-	_, err = storetest.SaveRoleBinding(ctx, persistence, &model.RoleBinding{UserID: managerUser.ID, RoleID: role.ID, ScopeType: model.RoleScopeAcademicUnit, ScopeID: unit.ID.String(), StartsAt: model.TimeFromMillis(managerBindingEndedAt)})
+	_, err = storetest.SaveRoleBinding(ctx, persistence, &model.RoleBinding{UserID: managerUser.ID, RoleID: role.ID, ScopeType: model.RoleScopeAcademicUnit, ScopeID: unit.ID.String(), StartsAt: model.TimeUTC(managerBindingEndedAt)})
 	require.NoError(t, err)
-	_, err = storetest.EndAcademicUnitMember(ctx, persistence, managerMembership.ID, managerMembership.Revision, model.GetMillis()-100)
+	_, err = storetest.EndAcademicUnitMember(ctx, persistence, managerMembership.ID, managerMembership.Revision, model.NowUTC().Add(-100*time.Millisecond))
 	require.NoError(t, err)
 	_, appErr = helper.App.ListExamManagers(ctx, managerInvocation, exam.ListManagersQuery{ExamID: created.Exam.ID, Limit: 50})
 	require.True(t, apperror.Is(appErr, "resource.not_found"), "Manager after membership loss error = %v", appErr)
@@ -171,7 +171,7 @@ func TestExamAuthoringIntegration(t *testing.T) {
 	require.NoError(t, appErr)
 	_, appErr = helper.App.AuthenticateAccess(ctx, managerLogin.Tokens.AccessToken)
 	require.True(t, apperror.Is(appErr, "authentication.token_invalid"), "disabled Manager authentication error = %v", appErr)
-	reenabledAt := model.GetMillis()
+	reenabledAt := model.NowUTC()
 	reenableAudit, err := persistence.Audit().Save(ctx, &model.AuditEvent{
 		ActorID: teacher.ID, Action: string(model.ActionUserManage), Resource: model.Resource{Type: model.ResourceUser, ID: managerUser.ID.String()},
 		ScopeType: model.RoleScopeInstitution, ScopeID: institution.ID.String(), Status: model.AuditStatusAttempt, NodeID: "exam-authoring-integration",
@@ -206,24 +206,24 @@ func TestExamAuthoringIntegration(t *testing.T) {
 	require.Equal(t, int64(4), removedCreator.Exam.Revision, "creator relationship removal = %#v", removedCreator)
 	require.Equal(t, teacher.ID, removedCreator.Manager.UserID, "creator relationship removal = %#v", removedCreator)
 	currentExamRevision := int64(4)
-	membershipEndedAt := model.GetMillis() - 100
+	membershipEndedAt := model.NowUTC().Add(-100 * time.Millisecond)
 	_, err = storetest.EndAcademicUnitMember(ctx, persistence, membership.ID, membership.Revision, membershipEndedAt)
 	require.NoError(t, err)
 	withoutMembership, appErr := helper.App.ListExams(ctx, call, exam.ListQuery{AcademicUnitID: unit.ID})
 	require.NoError(t, appErr, "catalog after exact membership ended = %#v", withoutMembership)
 	require.Empty(t, withoutMembership.Items, "catalog after exact membership ended = %#v", withoutMembership)
 	_, err = persistence.AcademicUnitMember().Save(ctx, &model.AcademicUnitMember{
-		AcademicUnitID: unit.ID, UserID: teacher.ID, StartsAt: model.TimeFromMillis(membershipEndedAt),
+		AcademicUnitID: unit.ID, UserID: teacher.ID, StartsAt: model.TimeUTC(membershipEndedAt),
 	})
 	require.NoError(t, err)
-	bindingEndedAt := model.GetMillis() - 50
+	bindingEndedAt := model.NowUTC().Add(-50 * time.Millisecond)
 	_, err = storetest.EndRoleBinding(ctx, persistence, binding.ID, bindingEndedAt)
 	require.NoError(t, err)
 	_, appErr = helper.App.ListExams(ctx, call, exam.ListQuery{AcademicUnitID: unit.ID})
 	require.True(t, apperror.Is(appErr, "authorization.denied"), "catalog after role ended error = %v", appErr)
 	_, err = storetest.SaveRoleBinding(ctx, persistence, &model.RoleBinding{
 		UserID: teacher.ID, RoleID: role.ID, ScopeType: model.RoleScopeAcademicUnit,
-		ScopeID: unit.ID.String(), StartsAt: model.TimeFromMillis(bindingEndedAt),
+		ScopeID: unit.ID.String(), StartsAt: model.TimeUTC(bindingEndedAt),
 	})
 	require.NoError(t, err)
 	outsider, appErr := helper.App.CreateLocalUser(ctx, app.CreateLocalUserCommand{User: &model.User{Username: "exam-outsider", Email: "exam-outsider@example.edu", DisplayName: "Exam Outsider"}, Password: password})

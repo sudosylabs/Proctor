@@ -9,6 +9,7 @@ package store
 
 import (
 	"context"
+	"time"
 
 	"github.com/sudosylabs/proctor/server/model"
 )
@@ -49,14 +50,14 @@ type PasswordCredentialEnrollment struct {
 	Credential   *model.PasswordCredential
 	Capabilities AccessDeploymentCapabilities
 	AuditEventID model.AuditEventID
-	AuditAt      int64
+	AuditAt      time.Time
 }
 
 type PasswordCredentialRemoval struct {
 	UserID           model.UserID
 	Capabilities     AccessDeploymentCapabilities
-	ChangedAt        int64
+	ChangedAt        time.Time
 	RevocationReason model.SessionRevocationReason
 	AuditEventID     model.AuditEventID
-	AuditAt          int64
+	AuditAt          time.Time
 }

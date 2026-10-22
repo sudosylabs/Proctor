@@ -43,7 +43,7 @@ type AuditVisibilityScope struct {
 type AuditStore interface {
 	Save(context.Context, *model.AuditEvent) (*model.AuditEvent, error)
 	Get(context.Context, model.AuditEventID) (*model.AuditEvent, error)
-	Complete(context.Context, model.AuditEventID, model.AuditStatus, string, []byte, int64) (*model.AuditEvent, error)
+	Complete(ctx context.Context, id model.AuditEventID, status model.AuditStatus, errorCode string, result []byte, updateAt time.Time) (*model.AuditEvent, error)
 	List(context.Context, AuditListOptions) ([]*model.AuditEvent, error)
 	// FailAbandonedAttempts terminalizes up to Limit attempts created longer
 	// than Age ago by PostgreSQL time, oldest first, as failures with

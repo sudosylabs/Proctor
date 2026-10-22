@@ -213,7 +213,7 @@ func (a *Authoring) CreateExam(ctx context.Context, invocation invocation.Invoca
 	if err != nil {
 		return View{}, err
 	}
-	creation := &store.ExamAuthoringCreation{Exam: exam, Draft: draft, Manager: manager, AuditEventID: auditID, AuditAt: model.MillisFromTime(at)}
+	creation := &store.ExamAuthoringCreation{Exam: exam, Draft: draft, Manager: manager, AuditEventID: auditID, AuditAt: at}
 	result, err := a.deps.Persistence.Create(ctx, creation, idempotency)
 	if err != nil {
 		mapped := examStoreErrors.Translate(err)
@@ -364,8 +364,8 @@ func (a *Authoring) EditExamDraftText(ctx context.Context, invocation invocation
 	result, err := a.deps.Persistence.UpdateDraftText(ctx, &store.ExamDraftTextUpdate{
 		ExamID: command.ExamID, ActorUserID: principal.UserID, ManagerOverride: action == model.ActionExamManageOverride,
 		ExpectedRevision: command.ExpectedDraftRevision,
-		Title:            title, InstructionsMarkdown: instructions, UpdatedAt: model.MillisFromTime(candidate.UpdatedAt),
-		AuditEventID: auditID, AuditAt: model.MillisFromTime(at),
+		Title:            title, InstructionsMarkdown: instructions, UpdatedAt: candidate.UpdatedAt,
+		AuditEventID: auditID, AuditAt: at,
 	}, idempotency)
 	if err != nil {
 		mapped := examStoreErrors.Translate(err)
@@ -459,8 +459,8 @@ func (a *Authoring) ConfigureExamDraftFocusLoss(ctx context.Context, invocation 
 	}
 	result, err := a.deps.Persistence.UpdateDraftFocusLoss(ctx, &store.ExamDraftFocusLossUpdate{
 		ExamID: command.ExamID, ActorUserID: principal.UserID, ManagerOverride: action == model.ActionExamManageOverride,
-		ExpectedRevision: command.ExpectedDraftRevision, FocusLoss: focusLoss, UpdatedAt: model.MillisFromTime(candidate.UpdatedAt),
-		AuditEventID: auditID, AuditAt: model.MillisFromTime(at),
+		ExpectedRevision: command.ExpectedDraftRevision, FocusLoss: focusLoss, UpdatedAt: candidate.UpdatedAt,
+		AuditEventID: auditID, AuditAt: at,
 	}, idempotency)
 	if err != nil {
 		mapped := examStoreErrors.Translate(err)
@@ -548,8 +548,8 @@ func (a *Authoring) ConfigureExamDraftBrowserPolicy(ctx context.Context, invocat
 	}
 	result, err := a.deps.Persistence.UpdateDraftBrowserPolicy(ctx, &store.ExamDraftBrowserPolicyUpdate{InstitutionOrigin: a.deps.InstitutionOrigin,
 		ExamID: command.ExamID, ActorUserID: principal.UserID, ManagerOverride: action == model.ActionExamManageOverride,
-		ExpectedRevision: command.ExpectedDraftRevision, Policy: policy, UpdatedAt: model.MillisFromTime(candidate.UpdatedAt),
-		AuditEventID: auditID, AuditAt: model.MillisFromTime(at),
+		ExpectedRevision: command.ExpectedDraftRevision, Policy: policy, UpdatedAt: candidate.UpdatedAt,
+		AuditEventID: auditID, AuditAt: at,
 	}, idempotency)
 	if err != nil {
 		mapped := examStoreErrors.Translate(err)
@@ -689,8 +689,8 @@ func (a *Authoring) ConfigureExamDraftNativePolicy(ctx context.Context, invocati
 	}
 	result, err := a.deps.Persistence.UpdateDraftNativePolicy(ctx, &store.ExamDraftNativePolicyUpdate{
 		ExamID: command.ExamID, ActorUserID: principal.UserID, ManagerOverride: action == model.ActionExamManageOverride,
-		ExpectedRevision: command.ExpectedDraftRevision, NativePolicy: command.NativePolicy.Clone(), UpdatedAt: model.MillisFromTime(candidate.UpdatedAt),
-		AuditEventID: auditID, AuditAt: model.MillisFromTime(at),
+		ExpectedRevision: command.ExpectedDraftRevision, NativePolicy: command.NativePolicy.Clone(), UpdatedAt: candidate.UpdatedAt,
+		AuditEventID: auditID, AuditAt: at,
 	}, idempotency)
 	if err != nil {
 		mapped := examStoreErrors.Translate(err)

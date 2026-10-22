@@ -74,11 +74,11 @@ func TestExamAttemptWorkspaceMutationResolvesSafeAuditAndEffectScope(t *testing.
 	target := ExamAttemptWorkspaceMutationTarget{ExamID: model.NewExamID(), SittingID: model.NewExamSittingID(),
 		ClassID: model.NewClassID(), CandidateUserID: access.CandidateUserID, WorkspaceID: model.NewExamAttemptWorkspaceID()}
 	input := ExamAttemptWorkspaceMutation{Access: access, Operation: model.AttemptWorkspaceMutationCreateDirectory,
-		EntryID: model.NewAttemptWorkspaceEntryID(), DestinationPath: "cmd", AuditEventID: model.NewAuditEventID(), AuditAt: model.GetMillis()}
+		EntryID: model.NewAttemptWorkspaceEntryID(), DestinationPath: "cmd", AuditEventID: model.NewAuditEventID(), AuditAt: model.NowUTC()}
 	result := ExamAttemptWorkspaceMutationResult{SittingID: target.SittingID, ClassID: target.ClassID,
 		CandidateUserID: target.CandidateUserID, WorkspaceID: target.WorkspaceID}
 	require.NotEmpty(t, input.AuditEventID, "target=%#v input=%#v result=%#v", target, input, result)
-	require.GreaterOrEqual(t, input.AuditAt, int64(1), "target=%#v input=%#v result=%#v", target, input, result)
+	require.False(t, input.AuditAt.IsZero(), "target=%#v input=%#v result=%#v", target, input, result)
 	require.Equal(t, target.SittingID, result.SittingID, "target=%#v input=%#v result=%#v", target, input, result)
 	require.Equal(t, target.ClassID, result.ClassID, "target=%#v input=%#v result=%#v", target, input, result)
 	require.Equal(t, access.CandidateUserID, result.CandidateUserID, "target=%#v input=%#v result=%#v", target, input, result)

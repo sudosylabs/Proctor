@@ -89,7 +89,7 @@ func TestRetentionExpiryStore(t *testing.T, ss store.Store, probe RetentionExpir
 	mutation := func(action model.Action) store.RetentionMutation {
 		a, err := ss.Audit().Save(ctx, &model.AuditEvent{ActorID: principal.UserID, SessionID: principal.SessionID, Action: string(action), Resource: model.Resource{Type: model.ResourceInstitution, ID: installed.Institution.ID.String()}, ScopeType: model.RoleScopeInstitution, ScopeID: installed.Institution.ID.String(), Status: model.AuditStatusAttempt, NodeID: "retention-expiry-test"})
 		require.NoError(t, err)
-		return store.RetentionMutation{Principal: principal, AuditEventID: a.ID, AuditAt: model.GetMillis(), RecentAuthenticationTTL: time.Hour}
+		return store.RetentionMutation{Principal: principal, AuditEventID: a.ID, AuditAt: model.NowUTC(), RecentAuthenticationTTL: time.Hour}
 	}
 	preview := func(key string) *model.RetentionPreview {
 		p, err := ss.Retention().CreatePreview(ctx, &store.RetentionPreviewCreation{RetentionMutation: mutation(model.ActionRetentionPolicyView), PreviewID: model.NewRetentionPreviewID(), ExpectedPolicyRevision: policy.Revision}, examCommand(principal.UserID, store.RetentionPreviewOperation, key, key))
@@ -110,7 +110,7 @@ func TestRetentionExpiryStore(t *testing.T, ss store.Store, probe RetentionExpir
 		a, saveErr := ss.Audit().Save(ctx, &model.AuditEvent{Action: "audit.view", Resource: model.Resource{Type: model.ResourceInstitution, ID: installed.Institution.ID.String()}, ScopeType: model.RoleScopeInstitution, ScopeID: installed.Institution.ID.String(), Status: model.AuditStatusAttempt, NodeID: "retention-expiry-test"})
 		require.NoError(t, saveErr)
 		if status != model.AuditStatusAttempt {
-			a, err = ss.Audit().Complete(ctx, a.ID, status, "", nil, model.GetMillis())
+			a, err = ss.Audit().Complete(ctx, a.ID, status, "", nil, model.NowUTC())
 			require.NoError(t, err)
 		}
 		probe.AgeAudit(t, ctx, a.ID.String())
@@ -118,7 +118,7 @@ func TestRetentionExpiryStore(t *testing.T, ss store.Store, probe RetentionExpir
 	}
 	makeInput := func(id string) *store.RetentionExpiryReconciliation {
 		a := saveExpirySystemAudit(t, ctx, ss, installed.Institution.ID)
-		return &store.RetentionExpiryReconciliation{Kind: model.RetentionExpiryAudit, RecordID: id, AuditEventID: a.ID, AuditAt: model.GetMillis()}
+		return &store.RetentionExpiryReconciliation{Kind: model.RetentionExpiryAudit, RecordID: id, AuditEventID: a.ID, AuditAt: model.NowUTC()}
 	}
 	reconcile := func(id string, expected store.RetentionExpiryResult) {
 		r, err := ss.Retention().ReconcileExpiry(ctx, makeInput(id))
@@ -234,7 +234,7 @@ func TestRetentionReceiptExpiryStore(t *testing.T, ss store.Store, retentionProb
 	require.NotNil(t, integrity, "retirement fixture missing")
 	reconcile := func(id model.RetentionRetirementID, expected store.RetentionExpiryResult) {
 		a := saveExpirySystemAudit(t, ctx, ss, policy.InstitutionID)
-		r, reconcileErr := ss.Retention().ReconcileExpiry(ctx, &store.RetentionExpiryReconciliation{Kind: model.RetentionExpiryReceipt, RecordID: id.String(), AuditEventID: a.ID, AuditAt: model.GetMillis()})
+		r, reconcileErr := ss.Retention().ReconcileExpiry(ctx, &store.RetentionExpiryReconciliation{Kind: model.RetentionExpiryReceipt, RecordID: id.String(), AuditEventID: a.ID, AuditAt: model.NowUTC()})
 		require.NoError(t, reconcileErr)
 		require.NotNil(t, r, "receipt expiry")
 		require.Equal(t, expected, *r, "receipt expiry")

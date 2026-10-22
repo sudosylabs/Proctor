@@ -216,10 +216,8 @@ func (s *mfaApplicationService) ActivateMFA(
 	if err != nil {
 		return nil, authenticationUnavailable(err)
 	}
-	// The frozen notice retains its existing millisecond timestamp contract;
-	// the credential and Session expiry decision uses the native instant.
 	prepared, appErr := s.prepareSecurityNotice(
-		ctx, principal.UserID, mail.MFANoticeEnabled, model.TimeFromMillis(now.UnixMilli()),
+		ctx, principal.UserID, mail.MFANoticeEnabled, model.TimeUTC(now),
 	)
 	if appErr != nil {
 		return nil, appErr
@@ -238,7 +236,7 @@ func (s *mfaApplicationService) ActivateMFA(
 		Principal: principal, RecentAuthenticationTTL: s.deps.RecentAuthenticationTTL,
 		CredentialID: credential.ID, UserID: principal.UserID, TimeStep: timeStep,
 		RecoveryCodes: recoveryCodes, SessionID: principal.SessionID, At: now,
-		AuditEventID: auditID, AuditAt: now.UnixMilli(), Notice: mfaSecurityNotice(prepared),
+		AuditEventID: auditID, AuditAt: now, Notice: mfaSecurityNotice(prepared),
 	})
 	if err != nil {
 		return nil, s.failMutation(ctx, auditID, err)
@@ -320,7 +318,7 @@ func (s *mfaApplicationService) RegenerateMFARecoveryCodes(
 	if err != nil {
 		return nil, authenticationUnavailable(err)
 	}
-	now := model.TimeFromMillis(s.deps.Now().UnixMilli())
+	now := model.TimeUTC(s.deps.Now())
 	prepared, appErr := s.prepareSecurityNotice(
 		ctx, principal.UserID, mail.MFANoticeRecoveryCodesRegenerated, now,
 	)
@@ -339,8 +337,8 @@ func (s *mfaApplicationService) RegenerateMFARecoveryCodes(
 	}
 	if err := s.deps.Credentials.ReplaceRecoveryCodes(ctx, &store.MFARecoveryCodesRegeneration{
 		Principal: principal, RecentAuthenticationTTL: s.deps.RecentAuthenticationTTL,
-		UserID: principal.UserID, RecoveryCodes: codes, At: now.UnixMilli(),
-		AuditEventID: auditID, AuditAt: now.UnixMilli(), Notice: mfaSecurityNotice(prepared),
+		UserID: principal.UserID, RecoveryCodes: codes, At: now,
+		AuditEventID: auditID, AuditAt: now, Notice: mfaSecurityNotice(prepared),
 	}); err != nil {
 		return nil, s.failMutation(
 			ctx, auditID, err)
@@ -361,7 +359,7 @@ func (s *mfaApplicationService) DisableMFA(
 	if err := s.requireEnabled(); err != nil {
 		return err
 	}
-	now := model.TimeFromMillis(s.deps.Now().UnixMilli())
+	now := model.TimeUTC(s.deps.Now())
 	prepared, appErr := s.prepareSecurityNotice(
 		ctx, principal.UserID, mail.MFANoticeDisabled, now,
 	)
@@ -378,8 +376,8 @@ func (s *mfaApplicationService) DisableMFA(
 	}
 	result, err := s.deps.Credentials.Disable(ctx, &store.MFADisablement{
 		Principal: principal, RecentAuthenticationTTL: s.deps.RecentAuthenticationTTL,
-		UserID: principal.UserID, At: now.UnixMilli(), AuditEventID: auditID,
-		AuditAt: now.UnixMilli(), Notice: mfaSecurityNotice(prepared),
+		UserID: principal.UserID, At: now, AuditEventID: auditID,
+		AuditAt: now, Notice: mfaSecurityNotice(prepared),
 	})
 	if err != nil {
 		return s.failMutation(ctx, auditID, err)

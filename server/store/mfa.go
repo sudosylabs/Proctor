@@ -43,7 +43,7 @@ type MFAActivationMutation struct {
 	SessionID               model.SessionID
 	At                      time.Time
 	AuditEventID            model.AuditEventID
-	AuditAt                 int64
+	AuditAt                 time.Time
 	Notice                  MFASecurityNotice
 }
 
@@ -52,9 +52,9 @@ type MFARecoveryCodesRegeneration struct {
 	RecentAuthenticationTTL time.Duration
 	UserID                  model.UserID
 	RecoveryCodes           []*model.MFARecoveryCode
-	At                      int64
+	At                      time.Time
 	AuditEventID            model.AuditEventID
-	AuditAt                 int64
+	AuditAt                 time.Time
 	Notice                  MFASecurityNotice
 }
 
@@ -62,9 +62,9 @@ type MFADisablement struct {
 	Principal               model.Principal
 	RecentAuthenticationTTL time.Duration
 	UserID                  model.UserID
-	At                      int64
+	At                      time.Time
 	AuditEventID            model.AuditEventID
-	AuditAt                 int64
+	AuditAt                 time.Time
 	Notice                  MFASecurityNotice
 }
 
@@ -86,7 +86,7 @@ type MFAStore interface {
 	Reset(context.Context, *MFAAssistedReset) (*MFAResetResult, error)
 	GetByUser(context.Context, model.UserID) (*model.MFACredential, error)
 	Activate(context.Context, *MFAActivationMutation) (*MFAActivationResult, error)
-	ConsumeSecondFactor(context.Context, model.UserID, int64, string, int64) error
+	ConsumeSecondFactor(ctx context.Context, userID model.UserID, timeStep int64, recoveryCodeHash string, consumedAt time.Time) error
 	UpgradeSession(context.Context, model.SessionID, model.UserID, time.Time) ([]string, error)
 	ReplaceRecoveryCodes(context.Context, *MFARecoveryCodesRegeneration) error
 	CountRecoveryCodes(context.Context, model.UserID) (int, error)

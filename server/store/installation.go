@@ -10,6 +10,7 @@ package store
 import (
 	"context"
 	"crypto/sha256"
+	"time"
 
 	"github.com/sudosylabs/proctor/server/model"
 )
@@ -37,7 +38,7 @@ type InstallationBootstrap struct {
 // actions unknown to the current binary.
 type SystemAdministratorRoleReconciliation struct {
 	RequiredPermissions []string
-	ReconciledAt        int64
+	ReconciledAt        time.Time
 	AuditEvent          *model.AuditEvent
 }
 

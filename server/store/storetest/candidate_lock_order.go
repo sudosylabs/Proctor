@@ -150,7 +150,7 @@ func TestClassEnrollmentCandidateLockOrder(t *testing.T, ss store.Store, probe C
 			err = probe(t, ctx, user.ID, fence, func() error {
 				var enrollErr error
 				enrolled, enrollErr = ss.ClassMember().Enroll(ctx, &store.ClassMemberEnrollment{
-					Member: member, ExpectedRecipientRevision: user.Revision, AuditEventID: attempt.ID, AuditAt: model.GetMillis(),
+					Member: member, ExpectedRecipientRevision: user.Revision, AuditEventID: attempt.ID, AuditAt: model.NowUTC(),
 					Notice: classMemberPreparedMail(t, member, model.MailTemplateAcademicClassEnrolled, member.CreatedAt),
 				})
 				return enrollErr

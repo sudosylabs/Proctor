@@ -136,7 +136,7 @@ func (s *SQLRetentionStore) ReconcileCleanupAuditExpiry(ctx context.Context, inp
 		if err != nil {
 			return nil, err
 		}
-		if _, err = completeAuditEvent(ctx, tx, audit.ID, model.AuditStatusSuccess, "", encoded, model.MillisFromTime(at)); err != nil {
+		if _, err = completeAuditEvent(ctx, tx, audit.ID, model.AuditStatusSuccess, "", encoded, at); err != nil {
 			return nil, err
 		}
 		return result, nil

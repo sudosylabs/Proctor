@@ -134,7 +134,7 @@ func (h retentionExpiryHandler) Run(ctx context.Context, e job.Execution) job.Ou
 			if err != nil {
 				return job.RetryableFailure("retention.unavailable", err)
 			}
-			result, err := h.records.ReconcileExpiry(ctx, &store.RetentionExpiryReconciliation{Kind: record.Kind, RecordID: record.ID, AuditEventID: auditID, AuditAt: model.MillisFromTime(h.now())})
+			result, err := h.records.ReconcileExpiry(ctx, &store.RetentionExpiryReconciliation{Kind: record.Kind, RecordID: record.ID, AuditEventID: auditID, AuditAt: h.now()})
 			if err != nil {
 				return job.RetryableFailure("retention.unavailable", errors.Join(err, h.audit.FailRetention(ctx, auditID)))
 			}

@@ -79,7 +79,7 @@ func (s *Service) DeclareBrowserDeliveryGaps(ctx context.Context, invocation inv
 	if err != nil {
 		return nil, err
 	}
-	value, err := s.deps.Persistence.DeclareBrowserDeliveryGaps(ctx, &store.BrowserDeliveryGapDeclaration{Access: access, Declaration: command.Declaration, AuditEventID: audit, AuditAt: model.MillisFromTime(s.deps.Now())}, idempotency)
+	value, err := s.deps.Persistence.DeclareBrowserDeliveryGaps(ctx, &store.BrowserDeliveryGapDeclaration{Access: access, Declaration: command.Declaration, AuditEventID: audit, AuditAt: s.deps.Now()}, idempotency)
 	if err != nil {
 		var capacity *model.DeliveryMetadataCapacity
 		if errors.As(err, &capacity) {
@@ -126,7 +126,7 @@ func (s *Service) SealBrowserDelivery(ctx context.Context, invocation invocation
 	if err != nil {
 		return nil, err
 	}
-	value, err := s.deps.Persistence.SealBrowserDelivery(ctx, &store.BrowserDeliveryFinalDeclaration{Access: access, Declaration: command.Declaration, AuditEventID: audit, AuditAt: model.MillisFromTime(s.deps.Now())}, idempotency)
+	value, err := s.deps.Persistence.SealBrowserDelivery(ctx, &store.BrowserDeliveryFinalDeclaration{Access: access, Declaration: command.Declaration, AuditEventID: audit, AuditAt: s.deps.Now()}, idempotency)
 	if err != nil {
 		var capacity *model.DeliveryMetadataCapacity
 		if errors.As(err, &capacity) {
@@ -172,7 +172,7 @@ func (s *Service) UpdateBrowserDeliverySummary(ctx context.Context, invocation i
 	if err != nil {
 		return nil, err
 	}
-	value, err := s.deps.Persistence.UpdateBrowserDeliverySummary(ctx, &store.BrowserDeliverySummaryUpdate{Access: access, Summary: command.Summary, AuditEventID: audit, AuditAt: model.MillisFromTime(s.deps.Now())}, idem)
+	value, err := s.deps.Persistence.UpdateBrowserDeliverySummary(ctx, &store.BrowserDeliverySummaryUpdate{Access: access, Summary: command.Summary, AuditEventID: audit, AuditAt: s.deps.Now()}, idem)
 	if err != nil {
 		return nil, s.failAudit(ctx, audit, s.browserDeliveryFailure(ctx, access, err))
 	}
@@ -245,7 +245,7 @@ func (s *Service) AppendHistoricalBrowserDelivery(ctx context.Context, invocatio
 		return nil, err
 	}
 	b := command.Batch
-	value, err := s.deps.Persistence.AppendHistoricalBrowserDelivery(ctx, &store.BrowserActivityAppend{Access: access.Access, SourceSessionID: b.SourceSessionID, ParticipationID: b.ParticipationID, Generation: b.Generation, PolicyRevisionID: b.PolicyRevisionID, PolicyDigest: b.PolicyDigest, Events: b.Events, AuditEventID: audit, AuditAt: model.MillisFromTime(s.deps.Now())}, idem)
+	value, err := s.deps.Persistence.AppendHistoricalBrowserDelivery(ctx, &store.BrowserActivityAppend{Access: access.Access, SourceSessionID: b.SourceSessionID, ParticipationID: b.ParticipationID, Generation: b.Generation, PolicyRevisionID: b.PolicyRevisionID, PolicyDigest: b.PolicyDigest, Events: b.Events, AuditEventID: audit, AuditAt: s.deps.Now()}, idem)
 	if err != nil {
 		var refusal *store.BrowserDeliveryRefusal
 		if errors.As(err, &refusal) {

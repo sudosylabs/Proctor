@@ -46,7 +46,7 @@ type ExamResourceUploadFinalization struct {
 	Rendition             *model.FileRendition
 	ChangedAt             time.Time
 	AuditEventID          model.AuditEventID
-	AuditAt               int64
+	AuditAt               time.Time
 }
 
 type ExamResourceMetadataUpdate struct {
@@ -59,7 +59,7 @@ type ExamResourceMetadataUpdate struct {
 	DescriptionMarkdown   string
 	ChangedAt             time.Time
 	AuditEventID          model.AuditEventID
-	AuditAt               int64
+	AuditAt               time.Time
 }
 
 type ExamResourceReorder struct {
@@ -70,7 +70,7 @@ type ExamResourceReorder struct {
 	ResourceIDs           []model.ExamResourceID
 	ChangedAt             time.Time
 	AuditEventID          model.AuditEventID
-	AuditAt               int64
+	AuditAt               time.Time
 }
 
 type ExamResourceRemoval struct {
@@ -81,7 +81,7 @@ type ExamResourceRemoval struct {
 	ResourceID            model.ExamResourceID
 	ChangedAt             time.Time
 	AuditEventID          model.AuditEventID
-	AuditAt               int64
+	AuditAt               time.Time
 }
 
 type ExamResourceCommandResult struct {

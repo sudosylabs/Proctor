@@ -71,7 +71,7 @@ func testAcademicUnitStoreMutationAuditAtomicity(t *testing.T, ss store.Store) {
 	candidate.DisplayName = "Audited Update"
 	candidate.PrepareUpdate(model.NowUTC())
 	updated, err := ss.AcademicUnit().Update(ctx, &store.AcademicUnitUpdate{
-		Unit: &candidate, AuditEventID: attempt.ID, AuditAt: model.GetMillis(),
+		Unit: &candidate, AuditEventID: attempt.ID, AuditAt: model.NowUTC(),
 	})
 	require.NoError(t, err)
 	require.Equal(t, "Audited Update", updated.DisplayName)
@@ -83,7 +83,7 @@ func testAcademicUnitStoreMutationAuditAtomicity(t *testing.T, ss store.Store) {
 	stale.DisplayName = "Stale Update"
 	stale.PrepareUpdate(model.NowUTC())
 	_, err = ss.AcademicUnit().Update(ctx, &store.AcademicUnitUpdate{
-		Unit: &stale, AuditEventID: staleAttempt.ID, AuditAt: model.GetMillis(),
+		Unit: &stale, AuditEventID: staleAttempt.ID, AuditAt: model.NowUTC(),
 	})
 	require.True(t, store.IsConflict(err), "stale Update() error")
 
@@ -91,7 +91,7 @@ func testAcademicUnitStoreMutationAuditAtomicity(t *testing.T, ss store.Store) {
 	rolledBack.DisplayName = "Must Roll Back"
 	rolledBack.PrepareUpdate(model.NowUTC())
 	_, err = ss.AcademicUnit().Update(ctx, &store.AcademicUnitUpdate{
-		Unit: &rolledBack, AuditEventID: model.NewAuditEventID(), AuditAt: model.GetMillis(),
+		Unit: &rolledBack, AuditEventID: model.NewAuditEventID(), AuditAt: model.NowUTC(),
 	})
 	require.Error(t, err, "Update() succeeded without its audit attempt")
 	persisted, getErr := ss.AcademicUnit().Get(ctx, unit.ID)
@@ -101,8 +101,8 @@ func testAcademicUnitStoreMutationAuditAtomicity(t *testing.T, ss store.Store) {
 	archiveUnit := saveAcademicUnit(t, ctx, ss, institution.ID.String(), "", "audited-archive")
 	archiveAttempt := saveAcademicUnitAuditAttempt(t, ctx, ss, archiveUnit.ID.String())
 	archived, err := ss.AcademicUnit().Archive(ctx, &store.AcademicUnitArchive{
-		ID: archiveUnit.ID, ArchiveAt: model.GetMillis(),
-		AuditEventID: archiveAttempt.ID, AuditAt: model.GetMillis(),
+		ID: archiveUnit.ID, ArchiveAt: model.NowUTC(),
+		AuditEventID: archiveAttempt.ID, AuditAt: model.NowUTC(),
 	})
 	require.NoError(t, err)
 	require.NotEqual(t, int64(0), archived.ArchivedAt.Millis())
@@ -112,8 +112,8 @@ func testAcademicUnitStoreMutationAuditAtomicity(t *testing.T, ss store.Store) {
 
 	rollbackArchive := saveAcademicUnit(t, ctx, ss, institution.ID.String(), "", "rollback-archive")
 	_, err = ss.AcademicUnit().Archive(ctx, &store.AcademicUnitArchive{
-		ID: rollbackArchive.ID, ArchiveAt: model.GetMillis(),
-		AuditEventID: model.NewAuditEventID(), AuditAt: model.GetMillis(),
+		ID: rollbackArchive.ID, ArchiveAt: model.NowUTC(),
+		AuditEventID: model.NewAuditEventID(), AuditAt: model.NowUTC(),
 	})
 	require.Error(t, err, "Archive() succeeded without its audit attempt")
 	_, getErr = ss.AcademicUnit().Get(ctx, rollbackArchive.ID)
@@ -138,7 +138,7 @@ func testAcademicUnitStoreCreateWithAudit(t *testing.T, ss store.Store) {
 	saved, err := ss.AcademicUnit().Create(ctx, &store.AcademicUnitCreation{
 		Unit:         unit,
 		AuditEventID: attempt.ID,
-		AuditAt:      model.GetMillis(),
+		AuditAt:      model.NowUTC(),
 	})
 	require.NoError(t, err)
 	completed, err := ss.Audit().Get(ctx, attempt.ID)
@@ -156,7 +156,7 @@ func testAcademicUnitStoreCreateWithAudit(t *testing.T, ss store.Store) {
 	_, err = ss.AcademicUnit().Create(ctx, &store.AcademicUnitCreation{
 		Unit:         rolledBack,
 		AuditEventID: model.NewAuditEventID(),
-		AuditAt:      model.GetMillis(),
+		AuditAt:      model.NowUTC(),
 	})
 	require.Error(t, err, "Create() succeeded without its audit attempt")
 	found, searchErr := ss.AcademicUnit().Search(ctx, institution.ID, store.AcademicNameListOptions{Term: "rolled-back-unit", Limit: 10})
@@ -188,9 +188,9 @@ func testAcademicUnitStoreSearchAndArchive(t *testing.T, ss store.Store) {
 	otherInstitution := saveInstitution(t, ctx, ss)
 	_, err = ss.AcademicUnit().GetByName(ctx, otherInstitution.ID, child.Name)
 	require.True(t, store.IsNotFound(err), "cross-Institution GetByName() error")
-	_, err = ArchiveAcademicUnit(ctx, ss, parent.ID, model.GetMillis())
+	_, err = ArchiveAcademicUnit(ctx, ss, parent.ID, model.NowUTC())
 	require.True(t, store.IsConflict(err), "Archive(parent with child) error")
-	archived, err := ArchiveAcademicUnit(ctx, ss, child.ID, model.GetMillis())
+	archived, err := ArchiveAcademicUnit(ctx, ss, child.ID, model.NowUTC())
 	require.NoError(t, err)
 	require.NotEqual(t, int64(0), archived.ArchivedAt.Millis())
 	_, err = ss.AcademicUnit().Get(ctx, child.ID)
@@ -374,7 +374,7 @@ func testAcademicUnitStoreRejectCrossInstitutionParent(t *testing.T, ss store.St
 	ctx := context.Background()
 	first := saveInstitution(t, ctx, ss)
 	parent := saveAcademicUnit(t, ctx, ss, first.ID.String(), "", "engineering")
-	require.NoError(t, ss.Institution().Archive(ctx, first.ID, model.GetMillis()))
+	require.NoError(t, ss.Institution().Archive(ctx, first.ID, model.NowUTC()))
 
 	second, err := ss.Institution().Save(ctx, &model.Institution{
 		Name:        "second-" + model.NewID(),

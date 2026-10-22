@@ -558,7 +558,7 @@ func (s SQLJobStore) Retry(ctx context.Context, input *store.JobMutation) (*mode
 }
 
 func (s SQLJobStore) mutateOperatorJob(ctx context.Context, input *store.JobMutation, operation string, mutate func(*model.Job, time.Time) (*model.Job, error)) (*model.Job, error) {
-	if input == nil || !input.ID.IsValid() || input.ExpectedRevision <= 0 || !input.AuditEventID.IsValid() || input.AuditAt <= 0 {
+	if input == nil || !input.ID.IsValid() || input.ExpectedRevision <= 0 || !input.AuditEventID.IsValid() || input.AuditAt.IsZero() {
 		return nil, store.NewErrInvalidInput("job", operation, nil)
 	}
 	return executeSQLTransaction(ctx, s.GetMaster().Begin, rawSQLTransactionPolicy[*model.Job](true, func(_ *model.Job, err error) error { return err }), func(ctx context.Context, tx *sqlxTxWrapper) (*model.Job, error) {

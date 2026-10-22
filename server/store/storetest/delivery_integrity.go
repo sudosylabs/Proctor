@@ -90,7 +90,7 @@ func TestDeliveryCorruptReads(t *testing.T, ss store.Store, corrupt func(model.A
 			batch := model.NativeSecurityBatch{StreamID: native.StreamID, BatchSequence: sequence, ParticipationID: native.ParticipationID, Generation: native.Generation, SecuritySessionID: connected.Security.SecuritySessionID, PolicyDigest: connected.Security.Policy.Digest, ApplicationReleaseID: connected.Security.Policy.ApplicationReleaseID, MatrixID: connected.Security.Policy.MatrixID, Records: []model.NativeRecord{{Occurrence: &record}}}
 			raw, err := batch.Canonical()
 			require.NoError(t, err)
-			_, err = ss.ExamAttempt().AppendNativeDelivery(ctx, &store.NativeDeliveryAppend{Access: native, Batch: batch, DesktopBuild: build, AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.GetMillis()}, examCommand(fixture.candidate.ID, store.NativeDeliveryAppendOperation, key, model.SHA256Fingerprint(raw)))
+			_, err = ss.ExamAttempt().AppendNativeDelivery(ctx, &store.NativeDeliveryAppend{Access: native, Batch: batch, DesktopBuild: build, AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.NowUTC()}, examCommand(fixture.candidate.ID, store.NativeDeliveryAppendOperation, key, model.SHA256Fingerprint(raw)))
 			return err
 		}
 		require.NoError(t, appendBatch(2, "progress-pending"))
@@ -103,7 +103,7 @@ func TestDeliveryCorruptReads(t *testing.T, ss store.Store, corrupt func(model.A
 		require.NoError(t, appendBatch(4, "transition-pending"))
 		declaration := model.DeclareDeliveryGaps{DeclarationID: model.NewID(), AllocatedThroughSequence: 4, Ranges: []model.SequenceRange{{First: 3, Last: 3}}, Reason: "spool_lost"}
 		settle := func() error {
-			_, err := ss.ExamAttempt().DeclareNativeDeliveryGaps(ctx, &store.NativeDeliveryGapDeclaration{Access: native, Declaration: declaration, AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.GetMillis()}, examCommand(fixture.candidate.ID, store.NativeDeliveryGapsOperation, "transition-settle", "transition-settle"))
+			_, err := ss.ExamAttempt().DeclareNativeDeliveryGaps(ctx, &store.NativeDeliveryGapDeclaration{Access: native, Declaration: declaration, AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.NowUTC()}, examCommand(fixture.candidate.ID, store.NativeDeliveryGapsOperation, "transition-settle", "transition-settle"))
 			return err
 		}
 		func() {
@@ -143,14 +143,14 @@ func TestDeliveryCorruptReads(t *testing.T, ss store.Store, corrupt func(model.A
 
 	policy, err := model.NewBrowserPolicy(true, "start", []model.BrowserPolicyRule{{RuleID: "start", Origin: "https://example.edu", PathPrefix: "/corrected", HostMatch: model.BrowserPolicyHostExact, AllowRedirects: true, BlockedNavigationOutcome: model.BrowserPolicyBlockedNavigationRecord}})
 	require.NoError(t, err)
-	corrected, err := ss.ExamCorrection().Apply(ctx, &store.ExamCorrectionApplication{RevisionID: model.NewExamRevisionID(), ExamID: fixture.examID, SittingID: fixture.sitting.ID, CurrentRevisionID: fixture.revisionID, ExpectedSittingRevision: fixture.sitting.Revision, ActorUserID: fixture.manager.ID, Resources: []store.ExamCorrectionResourceManifestItem{}, BrowserPolicy: &policy, CandidateSummary: "Updated browser references", AffectedCapabilities: []model.CandidateCapability{model.CandidateCapabilityBrowser}, PrivateReason: "Validate retained source boundary", AppliedAt: model.NowUTC(), AuditEventID: saveExamSittingAudit(t, ctx, ss, fixture.manager.ID, fixture.examID, fixture.unitID).ID, AuditAt: model.GetMillis()}, examCommand(fixture.manager.ID, "exam.sitting.correction.apply", "corrupt-predecessor-correction", "corrupt-predecessor-correction"))
+	corrected, err := ss.ExamCorrection().Apply(ctx, &store.ExamCorrectionApplication{RevisionID: model.NewExamRevisionID(), ExamID: fixture.examID, SittingID: fixture.sitting.ID, CurrentRevisionID: fixture.revisionID, ExpectedSittingRevision: fixture.sitting.Revision, ActorUserID: fixture.manager.ID, Resources: []store.ExamCorrectionResourceManifestItem{}, BrowserPolicy: &policy, CandidateSummary: "Updated browser references", AffectedCapabilities: []model.CandidateCapability{model.CandidateCapabilityBrowser}, PrivateReason: "Validate retained source boundary", AppliedAt: model.NowUTC(), AuditEventID: saveExamSittingAudit(t, ctx, ss, fixture.manager.ID, fixture.examID, fixture.unitID).ID, AuditAt: model.NowUTC()}, examCommand(fixture.manager.ID, "exam.sitting.correction.apply", "corrupt-predecessor-correction", "corrupt-predecessor-correction"))
 	require.NoError(t, err)
 	presentation, err := ss.ExamAttempt().GetCandidatePresentation(ctx, access)
 	require.NoError(t, err)
 	successor := &store.BrowserActivitySourceStart{Access: access, ParticipationID: connected.Participation.ID, Generation: connected.Participation.Generation, SourceSessionID: browserSourceID(19902), PolicyRevisionID: corrected.Revision.ID, PolicyDigest: presentation.RuntimeCapabilities.Browser.PolicyDigest, Transition: model.BrowserStartTransition{Kind: "policy_correction", PredecessorSourceSessionID: source}}
 	for _, field := range []string{"browser_predecessor_malformed", "browser_predecessor_incomplete"} {
 		successor.AuditEventID = browserDeliveryAuditFixture(t, ctx, ss, browser)
-		successor.AuditAt = model.GetMillis()
+		successor.AuditAt = model.NowUTC()
 		restore := corrupt(connected.Participation.ID, source, field)
 		_, err = ss.ExamAttempt().StartBrowserActivity(ctx, successor)
 		restore()
@@ -161,7 +161,7 @@ func TestDeliveryCorruptReads(t *testing.T, ss store.Store, corrupt func(model.A
 		require.Equal(t, int64(model.BrowserCorrectionStartLimit), sources[0].RemainingCorrectionStarts, "invalid predecessor consumed a successor reservation")
 	}
 	successor.AuditEventID = browserDeliveryAuditFixture(t, ctx, ss, browser)
-	successor.AuditAt = model.GetMillis()
+	successor.AuditAt = model.NowUTC()
 	next, err := ss.ExamAttempt().StartBrowserActivity(ctx, successor)
 	require.NoError(t, err)
 	require.Equal(t, int64(model.BrowserCorrectionStartLimit-1), next.RemainingCorrectionStarts, "restored predecessor could not create exactly one successor")

@@ -44,7 +44,7 @@ type ExamRecordsMutation struct {
 	Principal    model.Principal
 	Action       model.Action
 	AuditEventID model.AuditEventID
-	AuditAt      int64
+	AuditAt      time.Time
 }
 
 type ExamRecordsCompletion struct {

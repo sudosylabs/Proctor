@@ -67,7 +67,7 @@ func newSQLProgrammeLevelStore(sqlStore *SQLStore) store.ProgrammeLevelStore {
 }
 
 func (s SQLProgrammeLevelStore) Create(ctx context.Context, input *store.ProgrammeLevelCreation) (*model.ProgrammeLevel, error) {
-	if input == nil || input.Level == nil || !input.AuditEventID.IsValid() || input.AuditAt <= 0 {
+	if input == nil || input.Level == nil || !input.AuditEventID.IsValid() || input.AuditAt.IsZero() {
 		return nil, store.NewErrInvalidInput("programme_level", "creation", nil)
 	}
 	if !input.Level.ID.IsValid() {
@@ -232,7 +232,7 @@ func (s SQLProgrammeLevelStore) updateProgrammeLevel(ctx context.Context, candid
 // Update validates input.Level and writes it in one audited transaction fenced
 // on the stored revision immediately preceding the candidate's Revision.
 func (s SQLProgrammeLevelStore) Update(ctx context.Context, input *store.ProgrammeLevelUpdate) (*model.ProgrammeLevel, error) {
-	if input == nil || input.Level == nil || !input.AuditEventID.IsValid() || input.AuditAt <= 0 {
+	if input == nil || input.Level == nil || !input.AuditEventID.IsValid() || input.AuditAt.IsZero() {
 		return nil, store.NewErrInvalidInput("programme_level", "update", nil)
 	}
 	candidate := *input.Level
@@ -246,13 +246,13 @@ func (s SQLProgrammeLevelStore) Update(ctx context.Context, input *store.Program
 // positive ExpectedRevision must match the stored revision, and active Classes
 // make it a conflict.
 func (s SQLProgrammeLevelStore) Archive(ctx context.Context, input *store.ProgrammeLevelArchive) (*model.ProgrammeLevel, error) {
-	if input == nil || !input.ID.IsValid() || input.ArchiveAt <= 0 || input.ExpectedRevision < 0 || !input.AuditEventID.IsValid() || input.AuditAt <= 0 {
+	if input == nil || !input.ID.IsValid() || input.ArchiveAt.IsZero() || input.ExpectedRevision < 0 || !input.AuditEventID.IsValid() || input.AuditAt.IsZero() {
 		return nil, store.NewErrInvalidInput("programme_level", "archive", nil)
 	}
 	return s.archiveProgrammeLevel(ctx, input.ID, input.ArchiveAt, input.ExpectedRevision, &academicMutationAudit{eventID: input.AuditEventID, at: input.AuditAt})
 }
 
-func (s SQLProgrammeLevelStore) archiveProgrammeLevel(ctx context.Context, id model.ProgrammeLevelID, archiveAt, expectedRevision int64, audit *academicMutationAudit) (*model.ProgrammeLevel, error) {
+func (s SQLProgrammeLevelStore) archiveProgrammeLevel(ctx context.Context, id model.ProgrammeLevelID, archiveAt time.Time, expectedRevision int64, audit *academicMutationAudit) (*model.ProgrammeLevel, error) {
 	return runSQLTransaction(ctx, s.GetMaster().Begin, "programme level archive", func(ctx context.Context, tx *sqlxTxWrapper) (*model.ProgrammeLevel, error) {
 		if err := lockProgrammeLevelLifecycle(ctx, tx); err != nil {
 			return nil, err
@@ -272,7 +272,7 @@ func (s SQLProgrammeLevelStore) archiveProgrammeLevel(ctx context.Context, id mo
 		if dependent {
 			return nil, store.NewErrConflict("programme_level", "programme_level_has_active_classes", nil)
 		}
-		result, err := tx.Exec(ctx, `UPDATE programme_levels SET updated_at = GREATEST(updated_at, ?), archived_at = GREATEST(created_at, ?), revision = revision + 1 WHERE id = ? AND archived_at IS NULL AND revision = ?`, model.TimeFromMillis(archiveAt), model.TimeFromMillis(archiveAt), id, row.Revision)
+		result, err := tx.Exec(ctx, `UPDATE programme_levels SET updated_at = GREATEST(updated_at, ?), archived_at = GREATEST(created_at, ?), revision = revision + 1 WHERE id = ? AND archived_at IS NULL AND revision = ?`, model.TimeUTC(archiveAt), model.TimeUTC(archiveAt), id, row.Revision)
 		if err != nil {
 			return nil, fmt.Errorf("archive programme level: %w", err)
 		}

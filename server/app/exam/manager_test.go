@@ -79,7 +79,7 @@ func TestAddManagerChecksEligibilityBeforeAuditedAtomicMutation(t *testing.T) {
 		fmt.Sprintf(`{"exam_id":%q,"user_id":%q,"expected_exam_revision":1}`, fixture.examID, target))
 }
 
-func TestAddManagerUsesNativeMembershipDecisionAndLegacyMutationTime(t *testing.T) {
+func TestAddManagerUsesNativeMembershipDecisionAndMutationTime(t *testing.T) {
 	fixture := newAuthoringFixture(t)
 	decisionAt := time.Date(2026, 9, 5, 12, 0, 0, 123700789, time.FixedZone("offset", 3600))
 	boundary := model.TimeUTC(decisionAt)
@@ -117,13 +117,12 @@ func TestAddManagerUsesNativeMembershipDecisionAndLegacyMutationTime(t *testing.
 	require.Equal(t, boundary, checked[fixture.userID.String()], "membership decision times")
 	require.Equal(t, boundary, checked[target.String()], "membership decision times")
 	mutation := fixture.persistence.managerMutation
-	wantMillis := decisionAt.UnixMilli()
-	require.NotNil(t, mutation, "legacy mutation times")
-	require.True(t, mutation.ManagerOverride, "legacy mutation times")
-	require.Equal(t, wantMillis, mutation.ChangedAt, "legacy mutation times")
-	require.Equal(t, wantMillis, mutation.AuditAt, "legacy mutation times")
+	require.NotNil(t, mutation, "mutation times")
+	require.True(t, mutation.ManagerOverride, "mutation times")
+	require.Equal(t, boundary, mutation.ChangedAt, "mutation times")
+	require.Equal(t, boundary, mutation.AuditAt, "mutation times")
 	require.Len(t, fixture.mail.requests, 1)
-	require.Equal(t, time.UnixMilli(wantMillis).UTC(), fixture.mail.requests[0].ActionAt)
+	require.Equal(t, boundary, fixture.mail.requests[0].ActionAt)
 }
 
 func TestAddManagerRejectsInactiveOrUnrelatedTargetBeforeAudit(t *testing.T) {

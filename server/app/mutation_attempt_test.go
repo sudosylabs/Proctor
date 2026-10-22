@@ -158,7 +158,7 @@ func TestMutationAttemptMapsStoreFailureBeforeCompletingAttempt(t *testing.T) {
 		func(_ context.Context, reference mutationAttemptReference) (string, error) {
 			events = append(events, "mutate")
 			require.Equal(t, model.AuditEventID(auditID), reference.ID)
-			require.Equal(t, at.UnixMilli(), reference.MutationAtMillis)
+			require.True(t, model.TimeUTC(at).Equal(reference.MutationAt))
 			return "", storeErr
 		},
 		func(err error) error {
@@ -289,7 +289,7 @@ func TestMutationAttemptReturnsSuccessWithoutCompletingIt(t *testing.T) {
 		func(_ context.Context, reference mutationAttemptReference) (string, error) {
 			events = append(events, "mutate")
 			require.Equal(t, model.AuditEventID(auditID), reference.ID)
-			require.Equal(t, int64(500), reference.MutationAtMillis)
+			require.True(t, time.UnixMilli(500).UTC().Equal(reference.MutationAt))
 			return "saved", nil
 		},
 		func(error) error {

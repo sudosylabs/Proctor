@@ -181,7 +181,7 @@ func TestProviderConnectionCallbackLinksOnlyTransactionUserWithoutSession(t *tes
 			require.Equal(t, target, identities.linked.Identity.UserID)
 			require.Equal(t, provider.assertion.Subject, identities.linked.Identity.Subject)
 			require.Equal(t, model.AuditEventID(state.AuditEventID), identities.linked.AuditEventID)
-			require.Equal(t, databaseNow.UnixMilli(), identities.linked.AuditAt)
+			require.True(t, model.TimeUTC(databaseNow).Equal(identities.linked.AuditAt))
 			require.True(t, identities.linked.Identity.LastSeenAt.Valid)
 			require.True(t, identities.linked.Identity.LastSeenAt.Time.Equal(databaseNow))
 			require.Equal(t, 1, states.consumeCalls, "completion=%#v consume calls=%d session calls", completion, states.consumeCalls)

@@ -639,7 +639,7 @@ func validateInvitationBatchDuplicate(input *store.InvitationBatchDuplicate, com
 	if input == nil || command == nil || !input.ActorUserID.IsValid() || input.ActorUserID != command.UserID ||
 		input.CanonicalOperation == "" || input.CanonicalOperation != command.Operation ||
 		input.CanonicalKeyDigest == ([32]byte{}) || input.CanonicalKeyDigest == command.KeyDigest ||
-		!input.AuditEventID.IsValid() || input.AuditAt <= 0 {
+		!input.AuditEventID.IsValid() || input.AuditAt.IsZero() {
 		return store.NewErrInvalidInput("invitation", "batch_duplicate", nil)
 	}
 	hasCandidate := input.Candidate != nil
@@ -744,14 +744,14 @@ func completeInvitationBatchDuplicateAudit(ctx context.Context, tx *sqlxTxWrappe
 	return err
 }
 
-func completeInvitationReplayAudit(ctx context.Context, tx *sqlxTxWrapper, auditID model.AuditEventID, at int64, invitation *model.Invitation, originalAuditID string) error {
+func completeInvitationReplayAudit(ctx context.Context, tx *sqlxTxWrapper, auditID model.AuditEventID, at time.Time, invitation *model.Invitation, originalAuditID string) error {
 	data := invitation.Auditable()
 	data["idempotency_replayed"] = true
 	data["original_audit_event_id"] = originalAuditID
 	return completeInvitationLifecycleAudit(ctx, tx, auditID, at, data)
 }
 
-func completeInvitationNoOpReplayAudit(ctx context.Context, tx *sqlxTxWrapper, auditID model.AuditEventID, at int64, invitation *model.Invitation, originalAuditID string) error {
+func completeInvitationNoOpReplayAudit(ctx context.Context, tx *sqlxTxWrapper, auditID model.AuditEventID, at time.Time, invitation *model.Invitation, originalAuditID string) error {
 	data := map[string]any{"no_op": true, "idempotency_replayed": true, "original_audit_event_id": originalAuditID}
 	if invitation != nil && invitation.ID.IsValid() {
 		data["invitation_id"] = invitation.ID.String()
@@ -759,7 +759,7 @@ func completeInvitationNoOpReplayAudit(ctx context.Context, tx *sqlxTxWrapper, a
 	return completeInvitationLifecycleAudit(ctx, tx, auditID, at, data)
 }
 
-func completeInvitationNoOpAudit(ctx context.Context, tx *sqlxTxWrapper, auditID model.AuditEventID, at int64, invitation *model.Invitation) error {
+func completeInvitationNoOpAudit(ctx context.Context, tx *sqlxTxWrapper, auditID model.AuditEventID, at time.Time, invitation *model.Invitation) error {
 	data := map[string]any{"no_op": true}
 	if invitation != nil && invitation.ID.IsValid() {
 		data["invitation_id"] = invitation.ID.String()
@@ -1224,7 +1224,7 @@ func resendInvitation(ctx context.Context, tx *sqlxTxWrapper, input *store.Invit
 
 func (s SQLInvitationStore) Revoke(ctx context.Context, input *store.InvitationRevocation) (*store.InvitationAdministrationRecord, error) {
 	if input == nil || !input.ID.IsValid() || input.ExpectedRevision < 1 || !input.ActorUserID.IsValid() ||
-		!input.AuditEventID.IsValid() || input.AuditAt <= 0 {
+		!input.AuditEventID.IsValid() || input.AuditAt.IsZero() {
 		return nil, store.NewErrInvalidInput("invitation", "revocation", nil)
 	}
 	return runSQLTransaction(ctx, s.GetMaster().Begin, "Invitation revocation", func(ctx context.Context, tx *sqlxTxWrapper) (*store.InvitationAdministrationRecord, error) {
@@ -1234,7 +1234,7 @@ func (s SQLInvitationStore) Revoke(ctx context.Context, input *store.InvitationR
 
 func (s SQLInvitationStore) RevokeIdempotently(ctx context.Context, input *store.InvitationRevocation, command *store.CommandIdempotency) (*store.InvitationAdministrationCommandResult, error) {
 	if input == nil || !input.ID.IsValid() || input.ExpectedRevision < 1 || !input.ActorUserID.IsValid() ||
-		!input.AuditEventID.IsValid() || input.AuditAt <= 0 || command == nil {
+		!input.AuditEventID.IsValid() || input.AuditAt.IsZero() || command == nil {
 		return nil, store.NewErrInvalidInput("invitation", "idempotent_revocation", nil)
 	}
 	result, err := runIdempotentMutation(ctx, s.SQLStore, "idempotent Invitation revocation", idempotentMutation[*store.InvitationAdministrationCommandResult]{
@@ -1461,7 +1461,7 @@ func updateInvitationLifecycle(ctx context.Context, tx *sqlxTxWrapper, invitatio
 	return nil
 }
 
-func completeInvitationLifecycleAudit(ctx context.Context, tx *sqlxTxWrapper, id model.AuditEventID, at int64, value any) error {
+func completeInvitationLifecycleAudit(ctx context.Context, tx *sqlxTxWrapper, id model.AuditEventID, at time.Time, value any) error {
 	encoded, err := model.EncodeAuditData(value)
 	if err != nil {
 		return err
@@ -1490,7 +1490,7 @@ func invitationMailAt(occurrence *model.MailOccurrence, source *model.MailDelive
 
 func validateInvitationResend(input *store.InvitationResend) error {
 	if input == nil || !input.ID.IsValid() || input.ExpectedRevision < 1 || !model.IsValidTokenHash(input.ClaimHash) ||
-		!input.ActorUserID.IsValid() || !input.AuditEventID.IsValid() || input.AuditAt <= 0 ||
+		!input.ActorUserID.IsValid() || !input.AuditEventID.IsValid() || input.AuditAt.IsZero() ||
 		input.Occurrence == nil || input.Delivery == nil || input.DeliveryJob == nil {
 		return store.NewErrInvalidInput("invitation", "resend", nil)
 	}
@@ -1522,7 +1522,7 @@ func validateInvitationReplacement(input *store.InvitationReplacement) error {
 		input.Lifetime != model.InvitationLifetime || !input.ActorUserID.IsValid() ||
 		input.Replacement.InviterUserID != input.ActorUserID || input.Replacement.ID == input.CurrentID ||
 		!input.CurrentAuditEventID.IsValid() || !input.ReplacementAuditEventID.IsValid() ||
-		input.CurrentAuditEventID == input.ReplacementAuditEventID || input.AuditAt <= 0 ||
+		input.CurrentAuditEventID == input.ReplacementAuditEventID || input.AuditAt.IsZero() ||
 		input.Occurrence == nil || input.Delivery == nil || input.DeliveryJob == nil ||
 		input.Occurrence.Kind != model.MailOccurrenceInvitation || input.Occurrence.ActorUserID != input.ActorUserID ||
 		input.Delivery.TargetInvitationID != input.Replacement.ID || input.Delivery.TargetUserID.IsValid() ||
@@ -2169,7 +2169,7 @@ func resolveExternalInvitationUser(ctx context.Context, tx *sqlxTxWrapper, invit
 func linkExternalInvitationIdentity(ctx context.Context, tx *sqlxTxWrapper, prepared *model.ExternalIdentity,
 	userID model.UserID, provider string, at time.Time,
 ) (*model.ExternalIdentity, error) {
-	identity, _, err := resolveExternalIdentity(ctx, tx, provider, prepared.Subject, model.MillisFromTime(at))
+	identity, _, err := resolveExternalIdentity(ctx, tx, provider, prepared.Subject, at)
 	if err == nil {
 		if identity.UserID != userID {
 			return nil, store.NewErrConflict("external_identity", "external_identities_provider_subject_key", nil)
@@ -2344,7 +2344,7 @@ func (s SQLInvitationStore) AcceptScopedRole(ctx context.Context, input *store.S
 
 func validateScopedRoleInvitationAcceptance(input *store.ScopedRoleInvitationAcceptance) error {
 	if input == nil || !model.IsValidTokenHash(input.ClaimHash) || !input.UserID.IsValid() || input.RoleBinding == nil ||
-		!model.AuditEventID(input.AuditEventID).IsValid() || input.AuditAt <= 0 {
+		!input.AuditEventID.IsValid() || input.AuditAt.IsZero() {
 		return store.NewErrInvalidInput("invitation", "acceptance", nil)
 	}
 	if !slices.Equal(input.RequiredActions, []model.Action{model.ActionInvitationCreate, model.ActionRoleBindingManage}) ||
@@ -2421,7 +2421,7 @@ func replayScopedRoleInvitation(ctx context.Context, tx *sqlxTxWrapper, invitati
 }
 
 func validateTeacherAcademicUnitInvitationAcceptance(input *store.TeacherAcademicUnitInvitationAcceptance) error {
-	if input == nil || !model.IsValidTokenHash(input.ClaimHash) || input.AcceptedAt <= 0 || input.User == nil || input.Settings == nil ||
+	if input == nil || !model.IsValidTokenHash(input.ClaimHash) || input.AcceptedAt.IsZero() || input.User == nil || input.Settings == nil ||
 		input.PasswordCredential == nil || input.DefaultProfilePictureJob == nil || input.Affiliation == nil || input.AcademicUnitMember == nil ||
 		input.RoleBinding == nil || input.Occurrence == nil || input.Delivery == nil || input.DeliveryJob == nil || input.AuditEvent == nil {
 		return store.NewErrInvalidInput("invitation", "acceptance", nil)
@@ -2450,7 +2450,7 @@ func validateTeacherAcademicUnitInvitationAcceptance(input *store.TeacherAcademi
 }
 
 func validateStudentClassInvitationAcceptance(input *store.StudentClassInvitationAcceptance) error {
-	if input == nil || !model.IsValidTokenHash(input.ClaimHash) || input.AcceptedAt <= 0 || input.User == nil || input.Settings == nil ||
+	if input == nil || !model.IsValidTokenHash(input.ClaimHash) || input.AcceptedAt.IsZero() || input.User == nil || input.Settings == nil ||
 		input.PasswordCredential == nil || input.DefaultProfilePictureJob == nil || input.Affiliation == nil || input.ClassMember == nil ||
 		input.Occurrence == nil || input.Delivery == nil || input.DeliveryJob == nil || input.AuditEvent == nil {
 		return store.NewErrInvalidInput("invitation", "acceptance", nil)
@@ -2827,7 +2827,7 @@ func replayTeacherAcademicUnitInvitation(ctx context.Context, tx *sqlxTxWrapper,
 
 func validateStudentClassInvitationIssue(input *store.StudentClassInvitationIssue) error {
 	if input == nil || input.Invitation == nil || input.Occurrence == nil || input.Delivery == nil || input.DeliveryJob == nil ||
-		!input.AuditEventID.IsValid() || input.AuditAt <= 0 {
+		!input.AuditEventID.IsValid() || input.AuditAt.IsZero() {
 		return store.NewErrInvalidInput("invitation", "issue", nil)
 	}
 	if err := input.Invitation.Validate(); err != nil {
@@ -2859,7 +2859,7 @@ func validateStudentClassInvitationIssue(input *store.StudentClassInvitationIssu
 func validateStudentClassInvitationIssueIdempotently(input *store.StudentClassInvitationIssue, command *store.CommandIdempotency) error {
 	if command != nil && command.OnboardingImportID.IsValid() && input != nil && input.Invitation != nil &&
 		input.Occurrence == nil && input.Delivery == nil && input.DeliveryJob == nil {
-		if !input.AuditEventID.IsValid() || input.AuditAt <= 0 || input.Invitation.Purpose != model.InvitationPurposeStudentClass ||
+		if !input.AuditEventID.IsValid() || input.AuditAt.IsZero() || input.Invitation.Purpose != model.InvitationPurposeStudentClass ||
 			input.Invitation.State != model.InvitationPending || input.Invitation.Validate() != nil {
 			return store.NewErrInvalidInput("invitation", "onboarding_no_op_issue", nil)
 		}
@@ -2870,7 +2870,7 @@ func validateStudentClassInvitationIssueIdempotently(input *store.StudentClassIn
 
 func validateTeacherAcademicUnitInvitationIssue(input *store.TeacherAcademicUnitInvitationIssue) error {
 	if input == nil || input.Invitation == nil || input.Occurrence == nil || input.Delivery == nil || input.DeliveryJob == nil ||
-		input.Lifetime != model.InvitationLifetime || !input.AuditEventID.IsValid() || input.AuditAt <= 0 {
+		input.Lifetime != model.InvitationLifetime || !input.AuditEventID.IsValid() || input.AuditAt.IsZero() {
 		return store.NewErrInvalidInput("invitation", "issue", nil)
 	}
 	if err := input.Invitation.Validate(); err != nil {
@@ -2901,7 +2901,7 @@ func validateTeacherAcademicUnitInvitationIssue(input *store.TeacherAcademicUnit
 func validateTeacherAcademicUnitInvitationIssueIdempotently(input *store.TeacherAcademicUnitInvitationIssue, command *store.CommandIdempotency) error {
 	if command != nil && command.OnboardingImportID.IsValid() && input != nil && input.Invitation != nil &&
 		input.Occurrence == nil && input.Delivery == nil && input.DeliveryJob == nil {
-		if input.Lifetime != model.InvitationLifetime || !input.AuditEventID.IsValid() || input.AuditAt <= 0 ||
+		if input.Lifetime != model.InvitationLifetime || !input.AuditEventID.IsValid() || input.AuditAt.IsZero() ||
 			input.Invitation.Purpose != model.InvitationPurposeTeacherAcademicUnit || input.Invitation.State != model.InvitationPending ||
 			input.Invitation.Validate() != nil {
 			return store.NewErrInvalidInput("invitation", "onboarding_no_op_issue", nil)
@@ -2913,7 +2913,7 @@ func validateTeacherAcademicUnitInvitationIssueIdempotently(input *store.Teacher
 
 func validateScopedRoleInvitationIssue(input *store.ScopedRoleInvitationIssue) error {
 	if input == nil || input.Invitation == nil || input.Occurrence == nil || input.Delivery == nil || input.DeliveryJob == nil ||
-		input.Lifetime != model.InvitationLifetime || !input.AuditEventID.IsValid() || input.AuditAt <= 0 {
+		input.Lifetime != model.InvitationLifetime || !input.AuditEventID.IsValid() || input.AuditAt.IsZero() {
 		return store.NewErrInvalidInput("invitation", "issue", nil)
 	}
 	if err := input.Invitation.Validate(); err != nil {
@@ -2950,7 +2950,7 @@ func validateScopedRoleInvitationIssueIdempotently(input *store.ScopedRoleInvita
 	if command != nil && command.OnboardingImportID.IsValid() && input != nil && input.Invitation != nil &&
 		input.Occurrence == nil && input.Delivery == nil && input.DeliveryJob == nil {
 		purpose := input.Invitation.Purpose
-		if input.Lifetime != model.InvitationLifetime || !input.AuditEventID.IsValid() || input.AuditAt <= 0 ||
+		if input.Lifetime != model.InvitationLifetime || !input.AuditEventID.IsValid() || input.AuditAt.IsZero() ||
 			(purpose != model.InvitationPurposeAcademicUnitRole && purpose != model.InvitationPurposeInstitutionRole) ||
 			input.Invitation.State != model.InvitationPending || input.Invitation.Validate() != nil {
 			return store.NewErrInvalidInput("invitation", "onboarding_no_op_issue", nil)

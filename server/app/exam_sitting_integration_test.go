@@ -265,7 +265,7 @@ func TestExamSittingIntegration(t *testing.T) {
 	require.Equal(t, closedEarly.Sitting.Revision, closedReplay.Sitting.Revision, "close live replay = %#v", closedReplay)
 	require.True(t, closedReplay.Sitting.ClosingAt.Time.Equal(closedEarly.Sitting.ClosingAt.Time), "close live replay = %#v", closedReplay)
 
-	_, err = storetest.EndAcademicUnitMember(ctx, persistence, managerMembership.ID, managerMembership.Revision, model.GetMillis()-100)
+	_, err = storetest.EndAcademicUnitMember(ctx, persistence, managerMembership.ID, managerMembership.Revision, model.NowUTC().Add(-100*time.Millisecond))
 	require.NoError(t, err)
 	_, appErr = helper.App.GetExamSitting(ctx, managerInvocation, sitting.GetQuery{
 		ExamID: created.Exam.ID, SittingID: scheduled.Sitting.ID,
@@ -278,7 +278,7 @@ func TestExamSittingIntegration(t *testing.T) {
 		AcademicUnitID: unit.ID, UserID: manager.ID, StartsAt: model.TimeFromMillis(model.GetMillis() - 50),
 	})
 	require.NoError(t, err)
-	_, err = storetest.EndRoleBinding(ctx, persistence, managerBinding.ID, model.GetMillis()-25)
+	_, err = storetest.EndRoleBinding(ctx, persistence, managerBinding.ID, model.NowUTC().Add(-25*time.Millisecond))
 	require.NoError(t, err)
 	_, appErr = helper.App.GetExamSitting(ctx, managerInvocation, sitting.GetQuery{
 		ExamID: created.Exam.ID, SittingID: scheduled.Sitting.ID,

@@ -176,7 +176,7 @@ func (s *onboardingImportService) UploadOnboardingImport(ctx context.Context, in
 			if command.RoleID != "" {
 				value.RoleID = model.RoleID(command.RoleID)
 			}
-			created, createErr := s.deps.Imports.CreateOnboardingImport(ctx, &store.OnboardingImportCreation{Import: value, ParseJob: job, AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis})
+			created, createErr := s.deps.Imports.CreateOnboardingImport(ctx, &store.OnboardingImportCreation{Import: value, ParseJob: job, AuditEventID: reference.ID, AuditAt: reference.MutationAt})
 			if createErr != nil {
 				_ = s.deps.Content.RemoveOnboardingImport(ctx, id)
 			}
@@ -275,7 +275,7 @@ func (s *onboardingImportService) commit(ctx context.Context, invocation invocat
 		return s.deps.Imports.CommitOnboardingImport(ctx, &store.OnboardingImportCommit{ID: id, ActorUserID: invocation.Principal().UserID,
 			Principal:        invocation.Principal(),
 			ExpectedRevision: command.ExpectedRevision, PreviewDigest: command.PreviewDigest, Policy: command.Policy, IdempotencyKey: digest, ExecutionJob: job, At: at,
-			AuditEventID: reference.ID, SourceAuditEventID: sourceAuditID, AuditAt: reference.MutationAtMillis})
+			AuditEventID: reference.ID, SourceAuditEventID: sourceAuditID, AuditAt: reference.MutationAt})
 	}
 	var committed *store.OnboardingImport
 	if current.Mode == model.OnboardingImportStudentProgression {
@@ -324,7 +324,7 @@ func (s *onboardingImportService) cancel(ctx context.Context, invocation invocat
 	persist := func(ctx context.Context, reference mutationAttemptReference, sourceAuditID model.AuditEventID) (*store.OnboardingImport, error) {
 		return s.deps.Imports.CancelOnboardingImport(ctx, &store.OnboardingImportCancellation{ID: id, ActorUserID: invocation.Principal().UserID, At: at,
 			Principal:    invocation.Principal(),
-			AuditEventID: reference.ID, SourceAuditEventID: sourceAuditID, AuditAt: reference.MutationAtMillis})
+			AuditEventID: reference.ID, SourceAuditEventID: sourceAuditID, AuditAt: reference.MutationAt})
 	}
 	var canceled *store.OnboardingImport
 	if current.Mode == model.OnboardingImportStudentProgression {
@@ -764,24 +764,24 @@ func invalidOnboardingImportFile(message string) error {
 	return fmt.Errorf("%w: %s", errOnboardingImportInvalidFile, message)
 }
 
-func parseOnboardingImportBounds(start, end string) (int64, int64, error) {
-	parse := func(value string) (int64, error) {
+func parseOnboardingImportBounds(start, end string) (model.OptionalTime, model.OptionalTime, error) {
+	parse := func(value string) (model.OptionalTime, error) {
 		if value == "" {
-			return 0, nil
+			return model.OptionalTime{}, nil
 		}
 		parsed, err := time.Parse(time.RFC3339, value)
 		if err != nil {
-			return 0, err
+			return model.OptionalTime{}, err
 		}
-		return parsed.UnixMilli(), nil
+		return model.OptionalTimeFrom(parsed), nil
 	}
 	starts, err := parse(start)
 	if err != nil {
-		return 0, 0, err
+		return model.OptionalTime{}, model.OptionalTime{}, err
 	}
 	ends, err := parse(end)
-	if err != nil || (ends != 0 && ends <= starts) {
-		return 0, 0, errors.New("invalid effective bounds")
+	if err != nil || (ends.Valid && !ends.Time.After(starts.Time)) {
+		return model.OptionalTime{}, model.OptionalTime{}, errors.New("invalid effective bounds")
 	}
 	return starts, ends, nil
 }
@@ -793,7 +793,7 @@ func onboardingImportDuplicateKey(row store.OnboardingImportRow) string {
 	if row.UserID.IsValid() || model.IsValidOpaqueID(row.RelationshipID) {
 		key := row.Operation + "\x00" + string(row.ScopeType) + "\x00" + row.ScopeID + "\x00" + row.UserID.String() + "\x00" + row.RelationshipID + "\x00" + row.RoleID.String()
 		if AcademicAdministrationBatchOperation(row.Operation).IsValid() {
-			key += "\x00" + string(row.AffiliationKind) + "\x00" + strconv.FormatInt(row.StartsAt, 10) + "\x00" + strconv.FormatInt(row.EndsAt, 10)
+			key += "\x00" + string(row.AffiliationKind) + "\x00" + row.StartsAt.FormatRFC3339() + "\x00" + row.EndsAt.FormatRFC3339()
 		}
 		return key
 	}
@@ -847,7 +847,7 @@ func (s *onboardingImportService) resolveAndValidateImportRow(ctx context.Contex
 func (s *onboardingImportService) resolveAcademicAdministrationImportRow(ctx context.Context, invocation invocation.Invocation, current *store.OnboardingImport, values map[string]string, row *store.OnboardingImportRow) error {
 	operation := AcademicAdministrationBatchOperation(strings.ToLower(strings.TrimSpace(values["operation"])))
 	item := AcademicAdministrationBatchItemCommand{IdempotencyKey: strconv.Itoa(row.RowNumber), UserID: row.UserID.String(),
-		RelationshipID: row.RelationshipID, RoleID: row.RoleID.String(), AffiliationKind: row.AffiliationKind, StartAt: row.StartsAt, EndAt: row.EndsAt}
+		RelationshipID: row.RelationshipID, RoleID: row.RoleID.String(), AffiliationKind: row.AffiliationKind, StartAt: row.StartsAt.Millis(), EndAt: row.EndsAt.Millis()}
 	if !operation.IsValid() || !academicAdministrationBatchScopeMatches(operation, current.ScopeType) || validateAcademicAdministrationBatchItem(operation, item) != nil {
 		return apperror.New("request.invalid")
 	}
@@ -879,8 +879,8 @@ func (s *onboardingImportService) resolveAcademicAdministrationImportRow(ctx con
 		if err = loadUser(item.UserID); err != nil {
 			return err
 		}
-		if row.StartsAt == 0 {
-			row.StartsAt = current.CreatedAt.UnixMilli()
+		if !row.StartsAt.Valid {
+			row.StartsAt = model.OptionalTimeFrom(current.CreatedAt)
 		}
 		return s.deps.Authorization.Authorize(ctx, invocation, model.ActionUserManage, model.Resource{Type: model.ResourceUser, ID: row.UserID.String()})
 	case AcademicAdministrationAffiliationEnd:
@@ -894,8 +894,8 @@ func (s *onboardingImportService) resolveAcademicAdministrationImportRow(ctx con
 		if err = loadUser(item.UserID); err != nil {
 			return err
 		}
-		if row.StartsAt == 0 {
-			row.StartsAt = current.CreatedAt.UnixMilli()
+		if !row.StartsAt.Valid {
+			row.StartsAt = model.OptionalTimeFrom(current.CreatedAt)
 		}
 		return s.deps.Authorization.Authorize(ctx, invocation, model.ActionAcademicUnitMembersManage, resource)
 	case AcademicAdministrationAcademicUnitMemberEnd:
@@ -912,8 +912,8 @@ func (s *onboardingImportService) resolveAcademicAdministrationImportRow(ctx con
 		if err = loadUser(item.UserID); err != nil {
 			return err
 		}
-		if row.StartsAt == 0 {
-			row.StartsAt = current.CreatedAt.UnixMilli()
+		if !row.StartsAt.Valid {
+			row.StartsAt = model.OptionalTimeFrom(current.CreatedAt)
 		}
 		return s.deps.Authorization.Authorize(ctx, invocation, model.ActionClassMembersManage, resource)
 	case AcademicAdministrationClassTransfer:
@@ -927,8 +927,8 @@ func (s *onboardingImportService) resolveAcademicAdministrationImportRow(ctx con
 		if previous.UserID != row.UserID {
 			return apperror.New("resource.not_found")
 		}
-		if row.StartsAt == 0 {
-			row.StartsAt = current.CreatedAt.UnixMilli()
+		if !row.StartsAt.Valid {
+			row.StartsAt = model.OptionalTimeFrom(current.CreatedAt)
 		}
 		if err = s.deps.Authorization.Authorize(ctx, invocation, model.ActionClassMembersManage, model.Resource{Type: model.ResourceClass, ID: previous.ClassID.String()}); err != nil {
 			return err
@@ -953,8 +953,8 @@ func (s *onboardingImportService) resolveAcademicAdministrationImportRow(ctx con
 			return roleBindingStoreErrors.Translate(roleErr)
 		}
 		row.RoleID, row.RoleRevision = role.ID, role.UpdatedAt.UnixMicro()
-		if row.StartsAt == 0 {
-			row.StartsAt = current.CreatedAt.UnixMilli()
+		if !row.StartsAt.Valid {
+			row.StartsAt = model.OptionalTimeFrom(current.CreatedAt)
 		}
 		if err = s.deps.Authorization.Authorize(ctx, invocation, model.ActionRoleBindingManage, resource); err != nil {
 			return err
@@ -1131,46 +1131,46 @@ func (s *onboardingImportService) previewRoleAuthorization(ctx context.Context, 
 }
 
 func validateImportStudentCandidate(actor model.UserID, class *model.Class, period *model.AcademicPeriod, row *store.OnboardingImportRow) error {
-	starts := model.TimeFromMillis(row.StartsAt)
+	starts := row.StartsAt.Time
 	if starts.IsZero() {
 		starts = period.StartsAt
 	}
 	candidate, err := model.NewStudentClassInvitation(model.StudentClassInvitationInput{ID: model.NewInvitationID(), TargetEmail: row.Email, ClassID: class.ID, AcademicPeriodID: period.ID,
-		IntendedStartsAt: starts, IntendedEndsAt: model.OptionalTimeFromMillis(row.EndsAt), Suggestions: model.InvitationProfileSuggestions{Username: row.Username, DisplayName: row.DisplayName, FirstName: row.FirstName, LastName: row.LastName, Locale: row.Locale, Timezone: row.Timezone},
+		IntendedStartsAt: starts, IntendedEndsAt: row.EndsAt, Suggestions: model.InvitationProfileSuggestions{Username: row.Username, DisplayName: row.DisplayName, FirstName: row.FirstName, LastName: row.LastName, Locale: row.Locale, Timezone: row.Timezone},
 		InviterUserID: actor, ScopeType: model.RoleScopeClass, ScopeID: class.ID.String(), ClaimHash: strings.Repeat("0", model.TokenHashLength), IssuedAt: row.UpdatedAt})
 	if err == nil {
 		row.Email = candidate.TargetEmail
-		row.StartsAt = model.MillisFromTime(candidate.IntendedStartsAt)
+		row.StartsAt = model.OptionalTimeFrom(candidate.IntendedStartsAt)
 	}
 	return err
 }
 
 func validateImportTeacherCandidate(actor model.UserID, unit *model.AcademicUnit, role *model.Role, row *store.OnboardingImportRow) error {
-	starts := model.TimeFromMillis(row.StartsAt)
+	starts := row.StartsAt.Time
 	if starts.IsZero() {
 		starts = row.UpdatedAt
 	}
 	candidate, err := model.NewTeacherAcademicUnitInvitation(model.TeacherAcademicUnitInvitationInput{ID: model.NewInvitationID(), TargetEmail: row.Email, AcademicUnitID: unit.ID, RoleID: role.ID, RoleActions: role.Permissions,
-		IntendedStartsAt: starts, IntendedEndsAt: model.OptionalTimeFromMillis(row.EndsAt), Suggestions: model.InvitationProfileSuggestions{Username: row.Username, DisplayName: row.DisplayName, FirstName: row.FirstName, LastName: row.LastName, Locale: row.Locale, Timezone: row.Timezone},
+		IntendedStartsAt: starts, IntendedEndsAt: row.EndsAt, Suggestions: model.InvitationProfileSuggestions{Username: row.Username, DisplayName: row.DisplayName, FirstName: row.FirstName, LastName: row.LastName, Locale: row.Locale, Timezone: row.Timezone},
 		InviterUserID: actor, ScopeType: model.RoleScopeAcademicUnit, ScopeID: unit.ID.String(), ClaimHash: strings.Repeat("0", model.TokenHashLength), IssuedAt: row.UpdatedAt})
 	if err == nil {
 		row.Email = candidate.TargetEmail
-		row.StartsAt = model.MillisFromTime(candidate.IntendedStartsAt)
+		row.StartsAt = model.OptionalTimeFrom(candidate.IntendedStartsAt)
 	}
 	return err
 }
 
 func validateImportRoleCandidate(actor model.UserID, purpose model.InvitationPurpose, unitID model.AcademicUnitID, role *model.Role, row *store.OnboardingImportRow) error {
-	starts := model.TimeFromMillis(row.StartsAt)
+	starts := row.StartsAt.Time
 	if starts.IsZero() {
 		starts = row.UpdatedAt
 	}
 	candidate, err := model.NewScopedRoleInvitation(model.ScopedRoleInvitationInput{ID: model.NewInvitationID(), Purpose: purpose, TargetEmail: row.Email, AcademicUnitID: unitID, RoleID: role.ID,
-		RoleActions: role.Permissions, IntendedStartsAt: starts, IntendedEndsAt: model.OptionalTimeFromMillis(row.EndsAt), InviterUserID: actor, ScopeType: row.ScopeType, ScopeID: row.ScopeID,
+		RoleActions: role.Permissions, IntendedStartsAt: starts, IntendedEndsAt: row.EndsAt, InviterUserID: actor, ScopeType: row.ScopeType, ScopeID: row.ScopeID,
 		ClaimHash: strings.Repeat("0", model.TokenHashLength), IssuedAt: row.UpdatedAt})
 	if err == nil {
 		row.Email = candidate.TargetEmail
-		row.StartsAt = model.MillisFromTime(candidate.IntendedStartsAt)
+		row.StartsAt = model.OptionalTimeFrom(candidate.IntendedStartsAt)
 	}
 	return err
 }
@@ -1281,7 +1281,7 @@ func (s *onboardingImportService) executeRow(ctx context.Context, invocation inv
 				onboardingImportRowNumber: row.RowNumber, progression: progression, progressionSourceAuditID: sourceAuditID,
 				progressionDestinationAuditID: destinationAuditID, Items: []AcademicAdministrationBatchItemCommand{{IdempotencyKey: strconv.Itoa(row.RowNumber),
 					UserID: row.UserID.String(), RelationshipID: relationshipID, RoleID: row.RoleID.String(), AffiliationKind: row.AffiliationKind,
-					StartAt: row.StartsAt, EndAt: row.EndsAt}}})
+					StartAt: row.StartsAt.Millis(), EndAt: row.EndsAt.Millis()}}})
 		}
 		var result AcademicAdministrationBatchResult
 		var runErr error
@@ -1315,7 +1315,7 @@ func (s *onboardingImportService) executeRow(ctx context.Context, invocation inv
 	result, err := s.deps.Invitations.RunInvitationBatch(ctx, invocation, RunInvitationBatchCommand{Operation: InvitationBatchOperation(row.Operation), ScopeType: row.ScopeType, ScopeID: row.ScopeID,
 		onboardingImportID: row.ImportID, onboardingImportRowNumber: row.RowNumber,
 		IdempotencyKey: row.ImportID.String(), Items: []InvitationBatchItemCommand{{IdempotencyKey: strconv.Itoa(row.RowNumber), TargetEmail: row.Email, RoleID: row.RoleID.String(),
-			IntendedStartsAt: row.StartsAt, IntendedEndsAt: row.EndsAt, SuggestedUsername: row.Username, SuggestedDisplayName: row.DisplayName, SuggestedFirstName: row.FirstName, SuggestedLastName: row.LastName, SuggestedLocale: row.Locale, SuggestedTimezone: row.Timezone}}})
+			IntendedStartsAt: row.StartsAt.Millis(), IntendedEndsAt: row.EndsAt.Millis(), SuggestedUsername: row.Username, SuggestedDisplayName: row.DisplayName, SuggestedFirstName: row.FirstName, SuggestedLastName: row.LastName, SuggestedLocale: row.Locale, SuggestedTimezone: row.Timezone}}})
 	if err != nil || len(result.Items) != 1 {
 		if err != nil && onboardingImportRetryableError(err) {
 			return "", "", "", "", err

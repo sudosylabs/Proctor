@@ -95,7 +95,7 @@ func testUserEmailChangeUsesDatabaseClock(t *testing.T, ss store.Store) {
 		TokenLifetime: tokenLifetime, WarningLifetime: warningLifetime,
 		WarningOccurrence: warningOccurrence, WarningDelivery: warningDelivery, WarningJob: warningJob,
 		VerificationOccurrence: verificationOccurrence, VerificationDelivery: verificationDelivery, VerificationJob: verificationJob,
-		AuditEventID: audit.ID, AuditAt: model.GetMillis(),
+		AuditEventID: audit.ID, AuditAt: model.NowUTC(),
 	}
 	result, err := ss.UserToken().ChangeEmail(ctx, command)
 	require.NoError(t, err)
@@ -166,7 +166,7 @@ func testConcurrentUserEmailChange(t *testing.T, ss store.Store) {
 			TokenLifetime: time.Hour, WarningLifetime: 24 * time.Hour,
 			WarningOccurrence: warningOccurrence, WarningDelivery: warningDelivery, WarningJob: warningJob,
 			VerificationOccurrence: verifyOccurrence, VerificationDelivery: verifyDelivery, VerificationJob: verifyJob,
-			AuditEventID: audit.ID, AuditAt: model.MillisFromTime(at)}
+			AuditEventID: audit.ID, AuditAt: at}
 	}
 	inputs := []*store.UserEmailChange{build("a"), build("b")}
 	errs := make(chan error, 2)
@@ -213,7 +213,7 @@ func testUserEmailChangeAtomic(t *testing.T, ss store.Store) {
 		TokenLifetime: time.Hour, WarningLifetime: 24 * time.Hour,
 		WarningOccurrence: warningOccurrence, WarningDelivery: warningDelivery, WarningJob: warningJob,
 		VerificationOccurrence: verifyOccurrence, VerificationDelivery: verifyDelivery, VerificationJob: verifyJob,
-		AuditEventID: audit.ID, AuditAt: model.MillisFromTime(at)})
+		AuditEventID: audit.ID, AuditAt: at})
 	require.NoError(t, err)
 	require.Equal(t, newEmail, result.User.Email)
 	require.False(t, result.User.EmailVerified)
@@ -236,7 +236,7 @@ func testUserEmailChangeAtomic(t *testing.T, ss store.Store) {
 		TokenLifetime: time.Hour, WarningLifetime: 24 * time.Hour,
 		WarningOccurrence: conflictWarningOccurrence, WarningDelivery: conflictWarningDelivery, WarningJob: conflictWarningJob,
 		VerificationOccurrence: conflictVerifyOccurrence, VerificationDelivery: conflictVerifyDelivery, VerificationJob: conflictVerifyJob,
-		AuditEventID: conflictAudit.ID, AuditAt: model.MillisFromTime(secondAt)})
+		AuditEventID: conflictAudit.ID, AuditAt: secondAt})
 	require.True(t, store.IsConflict(err), "duplicate email change error")
 	unchanged, getErr := ss.User().Get(ctx, second.ID)
 	require.NoError(t, getErr)
@@ -255,7 +255,7 @@ func testPrivilegedEmailVerificationAtomic(t *testing.T, ss store.Store) {
 	audit := saveUserProfileAuditAttempt(t, ctx, ss, user.ID.String())
 	verified, err := ss.UserToken().VerifyEmailPrivileged(ctx, &store.PrivilegedEmailVerification{UserID: user.ID, ExpectedRevision: user.Revision,
 		Occurrence: occurrence, Delivery: delivery, Job: job,
-		AuditEventID: audit.ID, AuditAt: model.MillisFromTime(at)})
+		AuditEventID: audit.ID, AuditAt: at})
 	require.NoError(t, err)
 	require.True(t, verified.EmailVerified)
 	require.Equal(t, user.Revision+1, verified.Revision)
@@ -283,7 +283,7 @@ func testUserTokenIssueRechecksCurrentEligibleAccount(t *testing.T, ss store.Sto
 	t.Run("disabled user", func(t *testing.T) {
 		user, _ := saveLocalUser(t, ctx, ss)
 		audit := saveUserProfileAuditAttempt(t, ctx, ss, user.ID.String())
-		at := model.GetMillis() + 1
+		at := model.NowUTC().Add(1 * time.Millisecond)
 		_, err := ss.User().SetDisabled(ctx, userDisabledStateChangeWithNotice(t, &store.UserDisabledStateChange{
 			ID: user.ID, ExpectedRevision: user.Revision, Disabled: true,
 			ChangedAt: at, RevocationReason: model.SessionRevocationAccountDisabled,
@@ -372,7 +372,7 @@ func testUserTokenIssueReplacesPriorToken(t *testing.T, ss store.Store) {
 	_, err = ss.UserToken().ConsumeEmailVerification(
 		ctx,
 		first.TokenHash,
-		model.MillisFromTime(second.CreatedAt)+1,
+		second.CreatedAt.Add(1*time.Millisecond),
 		userTokenCompletionAudit("authentication.email_verification.complete", institution.ID.String()),
 	)
 	require.True(t, store.IsNotFound(err), "superseded token consumption error")
@@ -389,7 +389,7 @@ func testUserTokenCallerClockCannotBackdateEmailVerification(t *testing.T, ss st
 		userTokenAudit("authentication.email_verification.request", user.ID.String(), institution.ID.String()),
 	)
 	require.NoError(t, err)
-	behindNodeTime := model.MillisFromTime(token.CreatedAt.Add(-time.Minute))
+	behindNodeTime := model.TimeUTC(token.CreatedAt.Add(-time.Minute))
 	result, err := ss.UserToken().ConsumeEmailVerification(
 		ctx,
 		token.TokenHash,
@@ -402,7 +402,7 @@ func testUserTokenCallerClockCannotBackdateEmailVerification(t *testing.T, ss st
 	require.True(t, result.Token.ConsumedAt.Valid)
 	require.False(t, result.Token.ConsumedAt.Time.Before(token.CreatedAt))
 	require.False(t, result.User.UpdatedAt.Before(token.CreatedAt))
-	require.True(t, result.Token.ConsumedAt.Time.After(model.TimeFromMillis(behindNodeTime)))
+	require.True(t, result.Token.ConsumedAt.Time.After(model.TimeUTC(behindNodeTime)))
 	audits, err := ss.Audit().List(ctx, store.AuditListOptions{
 		Action: "authentication.email_verification.complete", Limit: 10,
 		Visibility: store.AuditVisibilityScope{InstitutionWide: true},
@@ -420,14 +420,14 @@ func testUserTokenCallerClockCannotBackdatePasswordReset(t *testing.T, ss store.
 	token, err := issueUserToken(t, ss, ctx, token,
 		userTokenAudit("authentication.password_reset.request", user.ID.String(), institution.ID.String()))
 	require.NoError(t, err)
-	behindNodeTime := model.MillisFromTime(token.CreatedAt.Add(-time.Minute))
+	behindNodeTime := model.TimeUTC(token.CreatedAt.Add(-time.Minute))
 	result, err := ss.UserToken().ConsumePasswordReset(ctx,
 		passwordResetCompletion(t, user, token.TokenHash, "behind-node-password-hash", behindNodeTime,
 			userTokenCompletionAudit("authentication.password_reset.complete", institution.ID.String())))
 	require.NoError(t, err)
 	require.True(t, result.Token.ConsumedAt.Valid)
 	require.False(t, result.Token.ConsumedAt.Time.Before(token.CreatedAt))
-	require.True(t, result.Token.ConsumedAt.Time.After(model.TimeFromMillis(behindNodeTime)))
+	require.True(t, result.Token.ConsumedAt.Time.After(model.TimeUTC(behindNodeTime)))
 	require.False(t, result.PasswordCredential.PasswordChangedAt.Before(token.CreatedAt))
 	require.Len(t, result.RevokedSessions, 1)
 	require.False(t, result.RevokedSessions[0].RevokedAt.Time.Before(session.CreatedAt))
@@ -478,7 +478,7 @@ func testEmailVerificationIsTargetBoundAndSingleUse(t *testing.T, ss store.Store
 		userTokenAudit("authentication.email_verification.request", user.ID.String(), institution.ID.String()),
 	)
 	require.NoError(t, err)
-	now := model.MillisFromTime(token.CreatedAt) + 100
+	now := model.TimeUTC(token.CreatedAt).Add(100 * time.Millisecond)
 	result, err := ss.UserToken().ConsumeEmailVerification(
 		ctx,
 		token.TokenHash,
@@ -500,7 +500,7 @@ func testEmailVerificationIsTargetBoundAndSingleUse(t *testing.T, ss store.Store
 	_, err = ss.UserToken().ConsumeEmailVerification(
 		ctx,
 		token.TokenHash,
-		now+1,
+		now.Add(1*time.Millisecond),
 		userTokenCompletionAudit("authentication.email_verification.complete", institution.ID.String()),
 	)
 	require.True(t, store.IsNotFound(err), "second consumption error")
@@ -521,7 +521,7 @@ func testEmailVerificationIsTargetBoundAndSingleUse(t *testing.T, ss store.Store
 	_, err = ss.UserToken().ConsumeEmailVerification(
 		ctx,
 		changedToken.TokenHash,
-		now+2,
+		now.Add(2*time.Millisecond),
 		userTokenCompletionAudit("authentication.email_verification.complete", institution.ID.String()),
 	)
 	require.True(t, store.IsNotFound(err), "changed-target consumption error")
@@ -546,7 +546,7 @@ func changeUserEmailForTest(t *testing.T, ctx context.Context, ss store.Store, u
 		TokenLifetime: tokenLifetime, WarningLifetime: warningLifetime,
 		WarningOccurrence: warningOccurrence, WarningDelivery: warningDelivery, WarningJob: warningJob,
 		VerificationOccurrence: verificationOccurrence, VerificationDelivery: verificationDelivery, VerificationJob: verificationJob,
-		AuditEventID: audit.ID, AuditAt: model.MillisFromTime(at),
+		AuditEventID: audit.ID, AuditAt: at,
 	})
 	require.NoError(t, err)
 	return result.User
@@ -577,7 +577,7 @@ func testPasswordResetRevokesSessionsAndAudits(t *testing.T, ss store.Store) {
 		userTokenAudit("authentication.password_reset.request", user.ID.String(), institution.ID.String()),
 	)
 	require.NoError(t, err)
-	now := max(model.MillisFromTime(token.CreatedAt), model.MillisFromTime(session.CreatedAt)) + 100
+	now := latestInstant(token.CreatedAt, session.CreatedAt).Add(100 * time.Millisecond)
 	result, err := ss.UserToken().ConsumePasswordReset(
 		ctx,
 		passwordResetCompletion(t, user, token.TokenHash, "new-encoded-password-hash", now,
@@ -634,7 +634,7 @@ func testPasswordResetMailFailureRollsBackMutation(t *testing.T, ss store.Store)
 	token, err := issueUserToken(t, ss, ctx, token,
 		userTokenAudit("authentication.password_reset.request", user.ID.String(), institution.ID.String()))
 	require.NoError(t, err)
-	now := max(model.MillisFromTime(token.CreatedAt), model.MillisFromTime(session.CreatedAt)) + 100
+	now := latestInstant(token.CreatedAt, session.CreatedAt).Add(100 * time.Millisecond)
 	completion := passwordResetCompletion(t, user, token.TokenHash, "must-not-commit", now,
 		userTokenCompletionAudit("authentication.password_reset.complete", institution.ID.String()))
 	// The immutable token occurrence already owns this ID. The collision occurs
@@ -669,7 +669,7 @@ func testPasswordResetCommitsSuppressedNoticeWhenMailDisabled(t *testing.T, ss s
 	token, err := issueUserToken(t, ss, ctx, token,
 		userTokenAudit("authentication.password_reset.request", user.ID.String(), institution.ID.String()))
 	require.NoError(t, err)
-	now := model.MillisFromTime(token.CreatedAt) + 100
+	now := model.TimeUTC(token.CreatedAt).Add(100 * time.Millisecond)
 	completion := passwordResetCompletion(t, user, token.TokenHash, "disabled-mail-new-password", now,
 		userTokenCompletionAudit("authentication.password_reset.complete", institution.ID.String()))
 	completion.Delivery.State = model.MailDeliverySuppressed
@@ -702,7 +702,7 @@ func testUserTokenConcurrentConsumption(t *testing.T, ss store.Store) {
 		userTokenAudit("authentication.email_verification.request", user.ID.String(), institution.ID.String()),
 	)
 	require.NoError(t, err)
-	now := model.MillisFromTime(token.CreatedAt) + 100
+	now := model.TimeUTC(token.CreatedAt).Add(100 * time.Millisecond)
 	start := make(chan struct{})
 	errorsByAttempt := make(chan error, 2)
 	var wait sync.WaitGroup
@@ -765,7 +765,7 @@ func testUserTokenAuditFailureRollsBack(t *testing.T, ss store.Store) {
 		userTokenAudit("authentication.email_verification.request", user.ID.String(), institution.ID.String()),
 	)
 	require.NoError(t, err)
-	now := model.MillisFromTime(token.CreatedAt) + 100
+	now := model.TimeUTC(token.CreatedAt).Add(100 * time.Millisecond)
 	_, err = ss.UserToken().ConsumeEmailVerification(
 		ctx,
 		token.TokenHash,
@@ -776,7 +776,7 @@ func testUserTokenAuditFailureRollsBack(t *testing.T, ss store.Store) {
 	_, err = ss.UserToken().ConsumeEmailVerification(
 		ctx,
 		token.TokenHash,
-		now+1,
+		now.Add(1*time.Millisecond),
 		userTokenCompletionAudit("authentication.email_verification.complete", institution.ID.String()),
 	)
 	require.NoError(t, err)
@@ -821,9 +821,9 @@ func issueUserToken(t *testing.T, ss store.Store, ctx context.Context, token *mo
 	return ss.UserToken().Issue(ctx, &store.UserTokenMailIssue{Token: token, Occurrence: occurrence, Delivery: delivery, Job: job, AuditEvent: audit})
 }
 
-func passwordResetCompletion(t *testing.T, user *model.User, tokenHash, passwordHash string, at int64, audit *model.AuditEvent) *store.PasswordResetCompletion {
+func passwordResetCompletion(t *testing.T, user *model.User, tokenHash, passwordHash string, at time.Time, audit *model.AuditEvent) *store.PasswordResetCompletion {
 	t.Helper()
-	when := model.TimeFromMillis(at)
+	when := model.TimeUTC(at)
 	occurrence, delivery, job := userTokenMailFixture(t, user.ID, model.NewMailOccurrenceID(), model.MailOccurrenceSecurityNotice, model.MailTemplateIdentityPasswordChanged, model.JobTypeMailDeliver, when, when.Add(24*time.Hour))
 	return &store.PasswordResetCompletion{TokenHash: tokenHash, PasswordHash: passwordHash, At: at, RevocationReason: model.SessionRevocationPasswordReset, AuditEvent: audit, Occurrence: occurrence, Delivery: delivery, Job: job}
 }
@@ -882,4 +882,12 @@ func userTokenCompletionAudit(
 		NodeID:     "storetest",
 		AuthMethod: "test_token",
 	}
+}
+
+// latestInstant returns the later of two instants.
+func latestInstant(first, second time.Time) time.Time {
+	if second.After(first) {
+		return second
+	}
+	return first
 }

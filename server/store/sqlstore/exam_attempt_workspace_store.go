@@ -568,7 +568,7 @@ func (s *SQLExamAttemptWorkspaceStore) ApplyMutation(ctx context.Context, input 
 func prepareAttemptWorkspaceMutation(input *store.ExamAttemptWorkspaceMutation, command *store.CommandIdempotency) (*store.ExamAttemptWorkspaceMutation, error) {
 	if input == nil || command == nil || command.Operation != store.ExamAttemptWorkspaceMutationOperation ||
 		command.UserID != input.Access.CandidateUserID || !validAttemptWorkspaceMutationAccess(input.Access) ||
-		!input.EntryID.IsValid() || !input.AuditEventID.IsValid() || input.AuditAt <= 0 {
+		!input.EntryID.IsValid() || !input.AuditEventID.IsValid() || input.AuditAt.IsZero() {
 		return nil, store.NewErrInvalidInput("attempt_workspace", "mutation", nil)
 	}
 	prepared := *input
@@ -1030,7 +1030,7 @@ func appendAttemptWorkspaceJournal(ctx context.Context, tx *sqlxTxWrapper, works
 }
 
 func completeAttemptWorkspaceMutationAudit(ctx context.Context, tx *sqlxTxWrapper, outcome attemptWorkspaceMutationOutcome,
-	auditID model.AuditEventID, auditAt int64, replayed bool, originalAuditID string,
+	auditID model.AuditEventID, auditAt time.Time, replayed bool, originalAuditID string,
 ) error {
 	data := map[string]any{"exam_sitting_id": outcome.SittingID, "candidate_user_id": outcome.CandidateID,
 		"workspace_id": outcome.WorkspaceID, "entry_id": outcome.Change.EntryID.String(),

@@ -199,7 +199,7 @@ func (s *roleBindingService) CreateRoleBinding(ctx context.Context, invocation i
 	); err != nil {
 		return nil, err
 	}
-	mailAt := model.TimeFromMillis(model.MillisFromTime(s.deps.Now()))
+	mailAt := model.TimeUTC(s.deps.Now())
 	recipient := &model.User{ID: userID, Revision: 1}
 	var notice *store.PreparedMail
 	if !command.batchRetainedOutcome {
@@ -254,7 +254,7 @@ func (s *roleBindingService) CreateRoleBinding(ctx context.Context, invocation i
 				Binding: candidate, ExpectedRoleUpdatedAt: role.UpdatedAt,
 				ExpectedRolePermissions:   append([]string(nil), role.Permissions...),
 				ExpectedRecipientRevision: recipient.Revision, Notice: notice,
-				AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis, Command: idempotency,
+				AuditEventID: reference.ID, AuditAt: reference.MutationAt, Command: idempotency,
 			}
 			value, storeErr := s.deps.Bindings.Save(ctx, input)
 			if command.batchReplayed != nil {
@@ -303,7 +303,7 @@ func (s *roleBindingService) EndRoleBinding(ctx context.Context, invocation invo
 	bindOnboardingImportCommand(idempotency, command.onboardingImportID, command.onboardingImportRowNumber)
 	bindAcademicAdministrationAuthorization(idempotency, command.batchAuthorization)
 	bindAcademicAdministrationBatch(idempotency, command.batchMetadata)
-	mailAt := model.TimeFromMillis(model.MillisFromTime(s.deps.Now()))
+	mailAt := model.TimeUTC(s.deps.Now())
 	recipient := &model.User{ID: current.UserID, Revision: 1}
 	var notice *store.PreparedMail
 	if !command.batchRetainedOutcome {
@@ -336,10 +336,10 @@ func (s *roleBindingService) EndRoleBinding(ctx context.Context, invocation invo
 		func() time.Time { return mailAt },
 		func(ctx context.Context, reference mutationAttemptReference) (*model.RoleBinding, error) {
 			input := &store.RoleBindingEnd{
-				ID: id, EndAt: reference.MutationAtMillis,
+				ID: id, EndAt: reference.MutationAt,
 				ExpectedRecipientRevision: recipient.Revision, Notice: notice,
 				Capabilities: accessDeploymentCapabilities(s.deps.Capabilities.Snapshot()),
-				AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis, Command: idempotency,
+				AuditEventID: reference.ID, AuditAt: reference.MutationAt, Command: idempotency,
 			}
 			value, storeErr := s.deps.Bindings.End(ctx, input)
 			if command.batchReplayed != nil {

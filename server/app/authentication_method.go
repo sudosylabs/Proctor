@@ -109,7 +109,7 @@ func (s *authenticationMethodService) EnrollPassword(ctx context.Context, invoca
 		func(ctx context.Context, reference mutationAttemptReference) (*store.AuthenticationMethodMutationResult, error) {
 			return s.deps.Passwords.Enroll(ctx, &store.PasswordCredentialEnrollment{
 				Credential:   &model.PasswordCredential{UserID: userID, PasswordHash: hash},
-				Capabilities: accessDeploymentCapabilities(s.deps.Capabilities.Snapshot()), AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis})
+				Capabilities: accessDeploymentCapabilities(s.deps.Capabilities.Snapshot()), AuditEventID: reference.ID, AuditAt: reference.MutationAt})
 		}, authenticationMethodStoreErrors.Translate)
 	return appErr
 }
@@ -124,8 +124,8 @@ func (s *authenticationMethodService) RemovePassword(ctx context.Context, invoca
 		Operation: "remove_password", Value: map[string]any{"method": "password"}}, s.deps.Now,
 		func(ctx context.Context, reference mutationAttemptReference) (*store.AuthenticationMethodMutationResult, error) {
 			return s.deps.Passwords.Remove(ctx, &store.PasswordCredentialRemoval{UserID: userID,
-				Capabilities: accessDeploymentCapabilities(s.deps.Capabilities.Snapshot()), ChangedAt: reference.MutationAtMillis,
-				RevocationReason: model.SessionRevocationPasswordRemoved, AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis})
+				Capabilities: accessDeploymentCapabilities(s.deps.Capabilities.Snapshot()), ChangedAt: reference.MutationAt,
+				RevocationReason: model.SessionRevocationPasswordRemoved, AuditEventID: reference.ID, AuditAt: reference.MutationAt})
 		}, authenticationMethodStoreErrors.Translate)
 	if appErr == nil {
 		s.publishRevocations(ctx, userID, result)
@@ -146,8 +146,8 @@ func (s *authenticationMethodService) UnlinkExternalIdentity(ctx context.Context
 		Operation: "unlink_provider", Value: map[string]any{"identity_id": id.String()}}, s.deps.Now,
 		func(ctx context.Context, reference mutationAttemptReference) (*store.AuthenticationMethodMutationResult, error) {
 			return s.deps.Identities.Unlink(ctx, &store.ExternalIdentityUnlink{ID: id, UserID: userID,
-				Capabilities: accessDeploymentCapabilities(s.deps.Capabilities.Snapshot()), ChangedAt: reference.MutationAtMillis,
-				RevocationReason: model.SessionRevocationExternalIdentityUnlinked, AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis})
+				Capabilities: accessDeploymentCapabilities(s.deps.Capabilities.Snapshot()), ChangedAt: reference.MutationAt,
+				RevocationReason: model.SessionRevocationExternalIdentityUnlinked, AuditEventID: reference.ID, AuditAt: reference.MutationAt})
 		}, authenticationMethodStoreErrors.Translate)
 	if appErr == nil {
 		s.publishRevocations(ctx, userID, result)

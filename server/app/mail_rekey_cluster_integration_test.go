@@ -54,7 +54,7 @@ func TestMailRekeyOldPrimaryRelinquishesOnceAndNewPrimaryCompletes(t *testing.T)
 		NodeID: "new-primary-node", ClientType: string(model.SessionClientWeb), AuthMethod: "password"})
 	require.NoError(t, err)
 	_, err = persistence.Mail().StartRekey(ctx, &store.MailRekeyStart{PrimaryKeyID: newSealer.PrimaryKeyID(),
-		RetiringKeyID: oldSealer.PrimaryKeyID(), Job: rekeyJob, AuditEventID: audit.ID, AuditAt: model.GetMillis()})
+		RetiringKeyID: oldSealer.PrimaryKeyID(), Job: rekeyJob, AuditEventID: audit.ID, AuditAt: model.NowUTC()})
 	require.NoError(t, err)
 
 	oldDescriptor := integrationJobDescriptor(t, jobhandler.NewCatalog(jobhandler.CatalogDependencies{

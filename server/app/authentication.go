@@ -687,7 +687,7 @@ func (s *authenticationService) createSession(
 					ExpiresAt: refreshExpiresAt,
 				},
 			},
-			MaximumActive: settings.MaximumPerUser, AuditEventID: command.AuditEventID, AuditAt: nowMillis},
+			MaximumActive: settings.MaximumPerUser, AuditEventID: command.AuditEventID, AuditAt: now},
 	)
 	if saveErr != nil {
 		if errors.Is(saveErr, store.ErrAuthenticationMethodDisabled) || errors.Is(saveErr, store.ErrPasswordCredentialChanged) || errors.Is(saveErr, store.ErrAuthenticationGenerationChanged) || errors.Is(saveErr, store.ErrMFAReenrollmentRequired) {
@@ -999,7 +999,7 @@ func (s *authenticationService) RefreshSession(
 				ctx,
 				rotation.Session.ID,
 				rotation.Session.UserID,
-				now.UnixMilli(),
+				now,
 				model.SessionRevocationInactiveUser,
 			)
 			if err == nil {

@@ -189,7 +189,7 @@ func (s *classService) CreateClass(ctx context.Context, invocation invocation.In
 		s.deps.Now,
 		func(ctx context.Context, reference mutationAttemptReference) (*model.Class, error) {
 			return s.deps.Store.Create(ctx, &store.ClassCreation{
-				Class: candidate, AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis,
+				Class: candidate, AuditEventID: reference.ID, AuditAt: reference.MutationAt,
 			})
 		},
 		classStoreErrors.Translate,
@@ -272,7 +272,7 @@ func (s *classService) UpdateClass(ctx context.Context, invocation invocation.In
 				ExpectedAcademicUnitID: unitID,
 				ExpectedRevision:       current.Revision,
 				AuditEventID:           reference.ID,
-				AuditAt:                reference.MutationAtMillis,
+				AuditAt:                reference.MutationAt,
 			})
 		},
 		classStoreErrors.Translate,
@@ -321,9 +321,9 @@ func (s *classService) ArchiveClass(ctx context.Context, invocation invocation.I
 				ID:                     id,
 				ExpectedAcademicUnitID: unitID,
 				ExpectedRevision:       current.Revision,
-				ArchiveAt:              reference.MutationAtMillis,
+				ArchiveAt:              reference.MutationAt,
 				AuditEventID:           reference.ID,
-				AuditAt:                reference.MutationAtMillis,
+				AuditAt:                reference.MutationAt,
 			})
 		},
 		classStoreErrors.Translate,

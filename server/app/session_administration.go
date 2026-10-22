@@ -140,7 +140,7 @@ func (s *sessionAdministrationService) RevokeUserSession(
 	if err != nil {
 		return sessionAdministrationStoreErrors.Translate(err)
 	}
-	now := model.TimeFromMillis(s.deps.Now().UnixMilli())
+	now := model.TimeUTC(s.deps.Now())
 	prepared, err := s.prepareRevocationNotice(user, now)
 	if err != nil {
 		return sessionAdministrationStoreErrors.Translate(err)
@@ -182,7 +182,7 @@ func (s *sessionAdministrationService) RevokeUserSessions(
 	if err != nil {
 		return sessionAdministrationStoreErrors.Translate(err)
 	}
-	now := model.TimeFromMillis(s.deps.Now().UnixMilli())
+	now := model.TimeUTC(s.deps.Now())
 	idempotency, err := idempotency.Prepare(invocation, "user_sessions.revoke", command.IdempotencyKey, struct {
 		UserID string `json:"user_id"`
 	}{userID.String()})

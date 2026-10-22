@@ -129,7 +129,7 @@ func (s *Service) EndExamAttemptByManager(ctx context.Context, invocation invoca
 	}
 	stored, err := s.deps.Submissions.EndByManager(ctx, &store.ExamSubmissionManagerEnd{Request: request,
 		Target: preparation.Target, SubmissionID: proposed, AuditEventID: auditID,
-		AuditAt: model.MillisFromTime(preparation.SealAt), Notice: notice,
+		AuditAt: preparation.SealAt, Notice: notice,
 		ExpectedRecipientRevision: expectedRecipientRevision}, idempotency)
 	if err != nil {
 		return store.ExamSubmissionReceipt{}, s.failAudit(ctx, auditID, storeError(storeErrors, err))

@@ -26,7 +26,7 @@ type DesktopAuthorizationCodeIssue struct {
 	CodeLifetime   time.Duration
 	Capabilities   AccessDeploymentCapabilities
 	AuditEventID   model.AuditEventID
-	AuditAt        int64
+	AuditAt        time.Time
 }
 
 type DesktopAuthorizationCancellation struct {
@@ -89,7 +89,7 @@ type DesktopAuthorizationExchange struct {
 	MaximumActive                      int
 	Capabilities                       AccessDeploymentCapabilities
 	AuditEventID                       model.AuditEventID
-	AuditAt                            int64
+	AuditAt                            time.Time
 }
 
 type DesktopAuthorizationExchangeResult struct {

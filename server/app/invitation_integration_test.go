@@ -201,7 +201,7 @@ func TestStudentClassInvitationIssuesMailAndAcceptsAcrossNodes(t *testing.T) {
 	require.NoError(t, err, "accepted user = %#v", user)
 	require.Equal(t, "invited.student@example.edu", user.Email, "accepted user = %#v", user)
 	require.True(t, user.EmailVerified, "accepted user = %#v", user)
-	members, err := primaryStore.ClassMember().ListByClass(context.Background(), class.ID, model.GetMillis())
+	members, err := primaryStore.ClassMember().ListByClass(context.Background(), class.ID, model.NowUTC())
 	require.NoError(t, err, "class members")
 	require.Len(t, members, 1, "class members")
 	require.Equal(t, user.ID, members[0].UserID, "class members")

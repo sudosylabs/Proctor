@@ -174,7 +174,7 @@ func TestTimeAuthorityPlatformJobOperatorCancelAfterLeadingEnqueue(t *testing.T)
 		Parameters: []byte(`{"operation":"cancel","job_id":"` + job.ID.String() + `"}`),
 	})
 	require.NoError(t, err)
-	canceled, err := persistence.Job().Cancel(ctx, &store.JobMutation{ID: job.ID, ExpectedRevision: job.Revision, AuditEventID: audit.ID, AuditAt: model.GetMillis()})
+	canceled, err := persistence.Job().Cancel(ctx, &store.JobMutation{ID: job.ID, ExpectedRevision: job.Revision, AuditEventID: audit.ID, AuditAt: model.NowUTC()})
 	require.NoError(t, err)
 	require.Equal(t, model.JobStatusCanceled, canceled.Status)
 	requireStoredPlatformJob(t, ctx, persistence, canceled)
@@ -284,7 +284,7 @@ func TestTimeAuthorityPlatformAcademicArchiveKeepsModificationMonotonic(t *testi
 	// A later update by a node whose clock leads the archiving node.
 	_, err = persistence.GetMaster().Exec(ctx, `UPDATE academic_units SET updated_at=updated_at+INTERVAL '1 minute' WHERE id=?`, unit.ID.String())
 	require.NoError(t, err)
-	archiveAt := model.GetMillis()
+	archiveAt := model.NowUTC()
 	archived, err := storetest.ArchiveAcademicUnit(ctx, persistence, unit.ID, archiveAt)
 	require.NoError(t, err)
 	err = archived.Validate()

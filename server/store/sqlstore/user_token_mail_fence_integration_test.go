@@ -106,7 +106,7 @@ func TestUserEmailChangePreservesLifecycleAcrossClockSkew(t *testing.T) {
 				TokenLifetime: tokenLifetime, WarningLifetime: warningLifetime,
 				WarningOccurrence: warningOccurrence, WarningDelivery: warningDelivery, WarningJob: warningJob,
 				VerificationOccurrence: verifyOccurrence, VerificationDelivery: verifyDelivery, VerificationJob: verifyJob,
-				AuditEventID: audit.ID, AuditAt: model.MillisFromTime(before),
+				AuditEventID: audit.ID, AuditAt: before,
 			})
 			require.NoError(t, err)
 			after := databaseNow()
@@ -216,8 +216,8 @@ func TestPasswordResetSerializesWithPasswordRemoval(t *testing.T) {
 	}()
 	resetPID := waitForBlockedMailQuery(t, ctx, persistence, controllerPID, "UPDATE password_credentials")
 	removal := &store.PasswordCredentialRemoval{
-		UserID: user.ID, ChangedAt: model.GetMillis(), RevocationReason: model.SessionRevocationPasswordRemoved,
-		AuditEventID: audit.ID, AuditAt: model.GetMillis(),
+		UserID: user.ID, ChangedAt: model.NowUTC(), RevocationReason: model.SessionRevocationPasswordRemoved,
+		AuditEventID: audit.ID, AuditAt: model.NowUTC(),
 		Capabilities: store.AccessDeploymentCapabilities{Providers: map[string]store.AccessProviderCapability{"campus-cas": {}}},
 	}
 	type removalOutcome struct {
@@ -322,7 +322,7 @@ func TestEmailVerificationConsumptionUsesPostgreSQLTime(t *testing.T) {
 		authenticationPolicyTestAudit("authentication.email_verification.request", user.ID.String(), institution.ID.String()))
 	require.NoError(t, err)
 	behindNodeAt := expireTokenAfterObservedNodeTime(t, ctx, persistence, token.ID)
-	_, err = persistence.UserToken().ConsumeEmailVerification(ctx, token.TokenHash, model.MillisFromTime(behindNodeAt),
+	_, err = persistence.UserToken().ConsumeEmailVerification(ctx, token.TokenHash, behindNodeAt,
 		authenticationPolicyTestAudit("authentication.email_verification.complete", "", institution.ID.String()))
 	require.True(t, store.IsNotFound(err), "expired verification with behind-node time error")
 	current, err := persistence.User().Get(ctx, user.ID)
@@ -354,7 +354,7 @@ func TestPasswordResetConsumptionUsesPostgreSQLTime(t *testing.T) {
 	require.NoError(t, err)
 	behindNodeAt := expireTokenAfterObservedNodeTime(t, ctx, persistence, token.ID)
 	completion := authenticationPolicyTestResetCompletion(t, user, token.TokenHash, "encoded-must-not-commit",
-		model.MillisFromTime(behindNodeAt), authenticationPolicyTestCompletionAudit(institution.ID.String()))
+		behindNodeAt, authenticationPolicyTestCompletionAudit(institution.ID.String()))
 	_, err = persistence.UserToken().ConsumePasswordReset(ctx, completion)
 	require.True(t, store.IsNotFound(err), "expired reset with behind-node time error")
 	unchangedCredential, err := persistence.PasswordCredential().GetByUser(ctx, user.ID)
@@ -429,7 +429,7 @@ func TestUserTokenConsumptionPreservesLifecycleWhenNodeClockLeads(t *testing.T) 
 		persistence := openTestStore(t)
 		resetTestStore(t, persistence)
 		institution, user, token := setup(t, ctx, persistence, model.UserTokenEmailVerification, "verification-node-leads")
-		result, err := persistence.UserToken().ConsumeEmailVerification(ctx, token.TokenHash, model.GetMillis(),
+		result, err := persistence.UserToken().ConsumeEmailVerification(ctx, token.TokenHash, model.NowUTC(),
 			authenticationPolicyTestAudit("authentication.email_verification.complete", "", institution.ID.String()))
 		require.NoError(t, err)
 		at := result.Token.ConsumedAt.Time
@@ -456,7 +456,7 @@ func TestUserTokenConsumptionPreservesLifecycleWhenNodeClockLeads(t *testing.T) 
 		require.NoError(t, err)
 		leadSessionDatabaseClock(t, ctx, persistence, session.ID)
 		completion := authenticationPolicyTestResetCompletion(t, user, token.TokenHash, "encoded-replacement-password",
-			model.GetMillis(), authenticationPolicyTestCompletionAudit(institution.ID.String()))
+			model.NowUTC(), authenticationPolicyTestCompletionAudit(institution.ID.String()))
 		result, err := persistence.UserToken().ConsumePasswordReset(ctx, completion)
 		require.NoError(t, err)
 		at := result.Token.ConsumedAt.Time
@@ -641,7 +641,7 @@ func TestUserTokenConsumptionFencesConcurrentDeliveryStart(t *testing.T) {
 	}()
 
 	consumed := make(chan error, 1)
-	consumeAt := model.MillisFromTime(token.CreatedAt) + 1
+	consumeAt := model.TimeUTC(token.CreatedAt).Add(1 * time.Millisecond)
 	go func() {
 		_, consumeErr := persistence.UserToken().ConsumeEmailVerification(ctx, token.TokenHash, consumeAt,
 			authenticationPolicyTestAudit("authentication.email_verification.complete", "", institution.ID.String()))
@@ -769,7 +769,7 @@ func TestUserTokenIssueSerializesWithTargetChange(t *testing.T) {
 		TokenLifetime: time.Hour, WarningLifetime: 24 * time.Hour,
 		WarningOccurrence: warningOccurrence, WarningDelivery: warningDelivery, WarningJob: warningJob,
 		VerificationOccurrence: verificationOccurrence, VerificationDelivery: verificationDelivery, VerificationJob: verificationJob,
-		AuditEventID: changeAudit.ID, AuditAt: model.GetMillis()}
+		AuditEventID: changeAudit.ID, AuditAt: model.NowUTC()}
 	go func() {
 		_, updateErr := persistence.UserToken().ChangeEmail(ctx, change)
 		updated <- updateErr
@@ -832,8 +832,8 @@ func TestUserDisableAndEmailChangeShareUserEligibilityLockOrder(t *testing.T) {
 		TokenLifetime: time.Hour, WarningLifetime: 24 * time.Hour,
 		WarningOccurrence: warningOccurrence, WarningDelivery: warningDelivery, WarningJob: warningJob,
 		VerificationOccurrence: verificationOccurrence, VerificationDelivery: verificationDelivery, VerificationJob: verificationJob,
-		AuditEventID: changeAudit.ID, AuditAt: model.GetMillis()}
-	disableAt := model.GetMillis()
+		AuditEventID: changeAudit.ID, AuditAt: model.NowUTC()}
+	disableAt := model.NowUTC()
 	disableAudit := authenticationPolicyTestAudit("user.disable", user.ID.String(), institution.ID.String())
 	disableAudit.Status = model.AuditStatusAttempt
 	disableAudit, err = persistence.Audit().Save(ctx, disableAudit)

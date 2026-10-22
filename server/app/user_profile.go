@@ -224,7 +224,7 @@ func (s *userProfileService) UpdateUserProfile(ctx context.Context, invocation i
 		func(ctx context.Context, reference mutationAttemptReference) (*model.User, error) {
 			return s.deps.Users.UpdateProfile(ctx, &store.UserProfileUpdate{
 				UserID: current.ID, Changes: changes, ExpectedRevision: expectedRevision,
-				AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis,
+				AuditEventID: reference.ID, AuditAt: reference.MutationAt,
 			})
 		},
 		userStoreErrors.Translate,

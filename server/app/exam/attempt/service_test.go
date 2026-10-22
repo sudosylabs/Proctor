@@ -643,7 +643,7 @@ func TestScanExpiredParticipationsCommitsAuditedAggregateBeforeSafeEffect(t *tes
 	require.True(t, input.FlagID.IsValid(), "scan=%#v input=%#v order=%v effects=%#v", result, input, f.order, f.effects)
 	require.True(t, input.SuspensionID.IsValid(), "scan=%#v input=%#v order=%v effects=%#v", result, input, f.order, f.effects)
 	require.True(t, input.AuditEventID.IsValid(), "scan=%#v input=%#v order=%v effects=%#v", result, input, f.order, f.effects)
-	require.GreaterOrEqual(t, input.AuditAt, int64(1), "scan=%#v input=%#v order=%v effects=%#v", result, input, f.order, f.effects)
+	require.False(t, input.AuditAt.IsZero(), "scan=%#v input=%#v order=%v effects=%#v", result, input, f.order, f.effects)
 	require.Equal(t, 1, f.effects.expired, "scan=%#v input=%#v order=%v effects=%#v", result, input, f.order, f.effects)
 	// Contract (guardrails 8 and 14): the audit begins before the durable write,
 	// and the write commits before its effect.

@@ -45,7 +45,7 @@ func testBrowserDeliveryRecovery(t *testing.T, ss store.Store) {
 	require.NoError(t, ack.Receipts[0].Validate())
 	original := ack.Receipts[0]
 	gap := model.DeclareDeliveryGaps{DeclarationID: "browser-gap-1", AllocatedThroughSequence: 4, Ranges: []model.SequenceRange{{First: 1, Last: 1}}, Reason: "spool_lost"}
-	gapInput := &store.BrowserDeliveryGapDeclaration{Access: selector, Declaration: gap, AuditEventID: browserDeliveryAuditFixture(t, ctx, ss, selector), AuditAt: model.GetMillis()}
+	gapInput := &store.BrowserDeliveryGapDeclaration{Access: selector, Declaration: gap, AuditEventID: browserDeliveryAuditFixture(t, ctx, ss, selector), AuditAt: model.NowUTC()}
 	gapCommand := examCommand(access.CandidateUserID, store.BrowserDeliveryGapsOperation, "browser-gap-1", "browser-gap-1")
 	gapped, err := ss.ExamAttempt().DeclareBrowserDeliveryGaps(ctx, gapInput, gapCommand)
 	require.NoError(t, err)
@@ -70,10 +70,10 @@ func testBrowserDeliveryRecovery(t *testing.T, ss store.Store) {
 	historical.ConnectionID = ""
 	historical.ContinuityCredentialHash = ""
 	selector.Access = historical
-	batch := &store.BrowserActivityAppend{Access: historical, ParticipationID: connected.Participation.ID, Generation: connected.Participation.Generation, SourceSessionID: source, PolicyRevisionID: status.PolicyRevisionID, PolicyDigest: status.PolicyDigest, Events: []model.BrowserActivityEvent{browserActivityEvent(5, model.BrowserActivityClosed, fixture.revisionID)}, AuditEventID: browserDeliveryAuditFixture(t, ctx, ss, selector), AuditAt: model.GetMillis()}
+	batch := &store.BrowserActivityAppend{Access: historical, ParticipationID: connected.Participation.ID, Generation: connected.Participation.Generation, SourceSessionID: source, PolicyRevisionID: status.PolicyRevisionID, PolicyDigest: status.PolicyDigest, Events: []model.BrowserActivityEvent{browserActivityEvent(5, model.BrowserActivityClosed, fixture.revisionID)}, AuditEventID: browserDeliveryAuditFixture(t, ctx, ss, selector), AuditAt: model.NowUTC()}
 	_, err = ss.ExamAttempt().AppendHistoricalBrowserDelivery(ctx, batch, examCommand(access.CandidateUserID, store.BrowserDeliveryAppendOperation, "browser-before-seal", "browser-before-seal"))
 	requireConflictConstraint(t, err, "replay_window_exceeded")
-	final := &store.BrowserDeliveryFinalDeclaration{Access: selector, Declaration: model.FinalDeliveryDeclaration{DeclarationID: "browser-final", ExpectedDeclarationRevision: 1, FinalSequence: 6}, AuditEventID: browserDeliveryAuditFixture(t, ctx, ss, selector), AuditAt: model.GetMillis()}
+	final := &store.BrowserDeliveryFinalDeclaration{Access: selector, Declaration: model.FinalDeliveryDeclaration{DeclarationID: "browser-final", ExpectedDeclarationRevision: 1, FinalSequence: 6}, AuditEventID: browserDeliveryAuditFixture(t, ctx, ss, selector), AuditAt: model.NowUTC()}
 	sealed, err := ss.ExamAttempt().SealBrowserDelivery(ctx, final, examCommand(access.CandidateUserID, store.BrowserDeliveryFinalOperation, "browser-final", "browser-final"))
 	require.NoError(t, err)
 	require.NotNil(t, sealed.Closure.FinalSequence)
@@ -95,7 +95,7 @@ func testBrowserDeliveryRecovery(t *testing.T, ss store.Store) {
 	for i := range ack.Receipts {
 		require.Equal(t, ack.Receipts[i], repeated.Receipts[i], "HTTP replay changed receipt")
 	}
-	gapInput = &store.BrowserDeliveryGapDeclaration{Access: selector, Declaration: model.DeclareDeliveryGaps{DeclarationID: "browser-gap-2", ExpectedDeclarationRevision: 2, AllocatedThroughSequence: 6, Ranges: []model.SequenceRange{{First: 3, Last: 4}}, Reason: "spool_lost"}, AuditEventID: browserDeliveryAuditFixture(t, ctx, ss, selector), AuditAt: model.GetMillis()}
+	gapInput = &store.BrowserDeliveryGapDeclaration{Access: selector, Declaration: model.DeclareDeliveryGaps{DeclarationID: "browser-gap-2", ExpectedDeclarationRevision: 2, AllocatedThroughSequence: 6, Ranges: []model.SequenceRange{{First: 3, Last: 4}}, Reason: "spool_lost"}, AuditEventID: browserDeliveryAuditFixture(t, ctx, ss, selector), AuditAt: model.NowUTC()}
 	gapped, err = ss.ExamAttempt().DeclareBrowserDeliveryGaps(ctx, gapInput, examCommand(access.CandidateUserID, store.BrowserDeliveryGapsOperation, "browser-gap-2", "browser-gap-2"))
 	require.NoError(t, err)
 	require.Equal(t, int64(6), gapped.Status.SettledThrough)
@@ -120,7 +120,7 @@ func testBrowserDeliveryWindowAfterPermanentGaps(t *testing.T, ss store.Store) {
 			first, last = 4098, 8192
 		}
 		key := fmt.Sprintf("browser-large-gap-%d", i)
-		input := &store.BrowserDeliveryGapDeclaration{Access: selector, Declaration: model.DeclareDeliveryGaps{DeclarationID: key, ExpectedDeclarationRevision: i, AllocatedThroughSequence: last, Ranges: []model.SequenceRange{{First: first, Last: last}}, Reason: "spool_lost"}, AuditEventID: browserDeliveryAuditFixture(t, ctx, ss, selector), AuditAt: model.GetMillis()}
+		input := &store.BrowserDeliveryGapDeclaration{Access: selector, Declaration: model.DeclareDeliveryGaps{DeclarationID: key, ExpectedDeclarationRevision: i, AllocatedThroughSequence: last, Ranges: []model.SequenceRange{{First: first, Last: last}}, Reason: "spool_lost"}, AuditEventID: browserDeliveryAuditFixture(t, ctx, ss, selector), AuditAt: model.NowUTC()}
 		result, err := ss.ExamAttempt().DeclareBrowserDeliveryGaps(ctx, input, examCommand(f.candidate.ID, store.BrowserDeliveryGapsOperation, key, key))
 		require.NoError(t, err)
 		require.Equal(t, int64(0), result.Status.HighestContiguous, "permanent gap fabricated content or failed to advance window")
@@ -145,7 +145,7 @@ func testBrowserSourceReservationRace(t *testing.T, ss store.Store) {
 	results := make(chan error, 2)
 	start := make(chan struct{})
 	for i := range 2 {
-		input := &store.BrowserActivitySourceStart{Access: access, ParticipationID: connected.Participation.ID, Generation: connected.Participation.Generation, SourceSessionID: browserSourceID(12001 + i), PolicyRevisionID: presentation.RuntimeCapabilities.Browser.PolicyRevisionID, PolicyDigest: presentation.RuntimeCapabilities.Browser.PolicyDigest, Transition: model.BrowserStartTransition{Kind: "initial"}, AuditEventID: saveExamAttemptAudit(t, ctx, ss, f).ID, AuditAt: model.GetMillis()}
+		input := &store.BrowserActivitySourceStart{Access: access, ParticipationID: connected.Participation.ID, Generation: connected.Participation.Generation, SourceSessionID: browserSourceID(12001 + i), PolicyRevisionID: presentation.RuntimeCapabilities.Browser.PolicyRevisionID, PolicyDigest: presentation.RuntimeCapabilities.Browser.PolicyDigest, Transition: model.BrowserStartTransition{Kind: "initial"}, AuditEventID: saveExamAttemptAudit(t, ctx, ss, f).ID, AuditAt: model.NowUTC()}
 		go func() { <-start; _, err := ss.ExamAttempt().StartBrowserActivity(ctx, input); results <- err }()
 	}
 	close(start)

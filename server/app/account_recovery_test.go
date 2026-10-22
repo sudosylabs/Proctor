@@ -300,11 +300,11 @@ func TestCompletePasswordResetCommitsBeforeEffects(t *testing.T) {
 	order := make([]string, 0, 2)
 	tokens := &accountTokenStoreFake{
 		byHash: &model.UserToken{UserID: user.ID, Purpose: model.UserTokenPasswordReset},
-		consumeReset: func(hash, passwordHash string, at int64, event *model.AuditEvent) (*store.PasswordResetResult, error) {
+		consumeReset: func(hash, passwordHash string, at time.Time, event *model.AuditEvent) (*store.PasswordResetResult, error) {
 			order = append(order, "commit")
 			require.Equal(t, model.HashToken(accountTokenTestRawToken), hash)
 			require.Equal(t, "encoded-new-password", passwordHash)
-			require.Equal(t, now.UnixMilli(), at, "consume time")
+			require.True(t, now.Equal(at), "consume time")
 			require.NotNil(t, event)
 			require.Equal(t, string(model.ActionAuthenticationPasswordResetComplete), event.Action)
 			return &store.PasswordResetResult{
@@ -343,7 +343,7 @@ func TestCompletePasswordResetMapsTerminalAccessPolicyFenceToInvalidCredential(t
 	user := &model.User{ID: model.NewUserID(), Email: "student@example.edu"}
 	app := newAccountTokenTestApp(t, accountTokenTestDependencies{
 		users: &accountTokenUserStoreFake{byID: user}, passwords: &accountTokenPasswordStoreFake{},
-		tokens: &accountTokenStoreFake{byHash: &model.UserToken{UserID: user.ID, Purpose: model.UserTokenPasswordReset}, consumeReset: func(string, string, int64, *model.AuditEvent) (*store.PasswordResetResult, error) {
+		tokens: &accountTokenStoreFake{byHash: &model.UserToken{UserID: user.ID, Purpose: model.UserTokenPasswordReset}, consumeReset: func(string, string, time.Time, *model.AuditEvent) (*store.PasswordResetResult, error) {
 			return nil, store.ErrAuthenticationMethodDisabled
 		}},
 		institution: &model.Institution{ID: model.NewInstitutionID()}, mailer: &accountTokenMailerFake{enabled: true},
@@ -400,7 +400,7 @@ func TestPasswordResetWorkFailuresDoNotConsumeResetToken(t *testing.T) {
 		consumed := false
 		user := &model.User{ID: model.NewUserID(), Email: "student@example.edu"}
 		tokens := &accountTokenStoreFake{byHash: &model.UserToken{UserID: user.ID, Purpose: model.UserTokenPasswordReset},
-			consumeReset: func(string, string, int64, *model.AuditEvent) (*store.PasswordResetResult, error) {
+			consumeReset: func(string, string, time.Time, *model.AuditEvent) (*store.PasswordResetResult, error) {
 				consumed = true
 				return nil, errors.New("password reset should not be reached")
 			}}
@@ -503,7 +503,7 @@ type accountTokenStoreFake struct {
 	byHash                 *model.UserToken
 	byHashErr              error
 	consumeVerificationErr error
-	consumeReset           func(string, string, int64, *model.AuditEvent) (*store.PasswordResetResult, error)
+	consumeReset           func(string, string, time.Time, *model.AuditEvent) (*store.PasswordResetResult, error)
 	emailChange            *store.UserEmailChange
 	privilegedVerification *store.PrivilegedEmailVerification
 }
@@ -539,12 +539,7 @@ func (s *accountTokenStoreFake) GetByHash(context.Context, string, model.UserTok
 	return s.byHash, nil
 }
 
-func (s *accountTokenStoreFake) ConsumeEmailVerification(
-	context.Context,
-	string,
-	int64,
-	*model.AuditEvent,
-) (*store.EmailVerificationResult, error) {
+func (s *accountTokenStoreFake) ConsumeEmailVerification(context.Context, string, time.Time, *model.AuditEvent) (*store.EmailVerificationResult, error) {
 	if s.consumeVerificationErr != nil {
 		return nil, s.consumeVerificationErr
 	}

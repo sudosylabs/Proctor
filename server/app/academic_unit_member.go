@@ -107,7 +107,7 @@ func (s *academicUnitMemberService) CreateAcademicUnitMember(ctx context.Context
 		UserID:         userID,
 		StartsAt:       model.TimeFromMillis(command.StartAt),
 	}
-	at := model.TimeFromMillis(model.MillisFromTime(s.deps.Now()))
+	at := model.TimeUTC(s.deps.Now())
 	candidate.PrepareCreate(memberID, at)
 	if err := candidate.Validate(); err != nil {
 		return nil, domainInvalid("academic_unit_member.invalid", err)
@@ -152,7 +152,7 @@ func (s *academicUnitMemberService) CreateAcademicUnitMember(ctx context.Context
 		func() time.Time { return at },
 		func(ctx context.Context, reference mutationAttemptReference) (*model.AcademicUnitMember, error) {
 			input := &store.AcademicUnitMemberCreation{Member: candidate, ExpectedRecipientRevision: recipient.Revision,
-				Notice: notice, AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis, Command: idempotency}
+				Notice: notice, AuditEventID: reference.ID, AuditAt: reference.MutationAt, Command: idempotency}
 			value, storeErr := s.deps.Store.Create(ctx, input)
 			changed = storeErr == nil && !input.Replayed && !input.NoOp
 			if command.batchReplayed != nil {
@@ -201,7 +201,7 @@ func (s *academicUnitMemberService) EndAcademicUnitMember(ctx context.Context, i
 	bindAcademicAdministrationBatch(idempotency, command.batchMetadata)
 	recipient := &model.User{ID: current.UserID, Revision: 1}
 	var notice *store.PreparedMail
-	at := model.TimeFromMillis(model.MillisFromTime(s.deps.Now()))
+	at := model.TimeUTC(s.deps.Now())
 	if !command.batchRetainedOutcome {
 		recipient, err = s.deps.Users.Get(ctx, current.UserID)
 		if err != nil {
@@ -229,9 +229,9 @@ func (s *academicUnitMemberService) EndAcademicUnitMember(ctx context.Context, i
 		func() time.Time { return at },
 		func(ctx context.Context, reference mutationAttemptReference) (*model.AcademicUnitMember, error) {
 			input := &store.AcademicUnitMemberEnd{
-				ID: id, ExpectedRevision: current.Revision, EndAt: reference.MutationAtMillis,
+				ID: id, ExpectedRevision: current.Revision, EndAt: reference.MutationAt,
 				ExpectedRecipientRevision: recipient.Revision, Notice: notice,
-				AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis, Command: idempotency,
+				AuditEventID: reference.ID, AuditAt: reference.MutationAt, Command: idempotency,
 			}
 			value, storeErr := s.deps.Store.End(ctx, input)
 			changed = storeErr == nil && !input.Replayed && !input.NoOp
@@ -301,7 +301,7 @@ func (s *academicUnitMemberService) ListAcademicUnitMembersPage(ctx context.Cont
 	if query.AfterID.IsZero() != query.AfterUserID.IsZero() || (!query.AfterID.IsZero() && (!query.AfterID.IsValid() || !query.AfterUserID.IsValid())) {
 		return nil, apperror.New("request.invalid").WithField("field", "cursor")
 	}
-	options := store.AcademicUnitMemberPageOptions{AcademicUnitID: scopeID, ActiveAt: activeAt, Limit: limit, AfterID: query.AfterID, AfterUserID: query.AfterUserID}
+	options := store.AcademicUnitMemberPageOptions{AcademicUnitID: scopeID, ActiveAt: model.TimeFromMillis(activeAt), Limit: limit, AfterID: query.AfterID, AfterUserID: query.AfterUserID}
 
 	page, err := s.deps.Store.ListPageByAcademicUnit(ctx, options)
 	if err != nil {

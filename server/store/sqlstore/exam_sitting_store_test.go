@@ -43,7 +43,7 @@ func TestValidateExamSittingListOptions(t *testing.T) {
 
 func TestPrepareExamSittingCancellationBoundsPrivateReason(t *testing.T) {
 	valid := &store.ExamSittingCancellation{ExamID: model.NewExamID(), SittingID: model.NewExamSittingID(), ActorUserID: model.NewUserID(),
-		ExpectedRevision: 1, PrivateReason: "é", AuditEventID: model.NewAuditEventID(), AuditAt: model.GetMillis(),
+		ExpectedRevision: 1, PrivateReason: "é", AuditEventID: model.NewAuditEventID(), AuditAt: model.NowUTC(),
 		Mail: &store.ExamSittingMailFanout{}}
 	require.NoError(t, prepareExamSittingCancellation(valid))
 	for _, reason := range []string{"", " padded", strings.Repeat("a", 1001), string([]byte{0xff})} {
@@ -108,7 +108,7 @@ func TestValidateExamSittingLifecycleJob(t *testing.T) {
 
 func TestPrepareExamSittingManagerTransitionRequiresPhaseSpecificFinalizeJob(t *testing.T) {
 	base := &store.ExamSittingManagerTransition{ExamID: model.NewExamID(), SittingID: model.NewExamSittingID(), ActorUserID: model.NewUserID(),
-		ExpectedRevision: 2, PrivateReason: "manager reason", ChangedAt: model.NowUTC(), AuditEventID: model.NewAuditEventID(), AuditAt: model.GetMillis()}
+		ExpectedRevision: 2, PrivateReason: "manager reason", ChangedAt: model.NowUTC(), AuditEventID: model.NewAuditEventID(), AuditAt: model.NowUTC()}
 	require.NoError(t, prepareExamSittingManagerTransition(base, false))
 	require.Error(t, prepareExamSittingManagerTransition(base, true), "early close accepted missing Finalize Job")
 	withFinalize := *base

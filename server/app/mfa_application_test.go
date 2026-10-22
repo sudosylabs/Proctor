@@ -363,7 +363,7 @@ func (s *mfaApplicationStoreFake) savePendingCredential(candidate *model.MFACred
 	return &saved, nil
 }
 
-func (s *mfaApplicationStoreFake) ConsumeSecondFactor(context.Context, model.UserID, int64, string, int64) error {
+func (s *mfaApplicationStoreFake) ConsumeSecondFactor(context.Context, model.UserID, int64, string, time.Time) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.appendEvent("consume")
@@ -507,7 +507,7 @@ func (s *mfaApplicationStoreFake) SavePending(ctx context.Context, input *store.
 	return saved, err
 }
 func (s *mfaApplicationStoreFake) Challenge(ctx context.Context, input *store.MFAChallenge) (*store.SessionReauthenticationResult, error) {
-	if err := s.ConsumeSecondFactor(ctx, input.Principal.UserID, input.TimeStep, input.RecoveryCodeHash, input.VerifiedAt.UnixMilli()); err != nil {
+	if err := s.ConsumeSecondFactor(ctx, input.Principal.UserID, input.TimeStep, input.RecoveryCodeHash, input.VerifiedAt); err != nil {
 		return nil, err
 	}
 	hashes, err := s.UpgradeSession(ctx, input.Principal.SessionID, input.Principal.UserID, input.VerifiedAt)

@@ -47,7 +47,7 @@ func TestPasswordCredentialStore(t *testing.T, ss store.Store) {
 		attempt := saveAuthenticationMethodAuditAttempt(t, ctx, ss, user.ID.String(), "remove_password")
 		result, err := ss.PasswordCredential().Remove(ctx, &store.PasswordCredentialRemoval{
 			UserID: user.ID, Capabilities: store.AccessDeploymentCapabilities{Providers: map[string]store.AccessProviderCapability{"campus-cas": {}}},
-			ChangedAt: model.GetMillis(), RevocationReason: model.SessionRevocationPasswordRemoved, AuditEventID: attempt.ID, AuditAt: model.GetMillis(),
+			ChangedAt: model.NowUTC(), RevocationReason: model.SessionRevocationPasswordRemoved, AuditEventID: attempt.ID, AuditAt: model.NowUTC(),
 		})
 		require.NoError(t, err)
 		require.Len(t, result.RevokedSessions, 1)
@@ -90,7 +90,7 @@ func TestPasswordCredentialStore(t *testing.T, ss store.Store) {
 		result, err := ss.PasswordCredential().Enroll(ctx, &store.PasswordCredentialEnrollment{
 			Credential:   &model.PasswordCredential{UserID: user.ID, PasswordHash: "$argon2id$enrolled"},
 			Capabilities: store.AccessDeploymentCapabilities{Providers: map[string]store.AccessProviderCapability{}},
-			AuditEventID: attempt.ID, AuditAt: model.GetMillis(),
+			AuditEventID: attempt.ID, AuditAt: model.NowUTC(),
 		})
 		require.NoError(t, err)
 		require.NotNil(t, result.PasswordCredential)
@@ -101,7 +101,7 @@ func TestPasswordCredentialStore(t *testing.T, ss store.Store) {
 		removeAttempt := saveAuthenticationMethodAuditAttempt(t, ctx, ss, user.ID.String(), "remove_password")
 		_, err = ss.PasswordCredential().Remove(ctx, &store.PasswordCredentialRemoval{UserID: user.ID,
 			Capabilities: store.AccessDeploymentCapabilities{Providers: map[string]store.AccessProviderCapability{}},
-			ChangedAt:    model.GetMillis(), RevocationReason: model.SessionRevocationPasswordRemoved, AuditEventID: removeAttempt.ID, AuditAt: model.GetMillis()})
+			ChangedAt:    model.NowUTC(), RevocationReason: model.SessionRevocationPasswordRemoved, AuditEventID: removeAttempt.ID, AuditAt: model.NowUTC()})
 		require.ErrorIs(t, err, store.ErrLastUsableAuthenticationMethod)
 		unchanged, err := ss.PasswordCredential().GetByUser(ctx, user.ID)
 		require.NoError(t, err)

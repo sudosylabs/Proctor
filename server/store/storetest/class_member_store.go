@@ -31,9 +31,9 @@ func TestClassMemberStore(t *testing.T, ss store.Store) {
 	nextPeriod := saveAcademicPeriod(t, ctx, ss, fixture.institution.ID.String(), "class-member-next-period", model.MillisFromTime(fixture.period.EndsAt)+1)
 	nextClass := saveClass(t, ctx, ss, fixture.level.ID.String(), nextPeriod.ID.String(), "class-member-next")
 	user := saveUser(t, ctx, ss)
-	start := model.GetMillis() + 1000
+	start := model.NowUTC().Add(1000 * time.Millisecond)
 	_, err := ss.Affiliation().Save(ctx, &model.Affiliation{
-		UserID: user.ID, Kind: model.AffiliationStudent, StartsAt: model.TimeFromMillis(start - 1),
+		UserID: user.ID, Kind: model.AffiliationStudent, StartsAt: model.TimeUTC(start.Add(-1 * time.Millisecond)),
 	})
 	require.NoError(t, err)
 
@@ -41,50 +41,50 @@ func TestClassMemberStore(t *testing.T, ss store.Store) {
 		ClassID:          firstClass.ID,
 		AcademicPeriodID: model.NewAcademicPeriodID(),
 		UserID:           user.ID,
-		StartsAt:         model.TimeFromMillis(start),
+		StartsAt:         model.TimeUTC(start),
 	})
 	require.NoError(t, err)
 	require.Nil(t, first.Previous)
 	require.Equal(t, fixture.period.ID, first.Membership.AcademicPeriodID)
 	require.Equal(t, int64(1), first.Membership.Revision, "first enrollment revision")
 	_, err = ss.ClassMember().SeedEnroll(ctx, &model.ClassMember{
-		ClassID: firstClass.ID, UserID: user.ID, StartsAt: model.TimeFromMillis(start + 1),
+		ClassID: firstClass.ID, UserID: user.ID, StartsAt: model.TimeUTC(start.Add(1 * time.Millisecond)),
 	})
 	var conflict *store.ErrConflict
 	require.ErrorAs(t, err, &conflict)
 	transfer, err := ss.ClassMember().SeedEnroll(ctx, &model.ClassMember{
-		ClassID: secondClass.ID, UserID: user.ID, StartsAt: model.TimeFromMillis(start + 10),
+		ClassID: secondClass.ID, UserID: user.ID, StartsAt: model.TimeUTC(start.Add(10 * time.Millisecond)),
 	})
 	require.NoError(t, err)
 	require.NotNil(t, transfer.Previous)
 	require.Equal(t, first.Membership.ID, transfer.Previous.ID)
-	require.Equal(t, start+10, transfer.Previous.EndsAt.Millis())
+	require.True(t, start.Add(10*time.Millisecond).Equal(transfer.Previous.EndsAt.Time))
 	require.Equal(t, first.Membership.Revision+1, transfer.Previous.Revision)
-	active, err := ss.ClassMember().ListActiveByUser(ctx, user.ID, start+11)
+	active, err := ss.ClassMember().ListActiveByUser(ctx, user.ID, start.Add(11*time.Millisecond))
 	require.NoError(t, err)
 	require.Len(t, active, 1)
 	require.Equal(t, transfer.Membership.ID, active[0].ID)
 	history, err := ss.ClassMember().ListByUser(ctx, user.ID)
 	require.NoError(t, err)
 	require.Len(t, history, 2)
-	ended, err := ss.ClassMember().SeedEnd(ctx, transfer.Membership.ID, transfer.Membership.Revision, start+20)
+	ended, err := ss.ClassMember().SeedEnd(ctx, transfer.Membership.ID, transfer.Membership.Revision, start.Add(20*time.Millisecond))
 	require.NoError(t, err)
-	require.Equal(t, start+20, ended.EndsAt.Millis())
-	_, err = ss.ClassMember().SeedEnd(ctx, transfer.Membership.ID, transfer.Membership.Revision, start+21)
+	require.True(t, start.Add(20*time.Millisecond).Equal(ended.EndsAt.Time))
+	_, err = ss.ClassMember().SeedEnd(ctx, transfer.Membership.ID, transfer.Membership.Revision, start.Add(21*time.Millisecond))
 	require.True(t, store.IsConflict(err), "stale End() error")
 	_, err = ss.ClassMember().SeedEnroll(ctx, &model.ClassMember{
-		ClassID: firstClass.ID, UserID: user.ID, StartsAt: model.TimeFromMillis(start + 5),
+		ClassID: firstClass.ID, UserID: user.ID, StartsAt: model.TimeUTC(start.Add(5 * time.Millisecond)),
 	})
 	require.ErrorAs(t, err, &conflict)
 
 	t.Run("AuditedLifecycle", func(t *testing.T) {
-		testAuditedClassMemberLifecycle(t, ss, firstClass, secondClass, start+100)
+		testAuditedClassMemberLifecycle(t, ss, firstClass, secondClass, start.Add(100*time.Millisecond))
 	})
 	t.Run("ConcurrentEnrollment", func(t *testing.T) {
-		testConcurrentClassMemberEnrollment(t, ss, firstClass, secondClass, start+200)
+		testConcurrentClassMemberEnrollment(t, ss, firstClass, secondClass, start.Add(200*time.Millisecond))
 	})
 	t.Run("DistinctAcademicPeriods", func(t *testing.T) {
-		testDistinctPeriodClassMemberEnrollment(t, ss, firstClass, nextClass, start+300)
+		testDistinctPeriodClassMemberEnrollment(t, ss, firstClass, nextClass, start.Add(300*time.Millisecond))
 	})
 	t.Run("FiniteAffiliation", func(t *testing.T) {
 		testFiniteAffiliationCannotBackOpenEnrollment(t, ss, firstClass, 1_000_000)
@@ -99,22 +99,22 @@ func TestClassMemberStore(t *testing.T, ss store.Store) {
 func testClassMemberEndBeforeModification(t *testing.T, ss store.Store) {
 	ctx := context.Background()
 	fixture := saveClassFixture(t, ctx, ss)
-	now := model.GetMillis()
-	period := saveAcademicPeriod(t, ctx, ss, fixture.institution.ID.String(), "class-member-backdated-"+model.NewID(), now-3_600_000)
+	now := model.NowUTC()
+	period := saveAcademicPeriod(t, ctx, ss, fixture.institution.ID.String(), "class-member-backdated-"+model.NewID(), model.MillisFromTime(now)-3_600_000)
 	class := saveClass(t, ctx, ss, fixture.level.ID.String(), period.ID.String(), "class-member-backdated")
 	user := saveUser(t, ctx, ss)
 	_, err := ss.Affiliation().Save(ctx, &model.Affiliation{
-		UserID: user.ID, Kind: model.AffiliationStudent, StartsAt: model.TimeFromMillis(now - 3_000_000),
+		UserID: user.ID, Kind: model.AffiliationStudent, StartsAt: now.Add(-3_000_000 * time.Millisecond),
 	})
 	require.NoError(t, err)
 	enrolled, err := ss.ClassMember().SeedEnroll(ctx, &model.ClassMember{
-		ClassID: class.ID, UserID: user.ID, StartsAt: model.TimeFromMillis(now - 2_000_000),
+		ClassID: class.ID, UserID: user.ID, StartsAt: now.Add(-2_000_000 * time.Millisecond),
 	})
 	require.NoError(t, err)
-	endAt := now - 1_000_000
+	endAt := now.Add(-1_000_000 * time.Millisecond)
 	ended, err := ss.ClassMember().SeedEnd(ctx, enrolled.Membership.ID, enrolled.Membership.Revision, endAt)
 	require.NoError(t, err)
-	require.Equal(t, endAt, ended.EndsAt.Millis(), "End(before creation) = %#v, created %#v", ended, enrolled.Membership)
+	require.True(t, endAt.Equal(ended.EndsAt.Time), "End(before creation) = %#v, created %#v", ended, enrolled.Membership)
 	require.True(t, ended.UpdatedAt.Equal(enrolled.Membership.UpdatedAt), "End(before creation) = %#v, created %#v", ended, enrolled.Membership)
 	stored, err := ss.ClassMember().Get(ctx, ended.ID)
 	require.NoError(t, err)
@@ -126,17 +126,17 @@ func testAuditedClassMemberLifecycle(
 	ss store.Store,
 	firstClass *model.Class,
 	secondClass *model.Class,
-	start int64,
+	start time.Time,
 ) {
 	t.Helper()
 	ctx := context.Background()
 	user := saveUser(t, ctx, ss)
 	_, err := ss.Affiliation().Save(ctx, &model.Affiliation{
-		UserID: user.ID, Kind: model.AffiliationStudent, StartsAt: model.TimeFromMillis(start - 1),
+		UserID: user.ID, Kind: model.AffiliationStudent, StartsAt: model.TimeUTC(start.Add(-1 * time.Millisecond)),
 	})
 	require.NoError(t, err)
 
-	first := &model.ClassMember{ClassID: firstClass.ID, UserID: user.ID, StartsAt: model.TimeFromMillis(start)}
+	first := &model.ClassMember{ClassID: firstClass.ID, UserID: user.ID, StartsAt: model.TimeUTC(start)}
 	first.PrepareCreate(model.NewClassMemberID(), model.NowUTC())
 	// Period is authoritative from the class row during enroll.
 	first.AcademicPeriodID = firstClass.AcademicPeriodID
@@ -144,20 +144,20 @@ func testAuditedClassMemberLifecycle(
 	createNotice := classMemberPreparedMail(t, first, model.MailTemplateAcademicClassEnrolled, first.CreatedAt)
 	created, err := ss.ClassMember().Enroll(ctx, &store.ClassMemberEnrollment{
 		Member: first, ExpectedRecipientRevision: user.Revision,
-		Notice: createNotice, AuditEventID: createAttempt.ID, AuditAt: model.GetMillis(),
+		Notice: createNotice, AuditEventID: createAttempt.ID, AuditAt: model.NowUTC(),
 	})
 	require.NoError(t, err)
 	requireSuccessfulAudit(t, ctx, ss, createAttempt.ID)
 	require.NoError(t, requireClassMemberMail(t, ctx, ss, createNotice, model.MailTemplateAcademicClassEnrolled))
 
-	rolledBackTransfer := &model.ClassMember{ClassID: secondClass.ID, UserID: user.ID, StartsAt: model.TimeFromMillis(start + 5)}
+	rolledBackTransfer := &model.ClassMember{ClassID: secondClass.ID, UserID: user.ID, StartsAt: model.TimeUTC(start.Add(5 * time.Millisecond))}
 	rolledBackTransfer.PrepareCreate(model.NewClassMemberID(), model.NowUTC())
 	rolledBackTransfer.AcademicPeriodID = secondClass.AcademicPeriodID
 	_, err = ss.ClassMember().Enroll(ctx, &store.ClassMemberEnrollment{
 		Member: rolledBackTransfer, ExpectedPreviousID: created.Membership.ID, ExpectedRecipientRevision: user.Revision,
 		Notice:               classMemberPreparedMail(t, rolledBackTransfer, model.MailTemplateAcademicClassTransferred, rolledBackTransfer.CreatedAt),
 		AuditEventID:         model.NewAuditEventID(),
-		PreviousAuditEventID: model.NewAuditEventID(), AuditAt: model.GetMillis(),
+		PreviousAuditEventID: model.NewAuditEventID(), AuditAt: model.NowUTC(),
 	})
 	require.Error(t, err, "transfer succeeded without its audit attempt")
 	unchanged, err := ss.ClassMember().Get(ctx, created.Membership.ID)
@@ -165,7 +165,7 @@ func testAuditedClassMemberLifecycle(
 	require.False(t, unchanged.EndsAt.Valid)
 	require.Equal(t, created.Membership.Revision, unchanged.Revision)
 
-	second := &model.ClassMember{ClassID: secondClass.ID, UserID: user.ID, StartsAt: model.TimeFromMillis(start + 10)}
+	second := &model.ClassMember{ClassID: secondClass.ID, UserID: user.ID, StartsAt: model.TimeUTC(start.Add(10 * time.Millisecond))}
 	second.PrepareCreate(model.NewClassMemberID(), model.NowUTC())
 	second.AcademicPeriodID = secondClass.AcademicPeriodID
 	transferAttempt := saveClassMemberAuditAttempt(t, ctx, ss, secondClass.ID.String())
@@ -177,7 +177,7 @@ func testAuditedClassMemberLifecycle(
 		Retention:   time.Hour, Wait: time.Second, Batch: &store.CommandBatch{GroupDigest: sha256.Sum256([]byte("class-transfer-group"))}}
 	transferred, err := ss.ClassMember().Enroll(ctx, &store.ClassMemberEnrollment{
 		Member: second, ExpectedPreviousID: created.Membership.ID, ExpectedRecipientRevision: user.Revision, Notice: transferNotice,
-		AuditEventID: transferAttempt.ID, PreviousAuditEventID: previousTransferAttempt.ID, AuditAt: model.GetMillis(), Command: transferCommand,
+		AuditEventID: transferAttempt.ID, PreviousAuditEventID: previousTransferAttempt.ID, AuditAt: model.NowUTC(), Command: transferCommand,
 	})
 	require.NoError(t, err)
 	require.NotNil(t, transferred.Previous)
@@ -199,7 +199,7 @@ func testAuditedClassMemberLifecycle(
 	replaySourceAttempt := saveClassMemberAuditAttempt(t, ctx, ss, firstClass.ID.String())
 	replayInput := &store.ClassMemberEnrollment{Member: second, ExpectedPreviousID: created.Membership.ID,
 		ExpectedRecipientRevision: user.Revision, AuditEventID: replayDestinationAttempt.ID,
-		PreviousAuditEventID: replaySourceAttempt.ID, AuditAt: model.GetMillis(), Command: transferCommand}
+		PreviousAuditEventID: replaySourceAttempt.ID, AuditAt: model.NowUTC(), Command: transferCommand}
 	_, err = ss.ClassMember().Enroll(ctx, replayInput)
 	require.NoError(t, err, "retained transfer replay")
 	require.True(t, replayInput.Replayed, "retained transfer replay")
@@ -212,7 +212,7 @@ func testAuditedClassMemberLifecycle(
 	duplicateCommand.Batch = &store.CommandBatch{GroupDigest: transferCommand.Batch.GroupDigest, DuplicateOfKeyDigest: transferCommand.KeyDigest}
 	duplicateInput := &store.ClassMemberEnrollment{Member: second, ExpectedPreviousID: created.Membership.ID,
 		ExpectedRecipientRevision: user.Revision, AuditEventID: duplicateDestinationAttempt.ID,
-		PreviousAuditEventID: duplicateSourceAttempt.ID, AuditAt: model.GetMillis(), Command: &duplicateCommand}
+		PreviousAuditEventID: duplicateSourceAttempt.ID, AuditAt: model.NowUTC(), Command: &duplicateCommand}
 	_, err = ss.ClassMember().Enroll(ctx, duplicateInput)
 	require.NoError(t, err, "duplicate transfer")
 	require.True(t, duplicateInput.Command.Batch.Duplicate, "duplicate transfer")
@@ -222,7 +222,7 @@ func testAuditedClassMemberLifecycle(
 	duplicateReplaySource := saveClassMemberAuditAttempt(t, ctx, ss, firstClass.ID.String())
 	duplicateReplayInput := &store.ClassMemberEnrollment{Member: second, ExpectedPreviousID: created.Membership.ID,
 		ExpectedRecipientRevision: user.Revision, AuditEventID: duplicateReplayDestination.ID,
-		PreviousAuditEventID: duplicateReplaySource.ID, AuditAt: model.GetMillis(), Command: &duplicateCommand}
+		PreviousAuditEventID: duplicateReplaySource.ID, AuditAt: model.NowUTC(), Command: &duplicateCommand}
 	_, err = ss.ClassMember().Enroll(ctx, duplicateReplayInput)
 	require.NoError(t, err, "retained duplicate transfer")
 	require.True(t, duplicateReplayInput.Replayed, "retained duplicate transfer")
@@ -237,38 +237,38 @@ func testAuditedClassMemberLifecycle(
 	require.Equal(t, int64(2), history[1].Revision)
 
 	endAttempt := saveClassMemberAuditAttempt(t, ctx, ss, secondClass.ID.String())
-	endNotice := classMemberPreparedMail(t, transferred.Membership, model.MailTemplateAcademicClassEnrollmentEnded, model.TimeFromMillis(start+30))
+	endNotice := classMemberPreparedMail(t, transferred.Membership, model.MailTemplateAcademicClassEnrollmentEnded, model.TimeUTC(start.Add(30*time.Millisecond)))
 	ended, err := ss.ClassMember().End(ctx, &store.ClassMemberEnd{
 		ID: transferred.Membership.ID, ExpectedRevision: transferred.Membership.Revision, ExpectedRecipientRevision: user.Revision,
-		EndAt: start + 30, Notice: endNotice, AuditEventID: endAttempt.ID, AuditAt: model.GetMillis(),
+		EndAt: start.Add(30 * time.Millisecond), Notice: endNotice, AuditEventID: endAttempt.ID, AuditAt: model.NowUTC(),
 	})
 	require.NoError(t, err)
 	require.Equal(t, transferred.Membership.Revision+1, ended.Revision)
-	require.Equal(t, start+30, ended.EndsAt.Millis())
+	require.True(t, start.Add(30*time.Millisecond).Equal(ended.EndsAt.Time))
 	requireSuccessfulAudit(t, ctx, ss, endAttempt.ID)
 	require.NoError(t, requireClassMemberMail(t, ctx, ss, endNotice, model.MailTemplateAcademicClassEnrollmentEnded))
 
 	staleAttempt := saveClassMemberAuditAttempt(t, ctx, ss, secondClass.ID.String())
 	_, err = ss.ClassMember().End(ctx, &store.ClassMemberEnd{
 		ID: ended.ID, ExpectedRevision: transferred.Membership.Revision, ExpectedRecipientRevision: user.Revision,
-		EndAt:        start + 31,
-		Notice:       classMemberPreparedMail(t, transferred.Membership, model.MailTemplateAcademicClassEnrollmentEnded, model.TimeFromMillis(start+31)),
-		AuditEventID: staleAttempt.ID, AuditAt: model.GetMillis(),
+		EndAt:        start.Add(31 * time.Millisecond),
+		Notice:       classMemberPreparedMail(t, transferred.Membership, model.MailTemplateAcademicClassEnrollmentEnded, model.TimeUTC(start.Add(31*time.Millisecond))),
+		AuditEventID: staleAttempt.ID, AuditAt: model.NowUTC(),
 	})
 	require.True(t, store.IsConflict(err), "stale End() error")
 
 	rollbackUser := saveUser(t, ctx, ss)
 	_, err = ss.Affiliation().Save(ctx, &model.Affiliation{
-		UserID: rollbackUser.ID, Kind: model.AffiliationStudent, StartsAt: model.TimeFromMillis(start - 1),
+		UserID: rollbackUser.ID, Kind: model.AffiliationStudent, StartsAt: model.TimeUTC(start.Add(-1 * time.Millisecond)),
 	})
 	require.NoError(t, err)
-	rolledBack := &model.ClassMember{ClassID: firstClass.ID, UserID: rollbackUser.ID, StartsAt: model.TimeFromMillis(start)}
+	rolledBack := &model.ClassMember{ClassID: firstClass.ID, UserID: rollbackUser.ID, StartsAt: model.TimeUTC(start)}
 	rolledBack.PrepareCreate(model.NewClassMemberID(), model.NowUTC())
 	rolledBack.AcademicPeriodID = firstClass.AcademicPeriodID
 	_, err = ss.ClassMember().Enroll(ctx, &store.ClassMemberEnrollment{
 		Member: rolledBack, ExpectedRecipientRevision: rollbackUser.Revision,
 		Notice:       classMemberPreparedMail(t, rolledBack, model.MailTemplateAcademicClassEnrolled, rolledBack.CreatedAt),
-		AuditEventID: model.NewAuditEventID(), AuditAt: model.GetMillis(),
+		AuditEventID: model.NewAuditEventID(), AuditAt: model.NowUTC(),
 	})
 	require.Error(t, err, "Enroll() succeeded without its audit attempt")
 	_, err = ss.ClassMember().Get(ctx, rolledBack.ID)
@@ -276,17 +276,17 @@ func testAuditedClassMemberLifecycle(
 
 	disabledMailUser := saveUser(t, ctx, ss)
 	_, err = ss.Affiliation().Save(ctx, &model.Affiliation{
-		UserID: disabledMailUser.ID, Kind: model.AffiliationStudent, StartsAt: model.TimeFromMillis(start - 1),
+		UserID: disabledMailUser.ID, Kind: model.AffiliationStudent, StartsAt: model.TimeUTC(start.Add(-1 * time.Millisecond)),
 	})
 	require.NoError(t, err)
 	disabledMailMember := &model.ClassMember{ClassID: firstClass.ID, AcademicPeriodID: firstClass.AcademicPeriodID,
-		UserID: disabledMailUser.ID, StartsAt: model.TimeFromMillis(start)}
+		UserID: disabledMailUser.ID, StartsAt: model.TimeUTC(start)}
 	disabledMailMember.PrepareCreate(model.NewClassMemberID(), model.NowUTC())
 	disabledNotice := classMemberPreparedMail(t, disabledMailMember, model.MailTemplateAcademicClassEnrolled, disabledMailMember.CreatedAt)
 	disabledNotice = suppressClassMemberMail(t, disabledNotice, model.MailDeliveryDisabledCode)
 	_, err = ss.ClassMember().Enroll(ctx, &store.ClassMemberEnrollment{
 		Member: disabledMailMember, ExpectedRecipientRevision: disabledMailUser.Revision, Notice: disabledNotice,
-		AuditEventID: saveClassMemberAuditAttempt(t, ctx, ss, firstClass.ID.String()).ID, AuditAt: model.GetMillis(),
+		AuditEventID: saveClassMemberAuditAttempt(t, ctx, ss, firstClass.ID.String()).ID, AuditAt: model.NowUTC(),
 	})
 	require.NoError(t, err)
 	disabledDelivery, err := ss.Mail().GetDelivery(ctx, disabledNotice.Delivery.ID)
@@ -297,14 +297,14 @@ func testAuditedClassMemberLifecycle(
 
 	ineligibleUser := saveUser(t, ctx, ss)
 	_, err = ss.Affiliation().Save(ctx, &model.Affiliation{UserID: ineligibleUser.ID, Kind: model.AffiliationStudent,
-		StartsAt: model.TimeFromMillis(start - 1)})
+		StartsAt: model.TimeUTC(start.Add(-1 * time.Millisecond))})
 	require.NoError(t, err)
 	activeRecipientRevision := ineligibleUser.Revision
 	staleQueuedMember := &model.ClassMember{ClassID: firstClass.ID, AcademicPeriodID: firstClass.AcademicPeriodID,
-		UserID: ineligibleUser.ID, StartsAt: model.TimeFromMillis(start)}
+		UserID: ineligibleUser.ID, StartsAt: model.TimeUTC(start)}
 	staleQueuedMember.PrepareCreate(model.NewClassMemberID(), model.NowUTC())
 	staleQueuedNotice := classMemberPreparedMail(t, staleQueuedMember, model.MailTemplateAcademicClassEnrolled, staleQueuedMember.CreatedAt)
-	disableAt := model.GetMillis()
+	disableAt := model.NowUTC()
 	disabledResult, err := ss.User().SetDisabled(ctx, userDisabledStateChangeWithNotice(t, &store.UserDisabledStateChange{
 		ID: ineligibleUser.ID, ExpectedRevision: ineligibleUser.Revision, Disabled: true,
 		ChangedAt: disableAt, RevocationReason: model.SessionRevocationAccountDisabled, AuditEventID: saveUserProfileAuditAttempt(t, ctx, ss, ineligibleUser.ID.String()).ID, AuditAt: disableAt,
@@ -313,19 +313,19 @@ func testAuditedClassMemberLifecycle(
 	ineligibleUser = disabledResult.User
 	_, err = ss.ClassMember().Enroll(ctx, &store.ClassMemberEnrollment{
 		Member: staleQueuedMember, ExpectedRecipientRevision: activeRecipientRevision, Notice: staleQueuedNotice,
-		AuditEventID: saveClassMemberAuditAttempt(t, ctx, ss, firstClass.ID.String()).ID, AuditAt: model.GetMillis(),
+		AuditEventID: saveClassMemberAuditAttempt(t, ctx, ss, firstClass.ID.String()).ID, AuditAt: model.NowUTC(),
 	})
 	require.True(t, store.IsConflict(err), "queued notice raced recipient disable error")
 	_, err = ss.ClassMember().Get(ctx, staleQueuedMember.ID)
 	require.True(t, store.IsNotFound(err), "recipient-disable race committed membership")
 	ineligibleMember := &model.ClassMember{ClassID: firstClass.ID, AcademicPeriodID: firstClass.AcademicPeriodID,
-		UserID: ineligibleUser.ID, StartsAt: model.TimeFromMillis(start)}
+		UserID: ineligibleUser.ID, StartsAt: model.TimeUTC(start)}
 	ineligibleMember.PrepareCreate(model.NewClassMemberID(), model.NowUTC())
 	ineligibleNotice := classMemberPreparedMail(t, ineligibleMember, model.MailTemplateAcademicClassEnrolled, ineligibleMember.CreatedAt)
 	ineligibleNotice = suppressClassMemberMail(t, ineligibleNotice, model.MailDeliveryRecipientIneligibleCode)
 	_, err = ss.ClassMember().Enroll(ctx, &store.ClassMemberEnrollment{
 		Member: ineligibleMember, ExpectedRecipientRevision: ineligibleUser.Revision, Notice: ineligibleNotice,
-		AuditEventID: saveClassMemberAuditAttempt(t, ctx, ss, firstClass.ID.String()).ID, AuditAt: model.GetMillis(),
+		AuditEventID: saveClassMemberAuditAttempt(t, ctx, ss, firstClass.ID.String()).ID, AuditAt: model.NowUTC(),
 	})
 	require.NoError(t, err)
 	ineligibleDelivery, err := ss.Mail().GetDelivery(ctx, ineligibleNotice.Delivery.ID)
@@ -334,10 +334,10 @@ func testAuditedClassMemberLifecycle(
 	require.Equal(t, model.MailDeliveryRecipientIneligibleCode, ineligibleDelivery.PublicFailureCode)
 	require.Empty(t, ineligibleDelivery.EncryptedPayload)
 	disabledRecipientRevision := ineligibleUser.Revision
-	staleEndAt := start + 100
-	staleEndNotice := classMemberPreparedMail(t, ineligibleMember, model.MailTemplateAcademicClassEnrollmentEnded, model.TimeFromMillis(staleEndAt))
+	staleEndAt := start.Add(100 * time.Millisecond)
+	staleEndNotice := classMemberPreparedMail(t, ineligibleMember, model.MailTemplateAcademicClassEnrollmentEnded, model.TimeUTC(staleEndAt))
 	staleEndNotice = suppressClassMemberMail(t, staleEndNotice, model.MailDeliveryRecipientIneligibleCode)
-	enabledAt := model.GetMillis() + 1
+	enabledAt := model.NowUTC().Add(1 * time.Millisecond)
 	enabledResult, err := ss.User().SetDisabled(ctx, userDisabledStateChangeWithNotice(t, &store.UserDisabledStateChange{
 		ID: ineligibleUser.ID, ExpectedRevision: disabledRecipientRevision,
 		ChangedAt: enabledAt, AuditEventID: saveUserProfileAuditAttempt(t, ctx, ss, ineligibleUser.ID.String()).ID, AuditAt: enabledAt,
@@ -346,7 +346,7 @@ func testAuditedClassMemberLifecycle(
 	_, err = ss.ClassMember().End(ctx, &store.ClassMemberEnd{
 		ID: ineligibleMember.ID, ExpectedRevision: ineligibleMember.Revision,
 		ExpectedRecipientRevision: disabledRecipientRevision, EndAt: staleEndAt, Notice: staleEndNotice,
-		AuditEventID: saveClassMemberAuditAttempt(t, ctx, ss, firstClass.ID.String()).ID, AuditAt: model.GetMillis(),
+		AuditEventID: saveClassMemberAuditAttempt(t, ctx, ss, firstClass.ID.String()).ID, AuditAt: model.NowUTC(),
 	})
 	require.True(t, store.IsConflict(err), "ineligible suppression raced recipient enable error")
 	require.NotEqual(t, disabledRecipientRevision, enabledResult.User.Revision, "recipient enable did not advance User revision")
@@ -397,18 +397,18 @@ func requireClassMemberMail(t *testing.T, ctx context.Context, ss store.Store, n
 	return nil
 }
 
-func testDistinctPeriodClassMemberEnrollment(t *testing.T, ss store.Store, firstClass, nextClass *model.Class, start int64) {
+func testDistinctPeriodClassMemberEnrollment(t *testing.T, ss store.Store, firstClass, nextClass *model.Class, start time.Time) {
 	t.Helper()
 	ctx := context.Background()
 	user := saveUser(t, ctx, ss)
-	_, err := ss.Affiliation().Save(ctx, &model.Affiliation{UserID: user.ID, Kind: model.AffiliationStudent, StartsAt: model.TimeFromMillis(start - 1)})
+	_, err := ss.Affiliation().Save(ctx, &model.Affiliation{UserID: user.ID, Kind: model.AffiliationStudent, StartsAt: model.TimeUTC(start.Add(-1 * time.Millisecond))})
 	require.NoError(t, err)
-	first, err := ss.ClassMember().SeedEnroll(ctx, &model.ClassMember{ClassID: firstClass.ID, UserID: user.ID, StartsAt: model.TimeFromMillis(start)})
+	first, err := ss.ClassMember().SeedEnroll(ctx, &model.ClassMember{ClassID: firstClass.ID, UserID: user.ID, StartsAt: model.TimeUTC(start)})
 	require.NoError(t, err)
-	next, err := ss.ClassMember().SeedEnroll(ctx, &model.ClassMember{ClassID: nextClass.ID, UserID: user.ID, StartsAt: model.TimeFromMillis(start)})
+	next, err := ss.ClassMember().SeedEnroll(ctx, &model.ClassMember{ClassID: nextClass.ID, UserID: user.ID, StartsAt: model.TimeUTC(start)})
 	require.NoError(t, err)
 	require.Nil(t, next.Previous)
-	active, err := ss.ClassMember().ListActiveByUser(ctx, user.ID, start+1)
+	active, err := ss.ClassMember().ListActiveByUser(ctx, user.ID, start.Add(1*time.Millisecond))
 	require.NoError(t, err)
 	require.Len(t, active, 2)
 	require.NotEqual(t, next.Membership.AcademicPeriodID, first.Membership.AcademicPeriodID)
@@ -432,18 +432,18 @@ func testConcurrentClassMemberEnrollment(
 	ss store.Store,
 	firstClass *model.Class,
 	secondClass *model.Class,
-	start int64,
+	start time.Time,
 ) {
 	t.Helper()
 	ctx := context.Background()
 	user := saveUser(t, ctx, ss)
 	_, err := ss.Affiliation().Save(ctx, &model.Affiliation{
-		UserID: user.ID, Kind: model.AffiliationStudent, StartsAt: model.TimeFromMillis(start - 1),
+		UserID: user.ID, Kind: model.AffiliationStudent, StartsAt: model.TimeUTC(start.Add(-1 * time.Millisecond)),
 	})
 	require.NoError(t, err)
 	members := []*model.ClassMember{
-		{ClassID: firstClass.ID, UserID: user.ID, StartsAt: model.TimeFromMillis(start)},
-		{ClassID: secondClass.ID, UserID: user.ID, StartsAt: model.TimeFromMillis(start)},
+		{ClassID: firstClass.ID, UserID: user.ID, StartsAt: model.TimeUTC(start)},
+		{ClassID: secondClass.ID, UserID: user.ID, StartsAt: model.TimeUTC(start)},
 	}
 	attempts := make([]*model.AuditEvent, len(members))
 	notices := make([]*store.PreparedMail, len(members))
@@ -465,7 +465,7 @@ func testConcurrentClassMemberEnrollment(
 			defer wg.Done()
 			_, errs[index] = ss.ClassMember().Enroll(ctx, &store.ClassMemberEnrollment{
 				Member: members[index], ExpectedRecipientRevision: user.Revision, Notice: notices[index],
-				AuditEventID: attempts[index].ID, AuditAt: model.GetMillis(),
+				AuditEventID: attempts[index].ID, AuditAt: model.NowUTC(),
 			})
 		}(i)
 	}
@@ -479,7 +479,7 @@ func testConcurrentClassMemberEnrollment(
 		require.True(t, store.IsConflict(err), "concurrent enrollment error = %v", err)
 	}
 	require.Equal(t, 1, successes, "concurrent enrollment successes = %d, errors = %v", successes, errs)
-	active, err := ss.ClassMember().ListActiveByUser(ctx, user.ID, start+1)
+	active, err := ss.ClassMember().ListActiveByUser(ctx, user.ID, start.Add(1*time.Millisecond))
 	require.NoError(t, err)
 	require.Len(t, active, 1)
 	completedAudits := 0

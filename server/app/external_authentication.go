@@ -781,13 +781,13 @@ func (s *externalAuthenticationService) completeProviderConnection(
 		!state.TargetUserID.IsValid() || !state.ConsumedAt.Valid || assertion == nil {
 		return nil, invalidExternalAuthenticationError()
 	}
-	connectedAt := state.ConsumedAt.Time.Truncate(time.Millisecond)
+	connectedAt := model.TimeUTC(state.ConsumedAt.Time)
 	result, err := s.deps.Identities.Link(ctx, &store.ExternalIdentityLink{
 		ExternalLoginStateID: state.ID,
 		Identity: &model.ExternalIdentity{UserID: state.TargetUserID, Provider: state.Provider,
 			Subject: assertion.Subject, LastSeenAt: model.OptionalTimeFrom(connectedAt)},
 		Capabilities: accessDeploymentCapabilities(s.deps.Capabilities.Snapshot()),
-		AuditEventID: model.AuditEventID(state.AuditEventID), AuditAt: connectedAt.UnixMilli(),
+		AuditEventID: model.AuditEventID(state.AuditEventID), AuditAt: connectedAt,
 	})
 	if err != nil {
 		mapped := authenticationMethodStoreErrors.Translate(err)

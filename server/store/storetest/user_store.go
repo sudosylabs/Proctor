@@ -225,7 +225,7 @@ func publicLocalUserRegistrationFixtureAt(t *testing.T, institutionID model.Inst
 func testUserStoreDisabledMailRecordsTerminalAccountNotice(t *testing.T, ss store.Store) {
 	ctx := context.Background()
 	user := saveUser(t, ctx, ss)
-	at := model.GetMillis() + 100
+	at := model.NowUTC().Add(100 * time.Millisecond)
 	attempt := saveUserProfileAuditAttempt(t, ctx, ss, user.ID.String())
 	command := userDisabledStateChangeWithNotice(t, &store.UserDisabledStateChange{
 		ID: user.ID, ExpectedRevision: user.Revision, Disabled: true,
@@ -314,7 +314,7 @@ func testUserStoreProtectLastAdministrator(t *testing.T, ss store.Store) {
 		StartsAt: model.TimeFromMillis(model.GetMillis() - 100),
 	})
 	require.NoError(t, err)
-	at := model.GetMillis()
+	at := model.NowUTC()
 	attempt := saveUserProfileAuditAttempt(t, ctx, ss, first.ID.String())
 	_, err = ss.User().SetDisabled(ctx, userDisabledStateChangeWithNotice(t, &store.UserDisabledStateChange{
 		ID: first.ID, ExpectedRevision: first.Revision, Disabled: true,
@@ -328,7 +328,7 @@ func testUserStoreProtectLastAdministrator(t *testing.T, ss store.Store) {
 	secondBinding, err := SaveRoleBinding(ctx, ss, &model.RoleBinding{
 		UserID: second.ID, RoleID: role.ID,
 		ScopeType: model.RoleScopeInstitution, ScopeID: institution.ID.String(),
-		StartsAt: model.TimeFromMillis(at - 100),
+		StartsAt: model.TimeUTC(at.Add(-100 * time.Millisecond)),
 	})
 	require.NoError(t, err)
 	_, err = ss.User().SetDisabled(ctx, userDisabledStateChangeWithNotice(t, &store.UserDisabledStateChange{
@@ -337,9 +337,9 @@ func testUserStoreProtectLastAdministrator(t *testing.T, ss store.Store) {
 		AuditEventID: attempt.ID, AuditAt: at,
 	}))
 	require.NoError(t, err)
-	_, err = EndRoleBinding(ctx, ss, secondBinding.ID, at+1)
+	_, err = EndRoleBinding(ctx, ss, secondBinding.ID, at.Add(1*time.Millisecond))
 	require.ErrorAs(t, err, &conflict)
-	_, err = EndRoleBinding(ctx, ss, firstBinding.ID, at+1)
+	_, err = EndRoleBinding(ctx, ss, firstBinding.ID, at.Add(1*time.Millisecond))
 	require.NoError(t, err)
 }
 
@@ -372,7 +372,7 @@ func testUserStoreListAndDisable(t *testing.T, ss store.Store) {
 	otherClassMember.Username = "yyy-class-member-" + model.NewID()
 	otherClassMember, err = createUser(t, ctx, ss, otherClassMember)
 	require.NoError(t, err)
-	activeAt := model.GetMillis() + 100
+	activeAt := model.NowUTC().Add(100 * time.Millisecond)
 	fixture := saveClassFixture(t, ctx, ss)
 	visibleClass := saveClass(t, ctx, ss, fixture.level.ID.String(), fixture.period.ID.String(), "user-search-visible")
 	siblingUnit := saveAcademicUnit(t, ctx, ss, fixture.institution.ID.String(), "", "visibility-sibling-"+model.NewID())
@@ -381,36 +381,36 @@ func testUserStoreListAndDisable(t *testing.T, ss store.Store) {
 	siblingClass := saveClass(t, ctx, ss, siblingLevel.ID.String(), fixture.period.ID.String(), "visibility-sibling-class-"+model.NewID())
 	_, err = ss.Affiliation().Save(ctx, &model.Affiliation{
 		UserID: first.ID, Kind: model.AffiliationStudent,
-		StartsAt: model.TimeFromMillis(activeAt - 10),
+		StartsAt: model.TimeUTC(activeAt.Add(-10 * time.Millisecond)),
 	})
 	require.NoError(t, err)
 	firstMembership, err := ss.ClassMember().SeedEnroll(ctx, &model.ClassMember{
-		ClassID: visibleClass.ID, UserID: first.ID, StartsAt: model.TimeFromMillis(activeAt - 10),
+		ClassID: visibleClass.ID, UserID: first.ID, StartsAt: model.TimeUTC(activeAt.Add(-10 * time.Millisecond)),
 	})
 	require.NoError(t, err)
-	_, err = ss.ClassMember().SeedEnd(ctx, firstMembership.Membership.ID, firstMembership.Membership.Revision, activeAt+100)
+	_, err = ss.ClassMember().SeedEnd(ctx, firstMembership.Membership.ID, firstMembership.Membership.Revision, activeAt.Add(100*time.Millisecond))
 	require.NoError(t, err)
 	_, err = ss.Affiliation().Save(ctx, &model.Affiliation{
 		UserID: second.ID, Kind: model.AffiliationStudent,
-		StartsAt: model.TimeFromMillis(activeAt - 10),
+		StartsAt: model.TimeUTC(activeAt.Add(-10 * time.Millisecond)),
 	})
 	require.NoError(t, err)
 	_, err = ss.ClassMember().SeedEnroll(ctx, &model.ClassMember{
-		ClassID: visibleClass.ID, UserID: second.ID, StartsAt: model.TimeFromMillis(activeAt + 10),
+		ClassID: visibleClass.ID, UserID: second.ID, StartsAt: model.TimeUTC(activeAt.Add(10 * time.Millisecond)),
 	})
 	require.NoError(t, err)
 	_, err = ss.Affiliation().Save(ctx, &model.Affiliation{
 		UserID: otherClassMember.ID, Kind: model.AffiliationStudent,
-		StartsAt: model.TimeFromMillis(activeAt - 10),
+		StartsAt: model.TimeUTC(activeAt.Add(-10 * time.Millisecond)),
 	})
 	require.NoError(t, err)
 	_, err = ss.ClassMember().SeedEnroll(ctx, &model.ClassMember{
-		ClassID: siblingClass.ID, UserID: otherClassMember.ID, StartsAt: model.TimeFromMillis(activeAt - 10),
+		ClassID: siblingClass.ID, UserID: otherClassMember.ID, StartsAt: model.TimeUTC(activeAt.Add(-10 * time.Millisecond)),
 	})
 	require.NoError(t, err)
 	_, err = ss.AcademicUnitMember().Save(ctx, &model.AcademicUnitMember{
 		AcademicUnitID: fixture.programme.AcademicUnitID, UserID: unitMember.ID,
-		StartsAt: model.TimeFromMillis(activeAt - 10),
+		StartsAt: model.TimeUTC(activeAt.Add(-10 * time.Millisecond)),
 	})
 	require.NoError(t, err)
 	unitRole, err := SaveRole(ctx, ss, &model.Role{
@@ -421,7 +421,7 @@ func testUserStoreListAndDisable(t *testing.T, ss store.Store) {
 	_, err = SaveRoleBinding(ctx, ss, &model.RoleBinding{
 		UserID: unitRoleHolder.ID, RoleID: unitRole.ID,
 		ScopeType: model.RoleScopeAcademicUnit, ScopeID: fixture.programme.AcademicUnitID.String(),
-		StartsAt: model.TimeFromMillis(activeAt - 10),
+		StartsAt: model.TimeUTC(activeAt.Add(-10 * time.Millisecond)),
 	})
 	require.NoError(t, err)
 	archivedRole, err := SaveRole(ctx, ss, &model.Role{
@@ -432,28 +432,28 @@ func testUserStoreListAndDisable(t *testing.T, ss store.Store) {
 	_, err = SaveRoleBinding(ctx, ss, &model.RoleBinding{
 		UserID: archivedRoleHolder.ID, RoleID: archivedRole.ID,
 		ScopeType: model.RoleScopeAcademicUnit, ScopeID: fixture.programme.AcademicUnitID.String(),
-		StartsAt: model.TimeFromMillis(activeAt - 10),
+		StartsAt: model.TimeUTC(activeAt.Add(-10 * time.Millisecond)),
 	})
 	require.NoError(t, err)
-	_, err = ArchiveRole(ctx, ss, archivedRole.ID, model.GetMillis())
+	_, err = ArchiveRole(ctx, ss, archivedRole.ID, model.NowUTC())
 	require.NoError(t, err)
 	denied, err := ss.User().List(ctx, store.UserListOptions{Limit: 10})
 	require.NoError(t, err)
 	require.Empty(t, denied, "List(without visibility)")
 	classVisible, err := ss.User().List(ctx, store.UserListOptions{
-		Visibility: store.UserVisibilityScope{ClassIDs: []model.ClassID{visibleClass.ID}, ActiveAt: model.TimeFromMillis(activeAt)}, Limit: 10,
+		Visibility: store.UserVisibilityScope{ClassIDs: []model.ClassID{visibleClass.ID}, ActiveAt: model.TimeUTC(activeAt)}, Limit: 10,
 	})
 	require.NoError(t, err)
 	require.Len(t, classVisible, 1, "List(class visibility)")
 	require.Equal(t, first.ID, classVisible[0].ID, "List(class visibility)")
 	byHiddenEmail, err := ss.User().List(ctx, store.UserListOptions{
-		Visibility: store.UserVisibilityScope{ClassIDs: []model.ClassID{visibleClass.ID}, ActiveAt: model.TimeFromMillis(activeAt)},
+		Visibility: store.UserVisibilityScope{ClassIDs: []model.ClassID{visibleClass.ID}, ActiveAt: model.TimeUTC(activeAt)},
 		Query:      first.Email, Limit: 10,
 	})
 	require.NoError(t, err)
 	require.Empty(t, byHiddenEmail, "List(scoped email search)")
 	unitVisible, err := ss.User().List(ctx, store.UserListOptions{
-		Visibility: store.UserVisibilityScope{AcademicUnitRootIDs: []model.AcademicUnitID{fixture.programme.AcademicUnitID}, ActiveAt: model.TimeFromMillis(activeAt)}, Limit: 10,
+		Visibility: store.UserVisibilityScope{AcademicUnitRootIDs: []model.AcademicUnitID{fixture.programme.AcademicUnitID}, ActiveAt: model.TimeUTC(activeAt)}, Limit: 10,
 	})
 	require.NoError(t, err)
 	visibleIDs := map[model.UserID]bool{}
@@ -467,7 +467,7 @@ func testUserStoreListAndDisable(t *testing.T, ss store.Store) {
 	require.False(t, visibleIDs[archivedRoleHolder.ID], "List(academic-unit visibility) included holder of archived Role %s", archivedRoleHolder.ID)
 	classMemberVisible, err := ss.User().List(ctx, store.UserListOptions{
 		Visibility: store.UserVisibilityScope{
-			ClassMemberAcademicUnitRootIDs: []model.AcademicUnitID{fixture.programme.AcademicUnitID}, ActiveAt: model.TimeFromMillis(activeAt),
+			ClassMemberAcademicUnitRootIDs: []model.AcademicUnitID{fixture.programme.AcademicUnitID}, ActiveAt: model.TimeUTC(activeAt),
 		},
 		Limit: 10,
 	})
@@ -475,7 +475,7 @@ func testUserStoreListAndDisable(t *testing.T, ss store.Store) {
 	require.Len(t, classMemberVisible, 1, "List(class-member unit visibility)")
 	require.Equal(t, first.ID, classMemberVisible[0].ID, "List(class-member unit visibility)")
 	allClassMembers, err := ss.User().List(ctx, store.UserListOptions{
-		Visibility: store.UserVisibilityScope{ClassMemberInstitutionWide: true, ActiveAt: model.TimeFromMillis(activeAt)}, Limit: 10,
+		Visibility: store.UserVisibilityScope{ClassMemberInstitutionWide: true, ActiveAt: model.TimeUTC(activeAt)}, Limit: 10,
 	})
 	require.NoError(t, err)
 	allClassMemberIDs := map[model.UserID]bool{}
@@ -489,7 +489,7 @@ func testUserStoreListAndDisable(t *testing.T, ss store.Store) {
 		Visibility: store.UserVisibilityScope{
 			AcademicUnitRootIDs: []model.AcademicUnitID{fixture.programme.AcademicUnitID},
 			ClassIDs:            []model.ClassID{siblingClass.ID},
-			ActiveAt:            model.TimeFromMillis(activeAt),
+			ActiveAt:            model.TimeUTC(activeAt),
 		},
 		Limit: 10,
 	})
@@ -508,7 +508,7 @@ func testUserStoreListAndDisable(t *testing.T, ss store.Store) {
 		AcademicUnitRootIDs: []model.AcademicUnitID{
 			siblingUnit.ID, fixture.programme.AcademicUnitID,
 		},
-		ActiveAt: model.TimeFromMillis(activeAt),
+		ActiveAt: model.TimeUTC(activeAt),
 	})
 	require.NoError(t, err)
 	require.Equal(t, model.RoleScopeClass, match.ScopeType, "MatchVisibility(class) = %#v, want exact Class", match)
@@ -517,40 +517,40 @@ func testUserStoreListAndDisable(t *testing.T, ss store.Store) {
 		AcademicUnitRootIDs: []model.AcademicUnitID{
 			siblingUnit.ID, fixture.programme.AcademicUnitID,
 		},
-		ActiveAt: model.TimeFromMillis(activeAt),
+		ActiveAt: model.TimeUTC(activeAt),
 	})
 	require.NoError(t, err)
 	require.Equal(t, model.RoleScopeAcademicUnit, match.ScopeType, "MatchVisibility(unit) = %#v, want matching root", match)
 	require.Equal(t, fixture.programme.AcademicUnitID.String(), match.ScopeID, "MatchVisibility(unit) = %#v, want matching root", match)
 	match, err = ss.User().MatchVisibility(ctx, unitMember.ID, store.UserVisibilityScope{
-		ClassMemberAcademicUnitRootIDs: []model.AcademicUnitID{fixture.programme.AcademicUnitID}, ActiveAt: model.TimeFromMillis(activeAt),
+		ClassMemberAcademicUnitRootIDs: []model.AcademicUnitID{fixture.programme.AcademicUnitID}, ActiveAt: model.TimeUTC(activeAt),
 	})
 	require.NoError(t, err)
 	require.Equal(t, store.UserVisibilityMatch{}, match, "MatchVisibility(class-member unit nonmember)")
 	match, err = ss.User().MatchVisibility(ctx, first.ID, store.UserVisibilityScope{
-		ClassMemberAcademicUnitRootIDs: []model.AcademicUnitID{fixture.programme.AcademicUnitID}, ActiveAt: model.TimeFromMillis(activeAt),
+		ClassMemberAcademicUnitRootIDs: []model.AcademicUnitID{fixture.programme.AcademicUnitID}, ActiveAt: model.TimeUTC(activeAt),
 	})
 	require.NoError(t, err)
 	require.Equal(t, model.RoleScopeAcademicUnit, match.ScopeType, "MatchVisibility(class-member unit member) = %#v, want matching roster root", match)
 	require.Equal(t, fixture.programme.AcademicUnitID.String(), match.ScopeID, "MatchVisibility(class-member unit member) = %#v, want matching roster root", match)
 	match, err = ss.User().MatchVisibility(ctx, first.ID, store.UserVisibilityScope{
-		ClassMemberInstitutionWide: true, ActiveAt: model.TimeFromMillis(activeAt),
+		ClassMemberInstitutionWide: true, ActiveAt: model.TimeUTC(activeAt),
 	})
 	require.NoError(t, err)
 	require.Equal(t, model.RoleScopeClass, match.ScopeType, "MatchVisibility(institution class member) = %#v, want actual Class", match)
 	require.Equal(t, visibleClass.ID.String(), match.ScopeID, "MatchVisibility(institution class member) = %#v, want actual Class", match)
 	match, err = ss.User().MatchVisibility(ctx, archivedRoleHolder.ID, store.UserVisibilityScope{
-		AcademicUnitRootIDs: []model.AcademicUnitID{fixture.programme.AcademicUnitID}, ActiveAt: model.TimeFromMillis(activeAt),
+		AcademicUnitRootIDs: []model.AcademicUnitID{fixture.programme.AcademicUnitID}, ActiveAt: model.TimeUTC(activeAt),
 	})
 	require.NoError(t, err)
 	require.Equal(t, store.UserVisibilityMatch{}, match, "MatchVisibility(archived Role holder)")
 	match, err = ss.User().MatchVisibility(ctx, second.ID, store.UserVisibilityScope{
-		AcademicUnitRootIDs: []model.AcademicUnitID{fixture.programme.AcademicUnitID}, ActiveAt: model.TimeFromMillis(activeAt),
+		AcademicUnitRootIDs: []model.AcademicUnitID{fixture.programme.AcademicUnitID}, ActiveAt: model.TimeUTC(activeAt),
 	})
 	require.NoError(t, err)
 	require.Equal(t, store.UserVisibilityMatch{}, match, "MatchVisibility(future relation)")
 	_, err = ss.User().List(ctx, store.UserListOptions{
-		Visibility: store.UserVisibilityScope{ClassIDs: []model.ClassID{"malformed"}, ActiveAt: model.TimeFromMillis(activeAt)}, Limit: 10,
+		Visibility: store.UserVisibilityScope{ClassIDs: []model.ClassID{"malformed"}, ActiveAt: model.TimeUTC(activeAt)}, Limit: 10,
 	})
 	require.Error(t, err, "List accepted a malformed visibility ID")
 
@@ -570,7 +570,7 @@ func testUserStoreListAndDisable(t *testing.T, ss store.Store) {
 		require.Equal(t, first.ID, found[0].ID, "List(search %q)", query)
 	}
 	scopedLiteral, err := ss.User().List(ctx, store.UserListOptions{
-		Visibility: store.UserVisibilityScope{ClassIDs: []model.ClassID{visibleClass.ID}, ActiveAt: model.TimeFromMillis(activeAt)},
+		Visibility: store.UserVisibilityScope{ClassIDs: []model.ClassID{visibleClass.ID}, ActiveAt: model.TimeUTC(activeAt)},
 		Query:      "Literal%Family!", Limit: 10,
 	})
 	require.NoError(t, err)
@@ -583,7 +583,7 @@ func testUserStoreListAndDisable(t *testing.T, ss store.Store) {
 	require.NoError(t, err)
 	require.NotEmpty(t, page)
 	require.Equal(t, second.ID, page[0].ID)
-	at := model.GetMillis() + 100
+	at := model.NowUTC().Add(100 * time.Millisecond)
 	attempt := saveUserProfileAuditAttempt(t, ctx, ss, first.ID.String())
 	result, err := ss.User().SetDisabled(ctx, userDisabledStateChangeWithNotice(t, &store.UserDisabledStateChange{
 		ID: first.ID, ExpectedRevision: first.Revision, Disabled: true,
@@ -592,26 +592,26 @@ func testUserStoreListAndDisable(t *testing.T, ss store.Store) {
 	}))
 	require.NoError(t, err)
 	disabled := result.User
-	require.Equal(t, at, disabled.DisabledAt.Millis())
+	require.True(t, at.Equal(disabled.DisabledAt.Time))
 	require.Equal(t, first.Revision+1, disabled.Revision)
 	scopedDefault, err := ss.User().List(ctx, store.UserListOptions{
-		Visibility: store.UserVisibilityScope{ClassIDs: []model.ClassID{visibleClass.ID}, ActiveAt: model.TimeFromMillis(activeAt)},
+		Visibility: store.UserVisibilityScope{ClassIDs: []model.ClassID{visibleClass.ID}, ActiveAt: model.TimeUTC(activeAt)},
 		Limit:      10,
 	})
 	require.NoError(t, err)
 	scopedInclusive, err := ss.User().List(ctx, store.UserListOptions{
-		Visibility: store.UserVisibilityScope{ClassIDs: []model.ClassID{visibleClass.ID}, ActiveAt: model.TimeFromMillis(activeAt)},
+		Visibility: store.UserVisibilityScope{ClassIDs: []model.ClassID{visibleClass.ID}, ActiveAt: model.TimeUTC(activeAt)},
 		Limit:      10, IncludeDisabled: true,
 	})
 	require.NoError(t, err)
 	require.Empty(t, scopedDefault, "scoped disabled visibility default")
 	require.Empty(t, scopedInclusive, "scoped disabled visibility default")
 	institutionClassMembersDefault, err := ss.User().List(ctx, store.UserListOptions{
-		Visibility: store.UserVisibilityScope{ClassMemberInstitutionWide: true, ActiveAt: model.TimeFromMillis(activeAt)}, Limit: 10,
+		Visibility: store.UserVisibilityScope{ClassMemberInstitutionWide: true, ActiveAt: model.TimeUTC(activeAt)}, Limit: 10,
 	})
 	require.NoError(t, err)
 	institutionClassMembersInclusive, err := ss.User().List(ctx, store.UserListOptions{
-		Visibility:      store.UserVisibilityScope{ClassMemberInstitutionWide: true, ActiveAt: model.TimeFromMillis(activeAt)},
+		Visibility:      store.UserVisibilityScope{ClassMemberInstitutionWide: true, ActiveAt: model.TimeUTC(activeAt)},
 		Limit:           10,
 		IncludeDisabled: true,
 	})
@@ -623,7 +623,7 @@ func testUserStoreListAndDisable(t *testing.T, ss store.Store) {
 		require.Equal(t, otherClassMember.ID, users[0].ID, "institution class-member disabled visibility %s", label)
 	}
 	match, err = ss.User().MatchVisibility(ctx, first.ID, store.UserVisibilityScope{
-		ClassIDs: []model.ClassID{visibleClass.ID}, ActiveAt: model.TimeFromMillis(activeAt),
+		ClassIDs: []model.ClassID{visibleClass.ID}, ActiveAt: model.TimeUTC(activeAt),
 	})
 	require.NoError(t, err)
 	require.Equal(t, store.UserVisibilityMatch{}, match, "MatchVisibility(disabled user)")
@@ -727,7 +727,7 @@ func testUserStoreEnablementRevocationAndAuditAreAtomic(t *testing.T, ss store.S
 	user := saveUser(t, ctx, ss)
 	first, _, firstRaw := saveSession(t, ctx, ss, user.ID.String(), 10)
 	second, _, _ := saveSession(t, ctx, ss, user.ID.String(), 10)
-	at := model.GetMillis() + 100
+	at := model.NowUTC().Add(100 * time.Millisecond)
 
 	oversizedAttempt := saveUserProfileAuditAttempt(t, ctx, ss, user.ID.String())
 	if _, err := ss.User().SetDisabled(ctx, userDisabledStateChangeWithNotice(t, &store.UserDisabledStateChange{
@@ -782,14 +782,14 @@ func testUserStoreEnablementRevocationAndAuditAreAtomic(t *testing.T, ss store.S
 	})
 	disabled, err := ss.User().SetDisabled(ctx, disableCommand)
 	require.NoError(t, err)
-	require.Equal(t, at, disabled.User.DisabledAt.Millis())
+	require.True(t, at.Equal(disabled.User.DisabledAt.Time))
 	require.Equal(t, user.Revision+1, disabled.User.Revision)
 	require.Len(t, disabled.RevokedSessions, 2)
 	require.Len(t, disabled.RevokedTokenHashes, 4)
 	for _, sessionID := range []string{first.ID.String(), second.ID.String()} {
 		revoked, sessionErr := ss.Session().Get(ctx, model.SessionID(sessionID))
 		require.NoError(t, sessionErr)
-		require.Equal(t, at, revoked.RevokedAt.Millis(), "session %s was not revoked with the account: %#v", sessionID, revoked)
+		require.True(t, at.Equal(revoked.RevokedAt.Time), "session %s was not revoked with the account: %#v", sessionID, revoked)
 		require.Equal(t, model.SessionRevocationAccountDisabled, revoked.RevocationReason, "session %s was not revoked with the account: %#v", sessionID, revoked)
 	}
 	completed, err := ss.Audit().Get(ctx, disableAttempt.ID)
@@ -807,8 +807,8 @@ func testUserStoreEnablementRevocationAndAuditAreAtomic(t *testing.T, ss store.S
 	replayAttempt := saveUserProfileAuditAttempt(t, ctx, ss, user.ID.String())
 	replayCommand := userDisabledStateChangeWithNotice(t, &store.UserDisabledStateChange{
 		ID: user.ID, ExpectedRevision: disabled.User.Revision, Disabled: true,
-		ChangedAt: at + 1, RevocationReason: model.SessionRevocationAccountDisabled,
-		AuditEventID: replayAttempt.ID, AuditAt: at + 1,
+		ChangedAt: at.Add(1 * time.Millisecond), RevocationReason: model.SessionRevocationAccountDisabled,
+		AuditEventID: replayAttempt.ID, AuditAt: at.Add(1 * time.Millisecond),
 	})
 	_, replayErr := ss.User().SetDisabled(ctx, replayCommand)
 	require.True(t, store.IsConflict(replayErr), "same-state account replay error")
@@ -818,7 +818,7 @@ func testUserStoreEnablementRevocationAndAuditAreAtomic(t *testing.T, ss store.S
 	staleAttempt := saveUserProfileAuditAttempt(t, ctx, ss, user.ID.String())
 	_, err = ss.User().SetDisabled(ctx, userDisabledStateChangeWithNotice(t, &store.UserDisabledStateChange{
 		ID: user.ID, ExpectedRevision: user.Revision, Disabled: false,
-		ChangedAt: at + 1, AuditEventID: staleAttempt.ID, AuditAt: at + 1,
+		ChangedAt: at.Add(1 * time.Millisecond), AuditEventID: staleAttempt.ID, AuditAt: at.Add(1 * time.Millisecond),
 	}))
 	require.True(t, store.IsConflict(err), "stale SetDisabled() error")
 	staleAudit, err := ss.Audit().Get(ctx, staleAttempt.ID)
@@ -828,7 +828,7 @@ func testUserStoreEnablementRevocationAndAuditAreAtomic(t *testing.T, ss store.S
 	enableAttempt := saveUserProfileAuditAttempt(t, ctx, ss, user.ID.String())
 	enableCommand := userDisabledStateChangeWithNotice(t, &store.UserDisabledStateChange{
 		ID: user.ID, ExpectedRevision: disabled.User.Revision, Disabled: false,
-		ChangedAt: at + 2, AuditEventID: enableAttempt.ID, AuditAt: at + 2,
+		ChangedAt: at.Add(2 * time.Millisecond), AuditEventID: enableAttempt.ID, AuditAt: at.Add(2 * time.Millisecond),
 	})
 	enabled, err := ss.User().SetDisabled(ctx, enableCommand)
 	require.NoError(t, err)
@@ -885,13 +885,13 @@ func testUserStoreUpdate(t *testing.T, ss store.Store) {
 	updated, err := createUser(t, ctx, ss, input)
 	require.NoError(t, err)
 
-	activityAt := model.GetMillis() + 100
+	activityAt := model.NowUTC().Add(100 * time.Millisecond)
 	require.NoError(t, ss.User().UpdateLastLogin(ctx, updated.ID, activityAt))
 	displayName := "Audited User"
 	auditAttempt := saveUserProfileAuditAttempt(t, ctx, ss, updated.ID.String())
 	audited, err := ss.User().UpdateProfile(ctx, &store.UserProfileUpdate{
 		UserID: updated.ID, Changes: model.UserProfileChanges{DisplayName: &displayName}, ExpectedRevision: updated.Revision,
-		AuditEventID: auditAttempt.ID, AuditAt: model.GetMillis(),
+		AuditEventID: auditAttempt.ID, AuditAt: model.NowUTC(),
 	})
 	require.NoError(t, err)
 	require.Equal(t, "Audited User", audited.DisplayName)
@@ -905,28 +905,28 @@ func testUserStoreUpdate(t *testing.T, ss store.Store) {
 	rolledBackName := "Must Roll Back"
 	_, err = ss.User().UpdateProfile(ctx, &store.UserProfileUpdate{
 		UserID: audited.ID, Changes: model.UserProfileChanges{DisplayName: &rolledBackName}, ExpectedRevision: audited.Revision,
-		AuditEventID: model.NewAuditEventID(), AuditAt: model.GetMillis(),
+		AuditEventID: model.NewAuditEventID(), AuditAt: model.NowUTC(),
 	})
 	require.Error(t, err, "UpdateProfile() succeeded without its audit attempt")
 	persisted, err := ss.User().Get(ctx, audited.ID)
 	require.NoError(t, err)
 	require.Equal(t, audited.DisplayName, persisted.DisplayName)
 	require.Equal(t, audited.Revision, persisted.Revision)
-	require.Equal(t, activityAt, persisted.LastLoginAt.Millis())
-	require.Equal(t, activityAt, persisted.LastActivityAt.Millis())
-	require.GreaterOrEqual(t, model.MillisFromTime(persisted.UpdatedAt), activityAt)
+	require.True(t, activityAt.Equal(persisted.LastLoginAt.Time))
+	require.True(t, activityAt.Equal(persisted.LastActivityAt.Time))
+	require.False(t, persisted.UpdatedAt.Before(activityAt))
 
 	staleAttempt := saveUserProfileAuditAttempt(t, ctx, ss, updated.ID.String())
 	_, err = ss.User().UpdateProfile(ctx, &store.UserProfileUpdate{
 		UserID: updated.ID, Changes: model.UserProfileChanges{DisplayName: &displayName}, ExpectedRevision: updated.Revision,
-		AuditEventID: staleAttempt.ID, AuditAt: model.GetMillis(),
+		AuditEventID: staleAttempt.ID, AuditAt: model.NowUTC(),
 	})
 	require.True(t, store.IsConflict(err), "stale UpdateProfile() error")
 	missingID := model.UserID(model.NewID())
 	missingAttempt := saveUserProfileAuditAttempt(t, ctx, ss, missingID.String())
 	_, err = ss.User().UpdateProfile(ctx, &store.UserProfileUpdate{
 		UserID: missingID, Changes: model.UserProfileChanges{DisplayName: &displayName}, ExpectedRevision: updated.Revision,
-		AuditEventID: missingAttempt.ID, AuditAt: model.GetMillis(),
+		AuditEventID: missingAttempt.ID, AuditAt: model.NowUTC(),
 	})
 	require.True(t, store.IsNotFound(err), "UpdateProfile(missing) error")
 }
@@ -947,13 +947,13 @@ func testUserStoreUpdateLastLogin(t *testing.T, ss store.Store) {
 	ctx := context.Background()
 	user := saveUser(t, ctx, ss)
 	revision := user.Revision
-	at := model.GetMillis() + 100
+	at := model.NowUTC().Add(100 * time.Millisecond)
 	require.NoError(t, ss.User().UpdateLastLogin(ctx, user.ID, at))
 	got, err := ss.User().Get(ctx, user.ID)
 	require.NoError(t, err)
-	require.Equal(t, at, got.LastLoginAt.Millis())
-	require.Equal(t, at, got.LastActivityAt.Millis())
-	require.GreaterOrEqual(t, model.MillisFromTime(got.UpdatedAt), at)
+	require.True(t, at.Equal(got.LastLoginAt.Time))
+	require.True(t, at.Equal(got.LastActivityAt.Time))
+	require.False(t, got.UpdatedAt.Before(at))
 	require.Equal(t, revision, got.Revision)
 }
 

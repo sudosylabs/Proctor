@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -84,7 +85,7 @@ func TestRoleStore(t *testing.T, ss store.Store) {
 		require.Equal(t, 1, conflicted, "concurrent Update() results = success")
 		saved, err = ss.Role().Get(ctx, saved.ID)
 		require.NoError(t, err)
-		archived, err := ArchiveRole(ctx, ss, saved.ID, model.GetMillis())
+		archived, err := ArchiveRole(ctx, ss, saved.ID, model.NowUTC())
 		require.NoError(t, err)
 		require.True(t, archived.IsArchived())
 		_, err = ss.Role().Get(ctx, saved.ID)
@@ -103,7 +104,7 @@ func TestRoleStore(t *testing.T, ss store.Store) {
 		var conflict *store.ErrConflict
 		require.ErrorAs(t, err, &conflict)
 		require.Equal(t, "roles_name_key", conflict.Constraint)
-		_, err = ArchiveRole(ctx, ss, first.ID, model.GetMillis())
+		_, err = ArchiveRole(ctx, ss, first.ID, model.NowUTC())
 		require.True(t, store.IsConflict(err), "Archive(built-in) error")
 		first.DisplayName = "Modified Built-in"
 		_, err = UpdateRole(ctx, ss, first)
@@ -112,7 +113,7 @@ func TestRoleStore(t *testing.T, ss store.Store) {
 
 	t.Run("AuditedMutationsAreAtomic", func(t *testing.T) {
 		ctx := context.Background()
-		at := model.GetMillis() + 100
+		at := model.NowUTC().Add(100 * time.Millisecond)
 		_, err := ss.Role().Save(ctx, &store.RoleCreation{
 			Role:         &model.Role{Name: "audited-teacher", DisplayName: "Audited Teacher", Permissions: []string{string(model.ActionClassView)}},
 			AuditEventID: model.NewAuditEventID(), AuditAt: at,
@@ -136,7 +137,7 @@ func TestRoleStore(t *testing.T, ss store.Store) {
 
 		created.DisplayName = "Audited Teacher Updated"
 		_, err = ss.Role().Update(ctx, &store.RoleUpdate{
-			Role: created, AuditEventID: model.NewAuditEventID(), AuditAt: at + 1,
+			Role: created, AuditEventID: model.NewAuditEventID(), AuditAt: at.Add(1 * time.Millisecond),
 		})
 		require.Error(t, err, "Update() succeeded without its audit attempt")
 		unchanged, err := ss.Role().Get(ctx, created.ID)
@@ -144,7 +145,7 @@ func TestRoleStore(t *testing.T, ss store.Store) {
 		require.Equal(t, "Audited Teacher", unchanged.DisplayName)
 		updateAttempt := saveRoleAuditAttempt(t, ctx, ss)
 		updated, err := ss.Role().Update(ctx, &store.RoleUpdate{
-			Role: created, AuditEventID: updateAttempt.ID, AuditAt: at + 1,
+			Role: created, AuditEventID: updateAttempt.ID, AuditAt: at.Add(1 * time.Millisecond),
 		})
 		require.NoError(t, err)
 		require.Equal(t, "Audited Teacher Updated", updated.DisplayName)
@@ -153,27 +154,27 @@ func TestRoleStore(t *testing.T, ss store.Store) {
 		user := saveUser(t, ctx, ss)
 		binding, err := SaveRoleBinding(ctx, ss, &model.RoleBinding{
 			UserID: user.ID, RoleID: updated.ID, ScopeType: model.RoleScopeInstitution,
-			ScopeID: institution.ID.String(), StartsAt: model.TimeFromMillis(at + 2),
+			ScopeID: institution.ID.String(), StartsAt: model.TimeUTC(at.Add(2 * time.Millisecond)),
 		})
 		require.NoError(t, err)
 		permissionCandidate := updated.Clone()
 		permissionCandidate.Permissions = append(permissionCandidate.Permissions, string(model.ActionClassManage))
 		permissionAttempt := saveRoleAuditAttempt(t, ctx, ss)
 		_, err = ss.Role().Update(ctx, &store.RoleUpdate{
-			Role: permissionCandidate, AuditEventID: permissionAttempt.ID, AuditAt: at + 3,
+			Role: permissionCandidate, AuditEventID: permissionAttempt.ID, AuditAt: at.Add(3 * time.Millisecond),
 		})
 		require.True(t, store.IsConflict(err), "bound role permission Update() error")
-		_, err = EndRoleBinding(ctx, ss, binding.ID, at+4)
+		_, err = EndRoleBinding(ctx, ss, binding.ID, at.Add(4*time.Millisecond))
 		require.NoError(t, err)
 		historicalAttempt := saveRoleAuditAttempt(t, ctx, ss)
 		permissionCandidate, err = ss.Role().Update(ctx, &store.RoleUpdate{
-			Role: permissionCandidate, AuditEventID: historicalAttempt.ID, AuditAt: at + 5,
+			Role: permissionCandidate, AuditEventID: historicalAttempt.ID, AuditAt: at.Add(5 * time.Millisecond),
 		})
 		require.NoError(t, err)
 		require.Contains(t, permissionCandidate.Permissions, string(model.ActionClassManage))
 
 		_, err = ss.Role().Archive(ctx, &store.RoleArchive{
-			ID: created.ID, ArchiveAt: at + 2, AuditEventID: model.NewAuditEventID(), AuditAt: at + 2,
+			ID: created.ID, ArchiveAt: at.Add(2 * time.Millisecond), AuditEventID: model.NewAuditEventID(), AuditAt: at.Add(2 * time.Millisecond),
 		})
 		require.Error(t, err, "Archive() succeeded without its audit attempt")
 		stillPresent, err := ss.Role().Get(ctx, created.ID)
@@ -181,10 +182,10 @@ func TestRoleStore(t *testing.T, ss store.Store) {
 		require.False(t, stillPresent.IsArchived())
 		archiveAttempt := saveRoleAuditAttempt(t, ctx, ss)
 		archived, err := ss.Role().Archive(ctx, &store.RoleArchive{
-			ID: created.ID, ArchiveAt: at + 2, AuditEventID: archiveAttempt.ID, AuditAt: at + 2,
+			ID: created.ID, ArchiveAt: at.Add(2 * time.Millisecond), AuditEventID: archiveAttempt.ID, AuditAt: at.Add(2 * time.Millisecond),
 		})
 		require.NoError(t, err)
-		require.Equal(t, at+2, archived.ArchivedAt.Millis())
+		require.True(t, at.Add(2*time.Millisecond).Equal(archived.ArchivedAt.Time))
 		_, err = ss.Role().Get(ctx, created.ID)
 		require.True(t, store.IsNotFound(err), "Get(archived) error")
 	})

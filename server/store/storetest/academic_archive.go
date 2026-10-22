@@ -33,16 +33,16 @@ type AcademicArchiveState struct {
 type AcademicArchiveProbe func(context.Context, model.Resource) (AcademicArchiveState, error)
 
 // TestAcademicArchiveTimestamps checks ordinary and audited archive outcomes
-// against retained state, including the millisecond command's precision loss.
+// against retained state, including an archive instant before creation.
 func TestAcademicArchiveTimestamps(t *testing.T, ss store.Store, readArchived AcademicArchiveProbe) {
 	createdAt := time.Date(2030, time.January, 2, 3, 4, 5, 123456000, time.UTC)
 	cases := []struct {
 		name string
-		at   int64
+		at   time.Time
 	}{
-		{name: "same-millisecond", at: createdAt.UnixMilli()},
-		{name: "clock-rollback", at: createdAt.Add(-time.Minute).UnixMilli()},
-		{name: "later", at: createdAt.Add(time.Minute).UnixMilli()},
+		{name: "same-instant", at: createdAt},
+		{name: "clock-rollback", at: createdAt.Add(-time.Minute)},
+		{name: "later", at: createdAt.Add(time.Minute)},
 	}
 	for _, kind := range []model.ResourceType{
 		model.ResourceAcademicUnit, model.ResourceAcademicPeriod, model.ResourceClass,
@@ -82,7 +82,7 @@ func TestAcademicArchiveTimestamps(t *testing.T, ss store.Store, readArchived Ac
 							require.NoError(t, err)
 							require.NoError(t, archived.Validate())
 							actual := academicArchiveState(archived)
-							at := model.TimeFromMillis(tc.at)
+							at := tc.at
 							if at.Before(createdAt) {
 								at = createdAt
 							}
@@ -124,7 +124,7 @@ func academicArchiveFixture(
 	ss store.Store,
 	kind model.ResourceType,
 	createdAt time.Time,
-) (model.Resource, func(int64, model.AuditEventID) (academicArchivedModel, error)) {
+) (model.Resource, func(time.Time, model.AuditEventID) (academicArchivedModel, error)) {
 	t.Helper()
 	parents := saveClassFixture(t, ctx, ss)
 	audit := saveProgrammeAuditAttempt(t, ctx, ss, parents.programme.AcademicUnitID.String())
@@ -136,16 +136,16 @@ func academicArchiveFixture(
 		}
 		candidate.PrepareCreate(model.NewAcademicUnitID(), createdAt)
 		created, err := ss.AcademicUnit().Create(ctx, &store.AcademicUnitCreation{
-			Unit: candidate, AuditEventID: audit.ID, AuditAt: model.GetMillis(),
+			Unit: candidate, AuditEventID: audit.ID, AuditAt: model.NowUTC(),
 		})
 		require.NoError(t, err)
 		resource.ID = created.ID.String()
-		return resource, func(at int64, auditID model.AuditEventID) (academicArchivedModel, error) {
+		return resource, func(at time.Time, auditID model.AuditEventID) (academicArchivedModel, error) {
 			if auditID == "" {
 				return ArchiveAcademicUnit(ctx, ss, model.AcademicUnitID(resource.ID), at)
 			}
 			return ss.AcademicUnit().Archive(ctx, &store.AcademicUnitArchive{
-				ID: model.AcademicUnitID(resource.ID), ArchiveAt: at, AuditEventID: auditID, AuditAt: model.GetMillis(),
+				ID: model.AcademicUnitID(resource.ID), ArchiveAt: at, AuditEventID: auditID, AuditAt: model.NowUTC(),
 			})
 		}
 	case model.ResourceAcademicPeriod:
@@ -156,16 +156,16 @@ func academicArchiveFixture(
 		}
 		candidate.PrepareCreate(model.NewAcademicPeriodID(), createdAt)
 		created, err := ss.AcademicPeriod().Create(ctx, &store.AcademicPeriodCreation{
-			Period: candidate, AuditEventID: audit.ID, AuditAt: model.GetMillis(),
+			Period: candidate, AuditEventID: audit.ID, AuditAt: model.NowUTC(),
 		})
 		require.NoError(t, err)
 		resource.ID = created.ID.String()
-		return resource, func(at int64, auditID model.AuditEventID) (academicArchivedModel, error) {
+		return resource, func(at time.Time, auditID model.AuditEventID) (academicArchivedModel, error) {
 			if auditID == "" {
 				return ArchiveAcademicPeriod(ctx, ss, model.AcademicPeriodID(resource.ID), at)
 			}
 			return ss.AcademicPeriod().Archive(ctx, &store.AcademicPeriodArchive{
-				ID: model.AcademicPeriodID(resource.ID), ArchiveAt: at, AuditEventID: auditID, AuditAt: model.GetMillis(),
+				ID: model.AcademicPeriodID(resource.ID), ArchiveAt: at, AuditEventID: auditID, AuditAt: model.NowUTC(),
 			})
 		}
 	case model.ResourceClass:
@@ -175,18 +175,18 @@ func academicArchiveFixture(
 		}
 		candidate.PrepareCreate(model.NewClassID(), createdAt)
 		created, err := ss.Class().Create(ctx, &store.ClassCreation{
-			Class: candidate, AuditEventID: audit.ID, AuditAt: model.GetMillis(),
+			Class: candidate, AuditEventID: audit.ID, AuditAt: model.NowUTC(),
 		})
 		require.NoError(t, err)
 		resource.ID = created.ID.String()
-		return resource, func(at int64, auditID model.AuditEventID) (academicArchivedModel, error) {
+		return resource, func(at time.Time, auditID model.AuditEventID) (academicArchivedModel, error) {
 			if auditID == "" {
 				return ArchiveClass(ctx, ss, model.ClassID(resource.ID), at)
 			}
 			return ss.Class().Archive(ctx, &store.ClassArchive{
 				ID: model.ClassID(resource.ID), ExpectedRevision: created.Revision,
 				ExpectedAcademicUnitID: parents.programme.AcademicUnitID,
-				ArchiveAt:              at, AuditEventID: auditID, AuditAt: model.GetMillis(),
+				ArchiveAt:              at, AuditEventID: auditID, AuditAt: model.NowUTC(),
 			})
 		}
 	case model.ResourceProgramme:
@@ -195,16 +195,16 @@ func academicArchiveFixture(
 		}
 		candidate.PrepareCreate(model.NewProgrammeID(), createdAt)
 		created, err := ss.Programme().Create(ctx, &store.ProgrammeCreation{
-			Programme: candidate, AuditEventID: audit.ID, AuditAt: model.GetMillis(),
+			Programme: candidate, AuditEventID: audit.ID, AuditAt: model.NowUTC(),
 		})
 		require.NoError(t, err)
 		resource.ID = created.ID.String()
-		return resource, func(at int64, auditID model.AuditEventID) (academicArchivedModel, error) {
+		return resource, func(at time.Time, auditID model.AuditEventID) (academicArchivedModel, error) {
 			if auditID == "" {
 				return ArchiveProgramme(ctx, ss, model.ProgrammeID(resource.ID), at)
 			}
 			return ss.Programme().Archive(ctx, &store.ProgrammeArchive{
-				ID: model.ProgrammeID(resource.ID), ArchiveAt: at, AuditEventID: auditID, AuditAt: model.GetMillis(),
+				ID: model.ProgrammeID(resource.ID), ArchiveAt: at, AuditEventID: auditID, AuditAt: model.NowUTC(),
 			})
 		}
 	case model.ResourceProgrammeLevel:
@@ -213,16 +213,16 @@ func academicArchiveFixture(
 		}
 		candidate.PrepareCreate(model.NewProgrammeLevelID(), createdAt)
 		created, err := ss.ProgrammeLevel().Create(ctx, &store.ProgrammeLevelCreation{
-			Level: candidate, AuditEventID: audit.ID, AuditAt: model.GetMillis(),
+			Level: candidate, AuditEventID: audit.ID, AuditAt: model.NowUTC(),
 		})
 		require.NoError(t, err)
 		resource.ID = created.ID.String()
-		return resource, func(at int64, auditID model.AuditEventID) (academicArchivedModel, error) {
+		return resource, func(at time.Time, auditID model.AuditEventID) (academicArchivedModel, error) {
 			if auditID == "" {
 				return ArchiveProgrammeLevel(ctx, ss, model.ProgrammeLevelID(resource.ID), at)
 			}
 			return ss.ProgrammeLevel().Archive(ctx, &store.ProgrammeLevelArchive{
-				ID: model.ProgrammeLevelID(resource.ID), ArchiveAt: at, AuditEventID: auditID, AuditAt: model.GetMillis(),
+				ID: model.ProgrammeLevelID(resource.ID), ArchiveAt: at, AuditEventID: auditID, AuditAt: model.NowUTC(),
 			})
 		}
 	default:

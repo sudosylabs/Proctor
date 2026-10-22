@@ -65,14 +65,14 @@ func TestBrowserIntegrityStore(t *testing.T, ss store.Store) {
 	require.Equal(t, int64(1), budget.BrowserFlagGroups)
 	require.Equal(t, int64(100), budget.BrowserEvidenceRecords)
 	require.GreaterOrEqual(t, budget.BrowserEvidenceBytes, int64(1))
-	seal := &store.ExamSubmissionSeal{SubmissionID: model.NewSubmissionID(), Access: store.ExamSubmissionSealAccess{AttemptID: connected.Attempt.ID, ParticipationID: connected.Participation.ID, Generation: connected.Participation.Generation, ConnectionID: connected.Connection.ID, CandidateUserID: f.candidate.ID, SessionID: f.session.ID, ContinuityCredentialHash: access.ContinuityCredentialHash, ExpectedCurrentRevisionID: f.revisionID, ExpectedWorkspaceCursor: connected.Workspace.Cursor}, AuditEventID: saveExamAttemptAudit(t, ctx, ss, f).ID, AuditAt: model.GetMillis()}
+	seal := &store.ExamSubmissionSeal{SubmissionID: model.NewSubmissionID(), Access: store.ExamSubmissionSealAccess{AttemptID: connected.Attempt.ID, ParticipationID: connected.Participation.ID, Generation: connected.Participation.Generation, ConnectionID: connected.Connection.ID, CandidateUserID: f.candidate.ID, SessionID: f.session.ID, ContinuityCredentialHash: access.ContinuityCredentialHash, ExpectedCurrentRevisionID: f.revisionID, ExpectedWorkspaceCursor: connected.Workspace.Cursor}, AuditEventID: saveExamAttemptAudit(t, ctx, ss, f).ID, AuditAt: model.NowUTC()}
 	attachSubmissionReceipt(t, ctx, ss, f.candidate, seal)
 	sealed, err := ss.ExamSubmission().Seal(ctx, seal, examCommand(f.candidate.ID, store.ExamSubmissionSealOperation, "browser-evidence-submit", "browser-evidence-submit"))
 	require.NoError(t, err)
 	access.ConnectionID = ""
 	access.ContinuityCredentialHash = ""
 	historical := store.BrowserDeliveryAccess{Access: access, ParticipationID: connected.Participation.ID, SourceSessionID: source}
-	_, err = ss.ExamAttempt().SealBrowserDelivery(ctx, &store.BrowserDeliveryFinalDeclaration{Access: historical, Declaration: model.FinalDeliveryDeclaration{DeclarationID: "browser-evidence-final", FinalSequence: 103}, AuditEventID: browserDeliveryAuditFixture(t, ctx, ss, historical), AuditAt: model.GetMillis()}, examCommand(f.candidate.ID, store.BrowserDeliveryFinalOperation, "browser-evidence-final", "browser-evidence-final"))
+	_, err = ss.ExamAttempt().SealBrowserDelivery(ctx, &store.BrowserDeliveryFinalDeclaration{Access: historical, Declaration: model.FinalDeliveryDeclaration{DeclarationID: "browser-evidence-final", FinalSequence: 103}, AuditEventID: browserDeliveryAuditFixture(t, ctx, ss, historical), AuditAt: model.NowUTC()}, examCommand(f.candidate.ID, store.BrowserDeliveryFinalOperation, "browser-evidence-final", "browser-evidence-final"))
 	require.NoError(t, err)
 	reviews := ss.ExamIntegrityReview()
 	sub := sealed.Receipt.SubmissionID
@@ -100,22 +100,22 @@ func TestBrowserIntegrityStore(t *testing.T, ss store.Store) {
 	audit := func() model.AuditEventID {
 		return saveIntegrityReviewAudit(t, ctx, ss, f, sub, model.ActionSubmissionReview).ID
 	}
-	decision := &store.ExamIntegrityReviewDecisionMutation{SubmissionID: sub, ReviewID: reviewID, DecisionID: model.NewIntegrityReviewDecisionID(), FlagID: flags.Items[0].Flag.ID, ActorUserID: f.manager.ID, Outcome: model.IntegrityReviewInconclusive, PrivateRationale: "Review the verified browser event inventory.", ChangedAt: model.NowUTC(), AuditEventID: audit(), AuditAt: model.GetMillis()}
+	decision := &store.ExamIntegrityReviewDecisionMutation{SubmissionID: sub, ReviewID: reviewID, DecisionID: model.NewIntegrityReviewDecisionID(), FlagID: flags.Items[0].Flag.ID, ActorUserID: f.manager.ID, Outcome: model.IntegrityReviewInconclusive, PrivateRationale: "Review the verified browser event inventory.", ChangedAt: model.NowUTC(), AuditEventID: audit(), AuditAt: model.NowUTC()}
 	decided, err := reviews.SaveDecision(ctx, decision, examCommand(f.manager.ID, store.ExamIntegrityReviewDecisionOperation, "browser-decision", "browser-decision"))
 	require.NoError(t, err)
-	finalize := &store.ExamIntegrityReviewFinalize{SubmissionID: sub, ReviewID: reviewID, ActorUserID: f.manager.ID, ExpectedReviewRevision: decided.Review.Revision, ChangedAt: model.NowUTC(), AuditEventID: audit(), AuditAt: model.GetMillis()}
+	finalize := &store.ExamIntegrityReviewFinalize{SubmissionID: sub, ReviewID: reviewID, ActorUserID: f.manager.ID, ExpectedReviewRevision: decided.Review.Revision, ChangedAt: model.NowUTC(), AuditEventID: audit(), AuditAt: model.NowUTC()}
 	finalized, err := reviews.Finalize(ctx, finalize, examCommand(f.manager.ID, store.ExamIntegrityReviewFinalizeOperation, "browser-finalize", "browser-finalize"))
 	require.NoError(t, err)
 	release := func(revision int64, key string) {
 		prepared, err := reviews.PrepareRelease(ctx, sub, reviewID, revision)
 		require.NoError(t, err)
-		input := &store.ExamIntegrityReviewRelease{SubmissionID: sub, ReviewID: reviewID, ActorUserID: f.manager.ID, ExpectedReviewRevision: revision, ChangedAt: prepared.ReleaseAt, AuditEventID: saveIntegrityReviewAudit(t, ctx, ss, f, sub, model.ActionSubmissionRelease).ID, AuditAt: prepared.ReleaseAt.UnixMilli()}
+		input := &store.ExamIntegrityReviewRelease{SubmissionID: sub, ReviewID: reviewID, ActorUserID: f.manager.ID, ExpectedReviewRevision: revision, ChangedAt: prepared.ReleaseAt, AuditEventID: saveIntegrityReviewAudit(t, ctx, ss, f, sub, model.ActionSubmissionRelease).ID, AuditAt: prepared.ReleaseAt}
 		attachResultReleaseMail(t, f.candidate, input)
 		_, err = reviews.Release(ctx, input, examCommand(f.manager.ID, store.ExamIntegrityReviewReleaseOperation, key, key))
 		require.NoError(t, err)
 	}
 	release(finalized.Review.Revision, "browser-first-release")
-	batch := &store.BrowserActivityAppend{Access: access, ParticipationID: connected.Participation.ID, Generation: connected.Participation.Generation, SourceSessionID: source, PolicyRevisionID: status.PolicyRevisionID, PolicyDigest: status.PolicyDigest, Events: []model.BrowserActivityEvent{blocked(103)}, AuditEventID: browserDeliveryAuditFixture(t, ctx, ss, historical), AuditAt: model.GetMillis()}
+	batch := &store.BrowserActivityAppend{Access: access, ParticipationID: connected.Participation.ID, Generation: connected.Participation.Generation, SourceSessionID: source, PolicyRevisionID: status.PolicyRevisionID, PolicyDigest: status.PolicyDigest, Events: []model.BrowserActivityEvent{blocked(103)}, AuditEventID: browserDeliveryAuditFixture(t, ctx, ss, historical), AuditAt: model.NowUTC()}
 	command := examCommand(f.candidate.ID, store.BrowserDeliveryAppendOperation, "browser-evidence-late", "browser-evidence-late")
 	// Two independently idempotent requests racing on one event sequence must
 	// produce one copy/overflow increment and one review invalidation.
@@ -210,7 +210,7 @@ func TestBrowserIntegrityGroupCapacity(t *testing.T, ss store.Store) {
 		if round > 0 {
 			policy = policyFor(round)
 			key := fmt.Sprintf("group-correction-%d", round)
-			corrected, err := ss.ExamCorrection().Apply(ctx, &store.ExamCorrectionApplication{RevisionID: model.NewExamRevisionID(), ExamID: f.examID, SittingID: f.sitting.ID, CurrentRevisionID: f.revisionID, ExpectedSittingRevision: f.sitting.Revision, ActorUserID: f.manager.ID, Resources: []store.ExamCorrectionResourceManifestItem{}, BrowserPolicy: &policy, CandidateSummary: "Updated browser references", AffectedCapabilities: []model.CandidateCapability{model.CandidateCapabilityBrowser}, PrivateReason: "Verify bounded Browser groups across revisions", AppliedAt: model.NowUTC(), AuditEventID: saveExamSittingAudit(t, ctx, ss, f.manager.ID, f.examID, f.unitID).ID, AuditAt: model.GetMillis()}, examCommand(f.manager.ID, "exam.sitting.correction.apply", key, key))
+			corrected, err := ss.ExamCorrection().Apply(ctx, &store.ExamCorrectionApplication{RevisionID: model.NewExamRevisionID(), ExamID: f.examID, SittingID: f.sitting.ID, CurrentRevisionID: f.revisionID, ExpectedSittingRevision: f.sitting.Revision, ActorUserID: f.manager.ID, Resources: []store.ExamCorrectionResourceManifestItem{}, BrowserPolicy: &policy, CandidateSummary: "Updated browser references", AffectedCapabilities: []model.CandidateCapability{model.CandidateCapabilityBrowser}, PrivateReason: "Verify bounded Browser groups across revisions", AppliedAt: model.NowUTC(), AuditEventID: saveExamSittingAudit(t, ctx, ss, f.manager.ID, f.examID, f.unitID).ID, AuditAt: model.NowUTC()}, examCommand(f.manager.ID, "exam.sitting.correction.apply", key, key))
 			require.NoError(t, err)
 			f.revisionID = corrected.Revision.ID
 			f.sitting = corrected.Sitting.Sitting
@@ -260,7 +260,7 @@ func TestBrowserIntegrityGroupCapacity(t *testing.T, ss store.Store) {
 	require.NoError(t, err)
 	require.Equal(t, int64(256), budget.BrowserFlagGroups)
 	require.Equal(t, int64(256), budget.BrowserEvidenceRecords)
-	seal := &store.ExamSubmissionSeal{SubmissionID: model.NewSubmissionID(), Access: store.ExamSubmissionSealAccess{AttemptID: connected.Attempt.ID, ParticipationID: connected.Participation.ID, Generation: connected.Participation.Generation, ConnectionID: connected.Connection.ID, CandidateUserID: f.candidate.ID, SessionID: f.session.ID, ContinuityCredentialHash: access.ContinuityCredentialHash, ExpectedCurrentRevisionID: f.revisionID, ExpectedWorkspaceCursor: connected.Workspace.Cursor}, AuditEventID: saveExamAttemptAudit(t, ctx, ss, f).ID, AuditAt: model.GetMillis()}
+	seal := &store.ExamSubmissionSeal{SubmissionID: model.NewSubmissionID(), Access: store.ExamSubmissionSealAccess{AttemptID: connected.Attempt.ID, ParticipationID: connected.Participation.ID, Generation: connected.Participation.Generation, ConnectionID: connected.Connection.ID, CandidateUserID: f.candidate.ID, SessionID: f.session.ID, ContinuityCredentialHash: access.ContinuityCredentialHash, ExpectedCurrentRevisionID: f.revisionID, ExpectedWorkspaceCursor: connected.Workspace.Cursor}, AuditEventID: saveExamAttemptAudit(t, ctx, ss, f).ID, AuditAt: model.NowUTC()}
 	attachSubmissionReceipt(t, ctx, ss, f.candidate, seal)
 	sealed, err := ss.ExamSubmission().Seal(ctx, seal, examCommand(f.candidate.ID, store.ExamSubmissionSealOperation, "group-seal", "group-seal"))
 	require.NoError(t, err)
@@ -324,7 +324,7 @@ func TestBrowserIntegrityCopyBoundaries(t *testing.T, ss store.Store, seed func(
 			require.Equal(t, bytes+copies*int64(len(raw)), budget.BrowserEvidenceBytes, "copied evidence crossed %s: %#v", mode, budget)
 			_, err = appendBrowserActivityFixture(t, ctx, ss, batch)
 			require.NoError(t, err)
-			seal := &store.ExamSubmissionSeal{SubmissionID: model.NewSubmissionID(), Access: store.ExamSubmissionSealAccess{AttemptID: connected.Attempt.ID, ParticipationID: connected.Participation.ID, Generation: connected.Participation.Generation, ConnectionID: connected.Connection.ID, CandidateUserID: f.candidate.ID, SessionID: f.session.ID, ContinuityCredentialHash: access.ContinuityCredentialHash, ExpectedCurrentRevisionID: f.revisionID, ExpectedWorkspaceCursor: connected.Workspace.Cursor}, AuditEventID: saveExamAttemptAudit(t, ctx, ss, f).ID, AuditAt: model.GetMillis()}
+			seal := &store.ExamSubmissionSeal{SubmissionID: model.NewSubmissionID(), Access: store.ExamSubmissionSealAccess{AttemptID: connected.Attempt.ID, ParticipationID: connected.Participation.ID, Generation: connected.Participation.Generation, ConnectionID: connected.Connection.ID, CandidateUserID: f.candidate.ID, SessionID: f.session.ID, ContinuityCredentialHash: access.ContinuityCredentialHash, ExpectedCurrentRevisionID: f.revisionID, ExpectedWorkspaceCursor: connected.Workspace.Cursor}, AuditEventID: saveExamAttemptAudit(t, ctx, ss, f).ID, AuditAt: model.NowUTC()}
 			attachSubmissionReceipt(t, ctx, ss, f.candidate, seal)
 			sealed, err := ss.ExamSubmission().Seal(ctx, seal, examCommand(f.candidate.ID, store.ExamSubmissionSealOperation, "copy-seal", "copy-seal"))
 			require.NoError(t, err)
@@ -334,9 +334,9 @@ func TestBrowserIntegrityCopyBoundaries(t *testing.T, ss store.Store, seed func(
 			require.Len(t, flags.Items, 1)
 			require.Equal(t, copies, int64(flags.Items[0].EvidenceCount))
 			require.Equal(t, 2-copies, flags.Items[0].OverflowCount)
-			decision, err := ss.ExamIntegrityReview().SaveDecision(ctx, &store.ExamIntegrityReviewDecisionMutation{SubmissionID: sub, ReviewID: model.NewSubmissionReviewID(), DecisionID: model.NewIntegrityReviewDecisionID(), FlagID: flags.Items[0].Flag.ID, ActorUserID: f.manager.ID, Outcome: model.IntegrityReviewInconclusive, PrivateRationale: "Explicitly acknowledge bounded count-only evidence", ChangedAt: model.NowUTC(), AuditEventID: saveIntegrityReviewAudit(t, ctx, ss, f, sub, model.ActionSubmissionReview).ID, AuditAt: model.GetMillis()}, examCommand(f.manager.ID, store.ExamIntegrityReviewDecisionOperation, "copy-decision", "copy-decision"))
+			decision, err := ss.ExamIntegrityReview().SaveDecision(ctx, &store.ExamIntegrityReviewDecisionMutation{SubmissionID: sub, ReviewID: model.NewSubmissionReviewID(), DecisionID: model.NewIntegrityReviewDecisionID(), FlagID: flags.Items[0].Flag.ID, ActorUserID: f.manager.ID, Outcome: model.IntegrityReviewInconclusive, PrivateRationale: "Explicitly acknowledge bounded count-only evidence", ChangedAt: model.NowUTC(), AuditEventID: saveIntegrityReviewAudit(t, ctx, ss, f, sub, model.ActionSubmissionReview).ID, AuditAt: model.NowUTC()}, examCommand(f.manager.ID, store.ExamIntegrityReviewDecisionOperation, "copy-decision", "copy-decision"))
 			require.NoError(t, err)
-			_, err = ss.ExamIntegrityReview().Finalize(ctx, &store.ExamIntegrityReviewFinalize{SubmissionID: sub, ReviewID: decision.Review.ID, ActorUserID: f.manager.ID, ExpectedReviewRevision: decision.Review.Revision, ChangedAt: model.NowUTC(), AuditEventID: saveIntegrityReviewAudit(t, ctx, ss, f, sub, model.ActionSubmissionReview).ID, AuditAt: model.GetMillis()}, examCommand(f.manager.ID, store.ExamIntegrityReviewFinalizeOperation, "copy-finalize", "copy-finalize"))
+			_, err = ss.ExamIntegrityReview().Finalize(ctx, &store.ExamIntegrityReviewFinalize{SubmissionID: sub, ReviewID: decision.Review.ID, ActorUserID: f.manager.ID, ExpectedReviewRevision: decision.Review.Revision, ChangedAt: model.NowUTC(), AuditEventID: saveIntegrityReviewAudit(t, ctx, ss, f, sub, model.ActionSubmissionReview).ID, AuditAt: model.NowUTC()}, examCommand(f.manager.ID, store.ExamIntegrityReviewFinalizeOperation, "copy-finalize", "copy-finalize"))
 			require.NoError(t, err)
 		})
 	}

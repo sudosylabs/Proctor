@@ -33,8 +33,8 @@ type SQLAuditStore struct {
 	auditsQuery sq.SelectBuilder
 }
 
-// auditRow is the legacy integer-millisecond column layout. Domain AuditEvent
-// uses time.Time and typed optional IDs; conversion is at this boundary.
+// auditRow is the audit_events column layout. Domain AuditEvent uses typed
+// optional IDs; conversion is at this boundary.
 type auditRow struct {
 	ID           string              `db:"id"`
 	CreatedAt    time.Time           `db:"created_at"`
@@ -156,7 +156,7 @@ func (s SQLAuditStore) Get(ctx context.Context, id model.AuditEventID) (*model.A
 // Complete moves the attempted audit event id to its final success or fail
 // status with errorCode and result. An event that is absent or already
 // completed yields a not-found error.
-func (s SQLAuditStore) Complete(ctx context.Context, id model.AuditEventID, status model.AuditStatus, errorCode string, result []byte, updateAt int64) (*model.AuditEvent, error) {
+func (s SQLAuditStore) Complete(ctx context.Context, id model.AuditEventID, status model.AuditStatus, errorCode string, result []byte, updateAt time.Time) (*model.AuditEvent, error) {
 	return completeAuditEvent(
 		ctx, s.GetMaster(), id, status, errorCode, result, updateAt,
 	)
@@ -169,12 +169,12 @@ func completeAuditEvent(
 	status model.AuditStatus,
 	errorCode string,
 	result []byte,
-	updateAt int64,
+	updateAt time.Time,
 ) (*model.AuditEvent, error) {
 	if status != model.AuditStatusSuccess && status != model.AuditStatusFail {
 		return nil, store.NewErrInvalidInput("audit_event", "status", status)
 	}
-	if updateAt <= 0 || len(result) > model.AuditJSONMaxBytes ||
+	if updateAt.IsZero() || len(result) > model.AuditJSONMaxBytes ||
 		(len(result) > 0 && !json.Valid(result)) {
 		return nil, store.NewErrInvalidInput("audit_event", "completion", nil)
 	}
@@ -187,7 +187,7 @@ func completeAuditEvent(
 		          resource_type, resource_id, scope_type, scope_id, status,
 		          request_id, node_id, client_type, authentication_method,
 		          ip_address, user_agent, error_code, parameters, prior_state, result`,
-		model.TimeFromMillis(updateAt), status, errorCode, nullableJSON(result), id)
+		model.TimeUTC(updateAt), status, errorCode, nullableJSON(result), id)
 	if err != nil {
 		return nil, translateError("audit_event", id.String(), err)
 	}
@@ -315,8 +315,8 @@ func (s SQLAuditStore) List(
 }
 
 func newAuditRow(event *model.AuditEvent) auditRow {
-	createdAt := model.TimeUTC(event.CreatedAt).Truncate(time.Millisecond)
-	updatedAt := model.TimeUTC(event.UpdatedAt).Truncate(time.Millisecond)
+	createdAt := model.TimeUTC(event.CreatedAt)
+	updatedAt := model.TimeUTC(event.UpdatedAt)
 	return auditRow{
 		ID: event.ID.String(), CreatedAt: createdAt,
 		UpdatedAt: updatedAt,

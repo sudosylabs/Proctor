@@ -64,7 +64,7 @@ func TestMFAActivationUsesNativeExclusiveDeadline(t *testing.T) {
 			require.NotNil(t, persistence.activation, "activation did not preserve native UTC decision instant")
 			require.Equal(t, model.TimeUTC(now), persistence.activation.At, "activation did not preserve native UTC decision instant")
 			require.Len(t, mailer.requests, 1, "activation changed the frozen notice timestamp contract")
-			require.True(t, mailer.requests[0].At.Equal(model.TimeFromMillis(now.UnixMilli())), "activation changed the frozen notice timestamp contract")
+			require.True(t, mailer.requests[0].At.Equal(model.TimeUTC(now)), "activation notice instant = %v, want the activation instant", mailer.requests[0].At)
 		})
 	}
 }

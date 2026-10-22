@@ -137,7 +137,7 @@ func (s *accountTokenService) changeUserEmail(ctx context.Context, current *mode
 		TokenLifetime: s.deps.Policy.EmailVerificationTTL, WarningLifetime: 24 * time.Hour,
 		WarningOccurrence: warning.Occurrence, WarningDelivery: warning.Delivery, WarningJob: warning.Job,
 		VerificationOccurrence: verification.Occurrence, VerificationDelivery: verification.Delivery, VerificationJob: verification.Job,
-		AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis})
+		AuditEventID: reference.ID, AuditAt: reference.MutationAt})
 	if err != nil {
 		return nil, userStoreErrors.Translate(err)
 	}
@@ -150,7 +150,7 @@ func (s *accountTokenService) verifyUserEmailPrivileged(ctx context.Context, cur
 		return nil, accountRecoveryUnavailable(err)
 	}
 	updated, err := s.deps.Tokens.VerifyEmailPrivileged(ctx, &store.PrivilegedEmailVerification{UserID: current.ID, ExpectedRevision: current.Revision, Occurrence: prepared.Occurrence, Delivery: prepared.Delivery, Job: prepared.Job,
-		AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis})
+		AuditEventID: reference.ID, AuditAt: reference.MutationAt})
 	if err != nil {
 		return nil, err
 	}

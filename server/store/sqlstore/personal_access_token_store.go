@@ -403,7 +403,7 @@ func validatePersonalAccessTokenSecurityNotice(userID model.UserID, notice store
 	if notice.ExpiresAt.IsZero() || !model.TimeUTC(notice.ExpiresAt).Equal(model.TimeUTC(expiresAt)) {
 		return store.PersonalAccessTokenSecurityNotice{}, "", store.NewErrInvalidInput("personal_access_token", "notice.expires_at", nil)
 	}
-	payloadKeyID, err := validateSecurityNoticeMail(userID, notice.Occurrence, notice.Delivery, notice.Job, key, actionAt.UnixMilli())
+	payloadKeyID, err := validateSecurityNoticeMail(userID, notice.Occurrence, notice.Delivery, notice.Job, key, actionAt)
 	return notice, payloadKeyID, err
 }
 

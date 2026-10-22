@@ -32,11 +32,11 @@ func TestRoleBindingStore(t *testing.T, ss store.Store) {
 		user := saveUser(t, ctx, ss)
 		role, err := SaveRole(ctx, ss, &model.Role{Name: "audited-binding-role", DisplayName: "Audited", Permissions: []string{string(model.ActionClassView)}})
 		require.NoError(t, err)
-		at := model.GetMillis()
+		at := model.NowUTC()
 		_, err = ss.RoleBinding().Save(ctx, &store.RoleBindingCreation{
 			Binding: &model.RoleBinding{
 				UserID: user.ID, RoleID: role.ID, ScopeType: model.RoleScopeInstitution,
-				ScopeID: institution.ID.String(), StartsAt: model.TimeFromMillis(at),
+				ScopeID: institution.ID.String(), StartsAt: model.TimeUTC(at),
 			},
 			AuditEventID: model.NewAuditEventID(), AuditAt: at,
 		})
@@ -56,7 +56,7 @@ func TestRoleBindingStore(t *testing.T, ss store.Store) {
 		_, err = ss.RoleBinding().Save(ctx, &store.RoleBindingCreation{
 			Binding: &model.RoleBinding{
 				UserID: user.ID, RoleID: role.ID, ScopeType: model.RoleScopeInstitution,
-				ScopeID: institution.ID.String(), StartsAt: model.TimeFromMillis(at),
+				ScopeID: institution.ID.String(), StartsAt: model.TimeUTC(at),
 			},
 			ExpectedRoleUpdatedAt: staleUpdatedAt, ExpectedRolePermissions: stalePermissions,
 			AuditEventID: attempt.ID, AuditAt: at,
@@ -68,11 +68,11 @@ func TestRoleBindingStore(t *testing.T, ss store.Store) {
 		})
 		require.NoError(t, err)
 		createNotice := classMemberPreparedMail(t, &model.ClassMember{UserID: user.ID},
-			model.MailTemplateAuthorizationInstitutionRoleAssigned, model.TimeFromMillis(at))
+			model.MailTemplateAuthorizationInstitutionRoleAssigned, model.TimeUTC(at))
 		saved, err := ss.RoleBinding().Save(ctx, &store.RoleBindingCreation{
 			Binding: &model.RoleBinding{
 				UserID: user.ID, RoleID: role.ID, ScopeType: model.RoleScopeInstitution,
-				ScopeID: institution.ID.String(), StartsAt: model.TimeFromMillis(at),
+				ScopeID: institution.ID.String(), StartsAt: model.TimeUTC(at),
 			},
 			ExpectedRoleUpdatedAt: role.UpdatedAt, ExpectedRolePermissions: append([]string(nil), role.Permissions...),
 			ExpectedRecipientRevision: user.Revision, Notice: createNotice,
@@ -88,14 +88,14 @@ func TestRoleBindingStore(t *testing.T, ss store.Store) {
 		})
 		require.NoError(t, err)
 		endNotice := classMemberPreparedMail(t, &model.ClassMember{UserID: user.ID},
-			model.MailTemplateAuthorizationInstitutionRoleEnded, model.TimeFromMillis(at+1))
+			model.MailTemplateAuthorizationInstitutionRoleEnded, model.TimeUTC(at.Add(1*time.Millisecond)))
 		ended, err := ss.RoleBinding().End(ctx, &store.RoleBindingEnd{
-			ID: saved.ID, EndAt: at + 1, ExpectedRecipientRevision: user.Revision, Notice: endNotice,
-			AuditEventID: endAttempt.ID, AuditAt: at + 1,
+			ID: saved.ID, EndAt: at.Add(1 * time.Millisecond), ExpectedRecipientRevision: user.Revision, Notice: endNotice,
+			AuditEventID: endAttempt.ID, AuditAt: at.Add(1 * time.Millisecond),
 		})
 		require.NoError(t, err)
 		require.NoError(t, requireClassMemberMail(t, ctx, ss, endNotice, model.MailTemplateAuthorizationInstitutionRoleEnded))
-		require.Equal(t, at+1, ended.EndsAt.Millis())
+		require.True(t, at.Add(1*time.Millisecond).Equal(ended.EndsAt.Time))
 	})
 	t.Run("ScopedUserProjection", func(t *testing.T) {
 		ctx := context.Background()
@@ -145,10 +145,10 @@ func TestRoleBindingStore(t *testing.T, ss store.Store) {
 		Permissions: []string{string(model.ActionClassView)},
 	})
 	require.NoError(t, err)
-	start := model.GetMillis()
+	start := model.NowUTC()
 	binding, err := SaveRoleBinding(ctx, ss, &model.RoleBinding{
 		UserID: user.ID, RoleID: role.ID, ScopeType: model.RoleScopeInstitution,
-		ScopeID: institution.ID.String(), StartsAt: model.TimeFromMillis(start),
+		ScopeID: institution.ID.String(), StartsAt: model.TimeUTC(start),
 	})
 	require.NoError(t, err)
 	require.True(t, binding.ID.IsValid())
@@ -160,7 +160,7 @@ func TestRoleBindingStore(t *testing.T, ss store.Store) {
 		ctx, model.RoleScopeInstitution, institution.ID.String(),
 	)
 	require.NoError(t, err)
-	active, err := ss.RoleBinding().ListActiveByUser(ctx, user.ID, model.TimeFromMillis(start+1))
+	active, err := ss.RoleBinding().ListActiveByUser(ctx, user.ID, model.TimeUTC(start.Add(1*time.Millisecond)))
 	require.NoError(t, err)
 	require.Equal(t, binding.ID, got.ID, "binding queries = %#v/%d/%d", got, len(byUser), len(byScope))
 	require.Len(t, byUser, 1, "binding queries = %#v/%d/%d", got, len(byUser), len(byScope))
@@ -168,18 +168,18 @@ func TestRoleBindingStore(t *testing.T, ss store.Store) {
 	require.Len(t, active, 1, "binding queries = %#v/%d/%d", got, len(byUser), len(byScope))
 	_, err = SaveRoleBinding(ctx, ss, &model.RoleBinding{
 		UserID: user.ID, RoleID: role.ID, ScopeType: model.RoleScopeInstitution,
-		ScopeID: institution.ID.String(), StartsAt: model.TimeFromMillis(start + 1),
+		ScopeID: institution.ID.String(), StartsAt: model.TimeUTC(start.Add(1 * time.Millisecond)),
 	})
 	require.True(t, store.IsConflict(err), "overlapping Save() error")
-	ended, err := EndRoleBinding(ctx, ss, binding.ID, start+2)
+	ended, err := EndRoleBinding(ctx, ss, binding.ID, start.Add(2*time.Millisecond))
 	require.NoError(t, err)
-	require.Equal(t, start+2, ended.EndsAt.Millis())
-	active, err = ss.RoleBinding().ListActiveByUser(ctx, user.ID, model.TimeFromMillis(start+3))
+	require.True(t, start.Add(2*time.Millisecond).Equal(ended.EndsAt.Time))
+	active, err = ss.RoleBinding().ListActiveByUser(ctx, user.ID, model.TimeUTC(start.Add(3*time.Millisecond)))
 	require.NoError(t, err)
 	require.Empty(t, active)
 	_, err = SaveRoleBinding(ctx, ss, &model.RoleBinding{
 		UserID: user.ID, RoleID: role.ID, ScopeType: model.RoleScopeClass,
-		ScopeID: model.NewID(), StartsAt: model.TimeFromMillis(start),
+		ScopeID: model.NewID(), StartsAt: model.TimeUTC(start),
 	})
 	var reference *store.ErrReference
 	require.ErrorAs(t, err, &reference)
@@ -192,23 +192,23 @@ func TestRoleBindingStore(t *testing.T, ss store.Store) {
 	require.NoError(t, err)
 	firstAdmin, err := SaveRoleBinding(ctx, ss, &model.RoleBinding{
 		UserID: user.ID, RoleID: adminRole.ID, ScopeType: model.RoleScopeInstitution,
-		ScopeID: institution.ID.String(), StartsAt: model.TimeFromMillis(start),
+		ScopeID: institution.ID.String(), StartsAt: model.TimeUTC(start),
 	})
 	require.NoError(t, err)
-	_, err = EndRoleBinding(ctx, ss, firstAdmin.ID, start+10)
+	_, err = EndRoleBinding(ctx, ss, firstAdmin.ID, start.Add(10*time.Millisecond))
 	require.True(t, store.IsConflict(err), "End(last system administrator) error")
 	secondUser := saveUserWithPassword(t, ctx, ss)
 	secondAdmin, err := SaveRoleBinding(ctx, ss, &model.RoleBinding{
 		UserID: secondUser.ID, RoleID: adminRole.ID, ScopeType: model.RoleScopeInstitution,
-		ScopeID: institution.ID.String(), StartsAt: model.TimeFromMillis(start),
+		ScopeID: institution.ID.String(), StartsAt: model.TimeUTC(start),
 	})
 	require.NoError(t, err)
-	_, err = EndRoleBinding(ctx, ss, firstAdmin.ID, start+10)
+	_, err = EndRoleBinding(ctx, ss, firstAdmin.ID, start.Add(10*time.Millisecond))
 	require.NoError(t, err)
 	thirdUser := saveUserWithPassword(t, ctx, ss)
 	thirdAdmin, err := SaveRoleBinding(ctx, ss, &model.RoleBinding{
 		UserID: thirdUser.ID, RoleID: adminRole.ID, ScopeType: model.RoleScopeInstitution,
-		ScopeID: institution.ID.String(), StartsAt: model.TimeFromMillis(start),
+		ScopeID: institution.ID.String(), StartsAt: model.TimeUTC(start),
 	})
 	require.NoError(t, err)
 	startRace := make(chan struct{})
@@ -220,7 +220,7 @@ func TestRoleBindingStore(t *testing.T, ss store.Store) {
 		go func() {
 			defer workers.Done()
 			<-startRace
-			_, endErr := EndRoleBinding(ctx, ss, model.RoleBindingID(id), start+20)
+			_, endErr := EndRoleBinding(ctx, ss, model.RoleBindingID(id), start.Add(20*time.Millisecond))
 			endErrors <- endErr
 		}()
 	}

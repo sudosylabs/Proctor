@@ -81,7 +81,7 @@ type ExamCorrectionResourceStageReservation struct {
 	ManagerOverride bool
 	CreatedAt       time.Time
 	AuditEventID    model.AuditEventID
-	AuditAt         int64
+	AuditAt         time.Time
 }
 
 type ExamCorrectionResourceStageReadiness struct {
@@ -120,7 +120,7 @@ type ExamCorrectionApplication struct {
 	PrivateReason           string
 	AppliedAt               time.Time
 	AuditEventID            model.AuditEventID
-	AuditAt                 int64
+	AuditAt                 time.Time
 }
 
 // ExamCorrectionResult is intentionally bounded. Full authored snapshot

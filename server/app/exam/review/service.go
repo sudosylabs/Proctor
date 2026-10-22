@@ -155,7 +155,7 @@ func (s *Service) SaveExamIntegrityDecision(ctx context.Context, invocation invo
 		SubmissionID: command.SubmissionID, ReviewID: reviewID, DecisionID: decisionID, FlagID: command.FlagID,
 		ActorUserID: principal.UserID, ManagerOverride: override, ExpectedReviewRevision: command.ExpectedReviewRevision,
 		ExpectedDecisionRevision: command.ExpectedDecisionRevision, Outcome: command.Outcome,
-		PrivateRationale: command.PrivateRationale, ChangedAt: at, AuditEventID: auditID, AuditAt: model.MillisFromTime(at),
+		PrivateRationale: command.PrivateRationale, ChangedAt: at, AuditEventID: auditID, AuditAt: at,
 	}, idempotency)
 	if err != nil {
 		return Result{}, s.failAudit(ctx, auditID, err)
@@ -224,7 +224,7 @@ func (s *Service) UpdateExamIntegrityReview(ctx context.Context, invocation invo
 		SubmissionID: command.SubmissionID, ReviewID: reviewID, ActorUserID: principal.UserID, ManagerOverride: override,
 		ExpectedReviewRevision: command.ExpectedReviewRevision, ManagerNotes: command.ManagerNotes,
 		StudentRemarksMarkdown: command.StudentRemarksMarkdown, ChangedAt: at, AuditEventID: auditID,
-		AuditAt: model.MillisFromTime(at),
+		AuditAt: at,
 	}, idempotency)
 	if err != nil {
 		return Result{}, s.failAudit(ctx, auditID, err)
@@ -349,13 +349,13 @@ func (s *Service) terminalMutation(ctx context.Context, invocation invocation.In
 		}
 		stored, err = s.deps.Persistence.Release(ctx, &store.ExamIntegrityReviewRelease{SubmissionID: submissionID,
 			ReviewID: reviewID, ActorUserID: principal.UserID, ManagerOverride: override,
-			ExpectedReviewRevision: expectedRevision, ChangedAt: at, AuditEventID: auditID, AuditAt: model.MillisFromTime(at),
+			ExpectedReviewRevision: expectedRevision, ChangedAt: at, AuditEventID: auditID, AuditAt: at,
 			CandidateUserID: authorization.CandidateUserID, Notice: notice,
 			ExpectedRecipientRevision: expectedRecipientRevision}, idempotency)
 	} else {
 		stored, err = s.deps.Persistence.Finalize(ctx, &store.ExamIntegrityReviewFinalize{SubmissionID: submissionID,
 			ReviewID: reviewID, ActorUserID: principal.UserID, ManagerOverride: override,
-			ExpectedReviewRevision: expectedRevision, ChangedAt: at, AuditEventID: auditID, AuditAt: model.MillisFromTime(at)}, idempotency)
+			ExpectedReviewRevision: expectedRevision, ChangedAt: at, AuditEventID: auditID, AuditAt: at}, idempotency)
 	}
 	if err != nil {
 		return Result{}, s.failAudit(ctx, auditID, err)

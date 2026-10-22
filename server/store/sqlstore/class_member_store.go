@@ -31,7 +31,7 @@ type SQLClassMemberStore struct {
 	query sq.SelectBuilder
 }
 
-// classMemberRow is the legacy integer-millisecond column layout.
+// classMemberRow is the class_members column layout.
 type classMemberRow struct {
 	ID                   string       `db:"id"`
 	CreatedAt            time.Time    `db:"created_at"`
@@ -81,7 +81,7 @@ func (s SQLClassMemberStore) Enroll(
 	input *store.ClassMemberEnrollment,
 ) (*store.ClassEnrollmentResult, error) {
 	if input == nil || input.Member == nil || (input.Notice == nil && input.Command == nil) || input.ExpectedRecipientRevision < 1 ||
-		!input.AuditEventID.IsValid() || input.AuditAt <= 0 {
+		!input.AuditEventID.IsValid() || input.AuditAt.IsZero() {
 		return nil, store.NewErrInvalidInput("class_member", "enrollment", nil)
 	}
 	transferExpected := input.ExpectedPreviousID.IsValid()
@@ -187,7 +187,7 @@ func completeClassProgressionAudits(ctx context.Context, tx *sqlxTxWrapper, inpu
 
 func (s SQLClassMemberStore) enrollWithTransition(ctx context.Context, candidate *model.ClassMember,
 	expectedPreviousID model.ClassMemberID, notice *store.PreparedMail, payloadKeyID string, expectedRecipientRevision int64,
-	auditEventID model.AuditEventID, previousAuditEventID model.AuditEventID, auditAt int64,
+	auditEventID model.AuditEventID, previousAuditEventID model.AuditEventID, auditAt time.Time,
 ) (*store.ClassEnrollmentResult, error) {
 	return s.enrollTransaction(ctx, candidate, expectedPreviousID, notice, payloadKeyID, expectedRecipientRevision,
 		auditEventID, previousAuditEventID, auditAt)
@@ -197,14 +197,14 @@ func (s SQLClassMemberStore) enroll(
 	ctx context.Context,
 	candidate *model.ClassMember,
 	auditEventID model.AuditEventID,
-	auditAt int64,
+	auditAt time.Time,
 ) (*store.ClassEnrollmentResult, error) {
 	return s.enrollTransaction(ctx, candidate, "", nil, "", 0, auditEventID, "", auditAt)
 }
 
 func (s SQLClassMemberStore) enrollTransaction(ctx context.Context, candidate *model.ClassMember,
 	expectedPreviousID model.ClassMemberID, notice *store.PreparedMail, payloadKeyID string, expectedRecipientRevision int64,
-	auditEventID model.AuditEventID, previousAuditEventID model.AuditEventID, auditAt int64,
+	auditEventID model.AuditEventID, previousAuditEventID model.AuditEventID, auditAt time.Time,
 ) (*store.ClassEnrollmentResult, error) {
 	result, err := runSQLTransaction(ctx, s.GetMaster().Begin, "class enrollment", func(ctx context.Context, tx *sqlxTxWrapper) (*classMemberMutationResult, error) {
 		return s.enrollInTransaction(ctx, tx, candidate, expectedPreviousID, notice, payloadKeyID, expectedRecipientRevision,
@@ -273,7 +273,7 @@ func (s SQLClassMemberStore) getClassMemberInTransaction(ctx context.Context, tx
 
 func (s SQLClassMemberStore) enrollInTransaction(ctx context.Context, tx *sqlxTxWrapper, candidate *model.ClassMember,
 	expectedPreviousID model.ClassMemberID, notice *store.PreparedMail, payloadKeyID string, expectedRecipientRevision int64,
-	auditEventID model.AuditEventID, previousAuditEventID model.AuditEventID, auditAt int64, allowNoOp, studentProgression bool,
+	auditEventID model.AuditEventID, previousAuditEventID model.AuditEventID, auditAt time.Time, allowNoOp, studentProgression bool,
 ) (*classMemberMutationResult, error) {
 	if notice != nil {
 		if err := lockClassMemberNoticeRecipient(ctx, tx, candidate.UserID, expectedRecipientRevision, notice); err != nil {
@@ -527,15 +527,15 @@ func (s SQLClassMemberStore) ListByUser(ctx context.Context, userID model.UserID
 	}).OrderBy("class_members.start_at DESC", "class_members.id"))
 }
 
-// ListByClass returns the unarchived Class Members of classID. A positive at
-// (Unix milliseconds) restricts the result to memberships active at that
+// ListByClass returns the unarchived Class Members of classID. A non-zero at
+// restricts the result to memberships active at that
 // instant; zero returns all of them.
-func (s SQLClassMemberStore) ListByClass(ctx context.Context, classID model.ClassID, at int64) ([]*model.ClassMember, error) {
+func (s SQLClassMemberStore) ListByClass(ctx context.Context, classID model.ClassID, at time.Time) ([]*model.ClassMember, error) {
 	query := s.query.Where(sq.Eq{
 		"class_members.class_id": classID, "class_members.archived_at": nil,
 	})
-	if at > 0 {
-		activeAt := model.TimeFromMillis(at)
+	if !at.IsZero() {
+		activeAt := model.TimeUTC(at)
 		query = query.Where(sq.LtOrEq{"class_members.start_at": activeAt}).
 			Where("(class_members.end_at IS NULL OR class_members.end_at > ?)", activeAt)
 	}
@@ -543,9 +543,9 @@ func (s SQLClassMemberStore) ListByClass(ctx context.Context, classID model.Clas
 }
 
 // ListActiveByUser returns the unarchived Class memberships of userID active at
-// at (Unix milliseconds).
-func (s SQLClassMemberStore) ListActiveByUser(ctx context.Context, userID model.UserID, at int64) ([]*model.ClassMember, error) {
-	activeAt := model.TimeFromMillis(at)
+// at.
+func (s SQLClassMemberStore) ListActiveByUser(ctx context.Context, userID model.UserID, at time.Time) ([]*model.ClassMember, error) {
+	activeAt := model.TimeUTC(at)
 	return s.selectMembers(ctx, s.query.Where(sq.Eq{
 		"class_members.user_id": userID, "class_members.archived_at": nil,
 	}).Where(sq.LtOrEq{"class_members.start_at": activeAt}).
@@ -558,7 +558,7 @@ func (s SQLClassMemberStore) End(
 	input *store.ClassMemberEnd,
 ) (*model.ClassMember, error) {
 	if input == nil || (input.Notice == nil && input.Command == nil) || !input.ID.IsValid() || input.ExpectedRevision <= 0 || input.ExpectedRecipientRevision < 1 ||
-		input.EndAt <= 0 || !input.AuditEventID.IsValid() || input.AuditAt <= 0 {
+		input.EndAt.IsZero() || !input.AuditEventID.IsValid() || input.AuditAt.IsZero() {
 		return nil, store.NewErrInvalidInput("class_member", "end", nil)
 	}
 	execute := func(ctx context.Context, tx *sqlxTxWrapper) (*classMemberMutationResult, error) {
@@ -594,7 +594,7 @@ func (s SQLClassMemberStore) End(
 		if err := lockClassEnrollment(ctx, tx, row.UserID, row.AcademicPeriodID); err != nil {
 			return nil, err
 		}
-		payloadKeyID, err := validateClassMemberTransitionMail(input.Notice, model.UserID(row.UserID), model.TimeFromMillis(input.EndAt),
+		payloadKeyID, err := validateClassMemberTransitionMail(input.Notice, model.UserID(row.UserID), model.TimeUTC(input.EndAt),
 			model.MailTemplateAcademicClassEnrollmentEnded)
 		if err != nil {
 			return nil, err
@@ -712,7 +712,7 @@ func (s SQLClassMemberStore) endClassMember(
 	executor sqlxExecutor,
 	id model.ClassMemberID,
 	expectedRevision int64,
-	endAt int64,
+	endAt time.Time,
 ) (*model.ClassMember, error) {
 	var row classMemberRow
 	if err := executor.GetBuilder(ctx, &row, s.query.Where(sq.Eq{
@@ -727,19 +727,17 @@ func (s SQLClassMemberStore) endClassMember(
 	if current.Revision != expectedRevision {
 		return nil, store.NewErrConflict("class_member", "class_member_changed", nil)
 	}
-	startMillis := model.MillisFromTime(current.StartsAt)
-	endMillis := current.EndsAt.Millis()
-	if endAt <= startMillis || (endMillis != 0 && endAt >= endMillis) {
+	endAt = model.TimeUTC(endAt)
+	if !endAt.After(current.StartsAt) || (current.EndsAt.Valid && !endAt.Before(current.EndsAt.Time)) {
 		return nil, store.NewErrConflict("class_member", "class_member_end_time", nil)
 	}
-	at := model.TimeFromMillis(endAt)
+	at := model.TimeUTC(endAt)
 	audienceRevisions, err := advanceClassMailAudienceRevisions(ctx, executor, current.ClassID)
 	if err != nil {
 		return nil, err
 	}
 	// The effective end may precede the row's creation or last update: a
-	// backdated relationship, a millisecond mutation instant inside the
-	// microsecond creation instant, or a peer node's clock. The modification
+	// backdated relationship, or a peer node's clock. The modification
 	// time never moves backwards; the revision guard keeps current.UpdatedAt
 	// exact.
 	result, err := executor.Exec(ctx, `
@@ -755,7 +753,7 @@ func (s SQLClassMemberStore) endClassMember(
 		return nil, err
 	}
 	current.UpdatedAt = latestTime(current.UpdatedAt, at)
-	current.EndsAt = model.OptionalTimeFromMillis(endAt)
+	current.EndsAt = model.OptionalTimeFrom(endAt)
 	current.Revision = expectedRevision + 1
 	return current, nil
 }
@@ -879,14 +877,14 @@ func (r classMemberRow) model() (*model.ClassMember, error) {
 var _ store.ClassMemberStore = (*SQLClassMemberStore)(nil)
 
 func (s SQLClassMemberStore) ListPageByClass(ctx context.Context, options store.ClassMemberPageOptions) (*store.ClassMemberPage, error) {
-	if !options.ClassID.IsValid() || options.ActiveAt < 0 || options.Limit < 1 || options.Limit > 200 ||
+	if !options.ClassID.IsValid() || options.Limit < 1 || options.Limit > 200 ||
 		options.AfterID.IsZero() != options.AfterUserID.IsZero() ||
 		(!options.AfterID.IsZero() && (!options.AfterID.IsValid() || !options.AfterUserID.IsValid())) {
 		return nil, store.NewErrInvalidInput("class_member", "page", nil)
 	}
 	query := s.query.Where(sq.Eq{"class_members.class_id": options.ClassID.String(), "class_members.archived_at": nil})
-	if options.ActiveAt > 0 {
-		at := model.TimeFromMillis(options.ActiveAt)
+	if !options.ActiveAt.IsZero() {
+		at := model.TimeUTC(options.ActiveAt)
 		query = query.Where(sq.LtOrEq{"class_members.start_at": at}).
 			Where("(class_members.end_at IS NULL OR class_members.end_at > ?)", at)
 	}
@@ -920,13 +918,13 @@ func (s SQLClassMemberStore) SeedEnroll(
 	candidate := *member
 	// AcademicPeriodID is filled from the class inside enroll before Validate.
 	candidate.PrepareCreate(id, model.NowUTC())
-	return s.enroll(ctx, &candidate, "", 0)
+	return s.enroll(ctx, &candidate, "", time.Time{})
 }
 
 // SeedEnd is an unaudited fixture write for conformance and integration tests.
 // Production code never calls it; an architecture test enforces that.
-func (s SQLClassMemberStore) SeedEnd(ctx context.Context, id model.ClassMemberID, expectedRevision, endAt int64) (*model.ClassMember, error) {
-	if !id.IsValid() || expectedRevision <= 0 || endAt <= 0 {
+func (s SQLClassMemberStore) SeedEnd(ctx context.Context, id model.ClassMemberID, expectedRevision int64, endAt time.Time) (*model.ClassMember, error) {
+	if !id.IsValid() || expectedRevision <= 0 || endAt.IsZero() {
 		return nil, store.NewErrInvalidInput("class_member", "end", nil)
 	}
 	return runSQLTransaction(ctx, s.GetMaster().Begin, "class member end", func(ctx context.Context, tx *sqlxTxWrapper) (*model.ClassMember, error) {

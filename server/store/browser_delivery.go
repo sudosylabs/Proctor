@@ -7,25 +7,29 @@
 
 package store
 
-import "github.com/sudosylabs/proctor/server/model"
+import (
+	"time"
+
+	"github.com/sudosylabs/proctor/server/model"
+)
 
 type BrowserDeliveryGapDeclaration struct {
 	Access       BrowserDeliveryAccess
 	Declaration  model.DeclareDeliveryGaps
 	AuditEventID model.AuditEventID
-	AuditAt      int64
+	AuditAt      time.Time
 }
 type BrowserDeliveryFinalDeclaration struct {
 	Access       BrowserDeliveryAccess
 	Declaration  model.FinalDeliveryDeclaration
 	AuditEventID model.AuditEventID
-	AuditAt      int64
+	AuditAt      time.Time
 }
 type BrowserDeliverySummaryUpdate struct {
 	Access       BrowserDeliveryAccess
 	Summary      model.UnretainedDeliverySummary
 	AuditEventID model.AuditEventID
-	AuditAt      int64
+	AuditAt      time.Time
 }
 
 const (

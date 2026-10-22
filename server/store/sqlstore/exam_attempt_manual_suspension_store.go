@@ -43,7 +43,7 @@ func (s *SQLExamAttemptStore) SuspendAttempt(ctx context.Context, input *store.E
 ) (*store.ExamAttemptManualSuspensionResult, error) {
 	if input == nil || command == nil || command.Operation != store.ExamAttemptSuspendOperation || command.UserID != input.ActorUserID || !input.ExamID.IsValid() || !input.SittingID.IsValid() || !input.AttemptID.IsValid() ||
 		!input.SuspensionID.IsValid() || !input.ActorUserID.IsValid() || input.ExpectedAttemptRevision < 1 ||
-		!model.IsValidAttemptSuspensionPrivateReason(input.PrivateReason) || !input.AuditEventID.IsValid() || input.AuditAt <= 0 {
+		!model.IsValidAttemptSuspensionPrivateReason(input.PrivateReason) || !input.AuditEventID.IsValid() || input.AuditAt.IsZero() {
 		return nil, store.NewErrInvalidInput("exam_attempt", "manual_suspension", nil)
 	}
 	guard := &store.ExamAttemptReallow{ExamID: input.ExamID, SittingID: input.SittingID, AttemptID: input.AttemptID,
@@ -275,7 +275,7 @@ func suspendExamAttemptByManager(ctx context.Context, tx *sqlxTxWrapper,
 }
 
 func completeExamAttemptManualSuspensionAudit(ctx context.Context, tx *sqlxTxWrapper, value examAttemptManualSuspensionOutcome,
-	replayed bool, originalAuditID string, auditID model.AuditEventID, auditAt int64,
+	replayed bool, originalAuditID string, auditID model.AuditEventID, auditAt time.Time,
 ) error {
 	data := map[string]any{"exam_id": value.ExamID, "exam_sitting_id": value.SittingID, "exam_attempt_id": value.AttemptID,
 		"participation_id": value.ParticipationID, "suspension_id": value.SuspensionID, "connection_closed": value.ConnectionClosed,

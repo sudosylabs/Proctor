@@ -17,10 +17,10 @@ import (
 // the precision preserved by durable persistence. Discard sub-microsecond
 // precision before comparisons or writes so a database round trip cannot move
 // an instant forward and invalidate a transition or concurrency check.
-// Millisecond conversions remain only for application commands and Store
-// fields that still carry Unix milliseconds; every wire timestamp uses
-// FormatRFC3339 and ParseRFC3339, and durable SQL contracts use native
-// temporal types.
+// Store contracts carry time.Time (or OptionalTime) instants, never Unix
+// milliseconds, and every wire timestamp uses FormatRFC3339 and
+// ParseRFC3339. Millisecond conversions remain only for application commands
+// and model documents that still carry Unix milliseconds.
 
 // TimeUTC returns value in UTC, truncated to microsecond precision. A zero time
 // remains zero. Truncation never extends a deadline into the future.
@@ -55,8 +55,9 @@ func NowUTC() time.Time {
 	return TimeUTC(time.Now())
 }
 
-// MillisFromTime converts a time to Unix milliseconds for a command or Store
-// field that still carries milliseconds. A zero time maps to 0.
+// MillisFromTime converts a time to Unix milliseconds for an application
+// command or model document that still carries milliseconds. A zero time maps
+// to 0.
 func MillisFromTime(value time.Time) int64 {
 	if value.IsZero() {
 		return 0
@@ -64,7 +65,7 @@ func MillisFromTime(value time.Time) int64 {
 	return value.UTC().UnixMilli()
 }
 
-// TimeFromMillis converts a Unix-millisecond command or Store value to UTC.
+// TimeFromMillis converts a Unix-millisecond command or document value to UTC.
 // A non-positive value maps to the zero time.
 func TimeFromMillis(millis int64) time.Time {
 	if millis <= 0 {
@@ -92,7 +93,7 @@ func OptionalTimeFrom(value time.Time) OptionalTime {
 	return OptionalTime{Time: TimeUTC(value), Valid: true}
 }
 
-// OptionalTimeFromMillis maps a Unix-millisecond command or Store value.
+// OptionalTimeFromMillis maps a Unix-millisecond command or document value.
 // Non-positive milliseconds become the absent optional value.
 func OptionalTimeFromMillis(millis int64) OptionalTime {
 	if millis <= 0 {
@@ -101,8 +102,8 @@ func OptionalTimeFromMillis(millis int64) OptionalTime {
 	return OptionalTime{Time: time.UnixMilli(millis).UTC(), Valid: true}
 }
 
-// Millis returns the Unix-millisecond form a command or Store field still
-// carries. Absent values return 0.
+// Millis returns the Unix-millisecond form an application command or model
+// document still carries. Absent values return 0.
 func (o OptionalTime) Millis() int64 {
 	if !o.Valid {
 		return 0

@@ -35,7 +35,7 @@ type ExamStarterWorkspaceMutation struct {
 	ExpectedDraftRevision  int64
 	ChangedAt              time.Time
 	AuditEventID           model.AuditEventID
-	AuditAt                int64
+	AuditAt                time.Time
 	EntryID                model.StarterWorkspaceEntryID
 	Recursive              bool
 	Path                   string

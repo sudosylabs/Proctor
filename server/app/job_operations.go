@@ -165,7 +165,7 @@ func (s *jobOperationsService) mutate(ctx context.Context, invocation invocation
 	if err != nil {
 		return job.View{}, err
 	}
-	updated, err := apply(ctx, target, job.AuditReference{EventID: auditID, At: s.deps.Now().UnixMilli()})
+	updated, err := apply(ctx, target, job.AuditReference{EventID: auditID, At: s.deps.Now()})
 	if err != nil {
 		_ = s.deps.Audit.Fail(ctx, auditID, "job.conflict")
 		return job.View{}, jobOperationsStoreErrors.Translate(err)

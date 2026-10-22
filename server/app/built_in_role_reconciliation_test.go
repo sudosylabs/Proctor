@@ -47,7 +47,7 @@ func TestBootstrapServiceReconcilesSystemAdministratorRoleFromRegistry(t *testin
 	require.NoError(t, service.ReconcileSystemAdministratorRole(context.Background(), invocation.Task("startup-reconciliation-test")))
 	require.NotNil(t, persistence.input, "reconciliation input was not persisted")
 	require.Equal(t, model.AllActions(), persistence.input.RequiredPermissions, "required permissions")
-	require.Equal(t, at.UnixMilli(), persistence.input.ReconciledAt, "reconciled at")
+	require.True(t, model.TimeUTC(at).Equal(persistence.input.ReconciledAt), "reconciled at")
 	event := persistence.input.AuditEvent
 	require.NotNil(t, event)
 	require.Equal(t, "role.system_admin.reconcile", event.Action)

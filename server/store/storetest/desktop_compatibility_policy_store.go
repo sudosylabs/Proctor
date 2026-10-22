@@ -195,7 +195,7 @@ func prepareDesktopCompatibilityPolicyAttemptForActor(
 	})
 	require.NoError(t, err)
 	replacement.AuditEventID = event.ID
-	replacement.AuditAt = model.MillisFromTime(event.CreatedAt)
+	replacement.AuditAt = event.CreatedAt
 }
 
 func assertDesktopCompatibilityPolicyAuditIsSafe(

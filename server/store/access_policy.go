@@ -58,7 +58,7 @@ type AccessPolicyReplacement struct {
 	Preflight    AccessPolicyPreflight
 	ActorID      model.UserID
 	AuditEventID model.AuditEventID
-	AuditAt      int64
+	AuditAt      time.Time
 }
 
 type AccessPolicyReplacementResult struct {

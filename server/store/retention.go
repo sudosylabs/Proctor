@@ -22,7 +22,7 @@ const (
 type RetentionMutation struct {
 	Principal               model.Principal
 	AuditEventID            model.AuditEventID
-	AuditAt                 int64
+	AuditAt                 time.Time
 	RecentAuthenticationTTL time.Duration
 }
 
@@ -69,7 +69,7 @@ type RetentionRecordPage struct {
 type RetentionReconciliation struct {
 	SubmissionID model.SubmissionID
 	AuditEventID model.AuditEventID
-	AuditAt      int64
+	AuditAt      time.Time
 }
 
 type RetentionReconciliationResult struct {

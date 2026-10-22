@@ -126,7 +126,7 @@ func (s *mfaMechanics) consumeSecondFactor(
 	if err != nil {
 		return err
 	}
-	if err := mfaPersistence.ConsumeSecondFactor(ctx, model.UserID(userID), proof.step, proof.recoveryHash, now.UnixMilli()); err != nil {
+	if err := mfaPersistence.ConsumeSecondFactor(ctx, model.UserID(userID), proof.step, proof.recoveryHash, now); err != nil {
 		if store.IsNotFound(err) {
 			return mfaInvalidCodeError()
 		}

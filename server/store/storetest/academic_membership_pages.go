@@ -11,6 +11,7 @@ import (
 	"context"
 	"slices"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -22,29 +23,29 @@ func testAcademicUnitMemberPaging(t *testing.T, ss store.Store) {
 	ctx := context.Background()
 	parents := saveClassFixture(t, ctx, ss)
 	scope := saveAcademicUnit(t, ctx, ss, parents.institution.ID.String(), "", "paging-unit")
-	at := model.GetMillis() + 1000
+	at := model.NowUTC().Add(1000 * time.Millisecond)
 	for i := range 5 {
 		user := saveUser(t, ctx, ss)
 		startsAt := at
 		if i == 4 {
-			startsAt = at + 100
+			startsAt = at.Add(100 * time.Millisecond)
 		}
-		candidate := &model.AcademicUnitMember{AcademicUnitID: scope.ID, UserID: user.ID, StartsAt: model.TimeFromMillis(startsAt)}
+		candidate := &model.AcademicUnitMember{AcademicUnitID: scope.ID, UserID: user.ID, StartsAt: model.TimeUTC(startsAt)}
 		member, err := ss.AcademicUnitMember().Save(ctx, candidate)
 		require.NoError(t, err)
 		if i == 0 {
-			_, err := EndAcademicUnitMember(ctx, ss, member.ID, member.Revision, at+10)
+			_, err := EndAcademicUnitMember(ctx, ss, member.ID, member.Revision, at.Add(10*time.Millisecond))
 			require.NoError(t, err)
-			next := &model.AcademicUnitMember{AcademicUnitID: scope.ID, UserID: user.ID, StartsAt: model.TimeFromMillis(at + 10)}
+			next := &model.AcademicUnitMember{AcademicUnitID: scope.ID, UserID: user.ID, StartsAt: model.TimeUTC(at.Add(10 * time.Millisecond))}
 			_, err = ss.AcademicUnitMember().Save(ctx, next)
 			require.NoError(t, err)
 		}
 	}
 	outsideUser := saveUser(t, ctx, ss)
-	_, err := ss.AcademicUnitMember().Save(ctx, &model.AcademicUnitMember{AcademicUnitID: parents.programme.AcademicUnitID, UserID: outsideUser.ID, StartsAt: model.TimeFromMillis(at)})
+	_, err := ss.AcademicUnitMember().Save(ctx, &model.AcademicUnitMember{AcademicUnitID: parents.programme.AcademicUnitID, UserID: outsideUser.ID, StartsAt: model.TimeUTC(at)})
 	require.NoError(t, err)
 
-	for _, activeAt := range []int64{0, at, at + 10, at + 200} {
+	for _, activeAt := range []time.Time{{}, at, at.Add(10 * time.Millisecond), at.Add(200 * time.Millisecond)} {
 		expected, err := ss.AcademicUnitMember().ListByAcademicUnit(ctx, scope.ID, activeAt)
 		require.NoError(t, err)
 		expectedIDs := make([]string, len(expected))
@@ -76,12 +77,11 @@ func testAcademicUnitMemberPaging(t *testing.T, ss store.Store) {
 				}
 				require.NotEmpty(t, page.Members, "empty page advertised more results")
 			}
-			require.True(t, slices.Equal(actual, expectedIDs), "effective=%d limit=%d pages=%v, want=%v", activeAt, limit, actual, expectedIDs)
+			require.True(t, slices.Equal(actual, expectedIDs), "effective=%v limit=%d pages=%v, want=%v", activeAt, limit, actual, expectedIDs)
 		}
 	}
 	for _, options := range []store.AcademicUnitMemberPageOptions{
 		{AcademicUnitID: scope.ID, Limit: 0}, {AcademicUnitID: scope.ID, Limit: 201},
-		{AcademicUnitID: scope.ID, Limit: 1, ActiveAt: -1},
 		{AcademicUnitID: scope.ID, Limit: 1, AfterID: model.NewAcademicUnitMemberID()},
 		{AcademicUnitID: scope.ID, Limit: 1, AfterUserID: model.NewUserID()},
 		{Limit: 1},
@@ -95,35 +95,35 @@ func testClassMemberPaging(t *testing.T, ss store.Store) {
 	ctx := context.Background()
 	parents := saveClassFixture(t, ctx, ss)
 	scope := saveClass(t, ctx, ss, parents.level.ID.String(), parents.period.ID.String(), "paging-class")
-	at := model.GetMillis() + 1000
+	at := model.NowUTC().Add(1000 * time.Millisecond)
 	for i := range 5 {
 		user := saveUser(t, ctx, ss)
-		_, err := ss.Affiliation().Save(ctx, &model.Affiliation{UserID: user.ID, Kind: model.AffiliationStudent, StartsAt: model.TimeFromMillis(at - 1)})
+		_, err := ss.Affiliation().Save(ctx, &model.Affiliation{UserID: user.ID, Kind: model.AffiliationStudent, StartsAt: model.TimeUTC(at.Add(-1 * time.Millisecond))})
 		require.NoError(t, err)
 		startsAt := at
 		if i == 4 {
-			startsAt = at + 100
+			startsAt = at.Add(100 * time.Millisecond)
 		}
-		candidate := &model.ClassMember{ClassID: scope.ID, UserID: user.ID, StartsAt: model.TimeFromMillis(startsAt)}
+		candidate := &model.ClassMember{ClassID: scope.ID, UserID: user.ID, StartsAt: model.TimeUTC(startsAt)}
 		enrolled, err := ss.ClassMember().SeedEnroll(ctx, candidate)
 		require.NoError(t, err)
 		member := enrolled.Membership
 		if i == 0 {
-			_, err := ss.ClassMember().SeedEnd(ctx, member.ID, member.Revision, at+10)
+			_, err := ss.ClassMember().SeedEnd(ctx, member.ID, member.Revision, at.Add(10*time.Millisecond))
 			require.NoError(t, err)
-			next := &model.ClassMember{ClassID: scope.ID, UserID: user.ID, StartsAt: model.TimeFromMillis(at + 10)}
+			next := &model.ClassMember{ClassID: scope.ID, UserID: user.ID, StartsAt: model.TimeUTC(at.Add(10 * time.Millisecond))}
 			_, err = ss.ClassMember().SeedEnroll(ctx, next)
 			require.NoError(t, err)
 		}
 	}
 	outsideClass := saveClass(t, ctx, ss, parents.level.ID.String(), parents.period.ID.String(), "paging-other-class")
 	outsideUser := saveUser(t, ctx, ss)
-	_, err := ss.Affiliation().Save(ctx, &model.Affiliation{UserID: outsideUser.ID, Kind: model.AffiliationStudent, StartsAt: model.TimeFromMillis(at - 1)})
+	_, err := ss.Affiliation().Save(ctx, &model.Affiliation{UserID: outsideUser.ID, Kind: model.AffiliationStudent, StartsAt: model.TimeUTC(at.Add(-1 * time.Millisecond))})
 	require.NoError(t, err)
-	_, err = ss.ClassMember().SeedEnroll(ctx, &model.ClassMember{ClassID: outsideClass.ID, UserID: outsideUser.ID, StartsAt: model.TimeFromMillis(at)})
+	_, err = ss.ClassMember().SeedEnroll(ctx, &model.ClassMember{ClassID: outsideClass.ID, UserID: outsideUser.ID, StartsAt: model.TimeUTC(at)})
 	require.NoError(t, err)
 
-	for _, activeAt := range []int64{0, at, at + 10, at + 200} {
+	for _, activeAt := range []time.Time{{}, at, at.Add(10 * time.Millisecond), at.Add(200 * time.Millisecond)} {
 		expected, err := ss.ClassMember().ListByClass(ctx, scope.ID, activeAt)
 		require.NoError(t, err)
 		expectedIDs := make([]string, len(expected))
@@ -155,12 +155,11 @@ func testClassMemberPaging(t *testing.T, ss store.Store) {
 				}
 				require.NotEmpty(t, page.Members, "empty page advertised more results")
 			}
-			require.True(t, slices.Equal(actual, expectedIDs), "effective=%d limit=%d pages=%v, want=%v", activeAt, limit, actual, expectedIDs)
+			require.True(t, slices.Equal(actual, expectedIDs), "effective=%v limit=%d pages=%v, want=%v", activeAt, limit, actual, expectedIDs)
 		}
 	}
 	for _, options := range []store.ClassMemberPageOptions{
 		{ClassID: scope.ID, Limit: 0}, {ClassID: scope.ID, Limit: 201},
-		{ClassID: scope.ID, Limit: 1, ActiveAt: -1},
 		{ClassID: scope.ID, Limit: 1, AfterID: model.NewClassMemberID()},
 		{ClassID: scope.ID, Limit: 1, AfterUserID: model.NewUserID()},
 		{Limit: 1},

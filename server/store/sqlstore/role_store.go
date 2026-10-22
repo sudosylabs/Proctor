@@ -63,12 +63,12 @@ func newSQLRoleStore(sqlStore *SQLStore) store.RoleStore {
 // the same transaction.
 func (s SQLRoleStore) Save(ctx context.Context, input *store.RoleCreation) (*model.Role, error) {
 	if input == nil || input.Role == nil || !input.Role.ID.IsZero() ||
-		!input.AuditEventID.IsValid() || input.AuditAt <= 0 {
+		!input.AuditEventID.IsValid() || input.AuditAt.IsZero() {
 		return nil, store.NewErrInvalidInput("role", "creation", nil)
 	}
 	candidate := input.Role.Clone()
 	candidate.BuiltIn = false
-	at := model.TimeFromMillis(input.AuditAt)
+	at := model.TimeUTC(input.AuditAt)
 	if at.IsZero() {
 		at = model.NowUTC()
 	}
@@ -183,7 +183,7 @@ func (s SQLRoleStore) selectRoles(
 // role with current bindings is a conflict.
 func (s SQLRoleStore) Update(ctx context.Context, input *store.RoleUpdate) (*model.Role, error) {
 	if input == nil || input.Role == nil || !input.Role.ID.IsValid() ||
-		!input.AuditEventID.IsValid() || input.AuditAt <= 0 {
+		!input.AuditEventID.IsValid() || input.AuditAt.IsZero() {
 		return nil, store.NewErrInvalidInput("role", "update", nil)
 	}
 	if input.Role.BuiltIn {
@@ -191,7 +191,7 @@ func (s SQLRoleStore) Update(ctx context.Context, input *store.RoleUpdate) (*mod
 	}
 	expectedUpdatedAt := input.Role.UpdatedAt
 	candidate := input.Role.Clone()
-	at := model.TimeFromMillis(input.AuditAt)
+	at := model.TimeUTC(input.AuditAt)
 	if at.IsZero() {
 		at = model.NowUTC()
 	}
@@ -257,8 +257,8 @@ func updateRole(ctx context.Context, executor sqlxExecutor, role *model.Role, ex
 // Archive archives the custom role at input.ArchiveAt and completes its audit
 // event; built-in roles are protected.
 func (s SQLRoleStore) Archive(ctx context.Context, input *store.RoleArchive) (*model.Role, error) {
-	if input == nil || !input.ID.IsValid() || input.ArchiveAt <= 0 ||
-		!input.AuditEventID.IsValid() || input.AuditAt <= 0 {
+	if input == nil || !input.ID.IsValid() || input.ArchiveAt.IsZero() ||
+		!input.AuditEventID.IsValid() || input.AuditAt.IsZero() {
 		return nil, store.NewErrInvalidInput("role", "archive", nil)
 	}
 	return runSQLTransaction(ctx, s.GetMaster().Begin, "audited role archive", func(ctx context.Context, tx *sqlxTxWrapper) (*model.Role, error) {
@@ -281,7 +281,7 @@ func (s SQLRoleStore) Archive(ctx context.Context, input *store.RoleArchive) (*m
 		if err := archiveRole(ctx, tx, input.ID.String(), input.ArchiveAt); err != nil {
 			return nil, err
 		}
-		at := model.TimeFromMillis(input.ArchiveAt)
+		at := model.TimeUTC(input.ArchiveAt)
 		role.UpdatedAt = at
 		role.ArchivedAt = model.OptionalTimeFrom(at)
 		encoded, appErr := model.EncodeAuditData(role.Auditable())
@@ -297,10 +297,10 @@ func (s SQLRoleStore) Archive(ctx context.Context, input *store.RoleArchive) (*m
 	})
 }
 
-func archiveRole(ctx context.Context, executor sqlxExecutor, id string, archiveAt int64) error {
+func archiveRole(ctx context.Context, executor sqlxExecutor, id string, archiveAt time.Time) error {
 	result, err := executor.Exec(ctx, `
 		UPDATE roles SET updated_at = ?, archived_at = ?
-		 WHERE id = ? AND archived_at IS NULL AND built_in = false`, model.TimeFromMillis(archiveAt), model.TimeFromMillis(archiveAt), id)
+		 WHERE id = ? AND archived_at IS NULL AND built_in = false`, model.TimeUTC(archiveAt), model.TimeUTC(archiveAt), id)
 	if err != nil {
 		return fmt.Errorf("archive role: %w", err)
 	}

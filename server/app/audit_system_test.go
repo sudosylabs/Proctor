@@ -81,9 +81,7 @@ type completionContextAuditStore struct {
 	completionErr error
 }
 
-func (f *completionContextAuditStore) Complete(ctx context.Context, id model.AuditEventID, status model.AuditStatus,
-	errorCode string, _ []byte, _ int64,
-) (*model.AuditEvent, error) {
+func (f *completionContextAuditStore) Complete(ctx context.Context, id model.AuditEventID, status model.AuditStatus, errorCode string, _ []byte, _ time.Time) (*model.AuditEvent, error) {
 	f.completionErr = ctx.Err()
 	return &model.AuditEvent{ID: id, Status: status, ErrorCode: errorCode}, nil
 }

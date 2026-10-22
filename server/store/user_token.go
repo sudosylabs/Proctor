@@ -56,7 +56,7 @@ type UserEmailChange struct {
 	WarningDelivery, VerificationDelivery     *model.MailDelivery
 	WarningJob, VerificationJob               *model.Job
 	AuditEventID                              model.AuditEventID
-	AuditAt                                   int64
+	AuditAt                                   time.Time
 }
 
 type UserEmailChangeResult struct {
@@ -73,7 +73,7 @@ type PrivilegedEmailVerification struct {
 	Delivery         *model.MailDelivery
 	Job              *model.Job
 	AuditEventID     model.AuditEventID
-	AuditAt          int64
+	AuditAt          time.Time
 }
 
 // PasswordResetCompletion is the named aggregate that consumes one reset
@@ -82,7 +82,7 @@ type PrivilegedEmailVerification struct {
 type PasswordResetCompletion struct {
 	TokenHash        string
 	PasswordHash     string
-	At               int64
+	At               time.Time
 	RevocationReason model.SessionRevocationReason
 	AuditEvent       *model.AuditEvent
 	Occurrence       *model.MailOccurrence
@@ -107,10 +107,10 @@ type UserTokenStore interface {
 		model.UserTokenPurpose,
 	) (*model.UserToken, error)
 	ConsumeEmailVerification(
-		context.Context,
-		string,
-		int64,
-		*model.AuditEvent,
+		ctx context.Context,
+		tokenHash string,
+		consumedAt time.Time,
+		auditEvent *model.AuditEvent,
 	) (*EmailVerificationResult, error)
 	ConsumePasswordReset(
 		context.Context,

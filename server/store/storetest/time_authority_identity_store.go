@@ -110,7 +110,7 @@ func RunTimeAuthorityInvitationTransitions(t *testing.T, ss store.Store, probe T
 		audit := saveInvitationLifecycleAuditAttempt(t, ctx, ss, inviter.ID, class.ID.String(), "invitation.resend")
 		resent, err := ss.Invitation().Resend(ctx, &store.InvitationResend{ID: invitation.ID, ExpectedRevision: invitation.Revision,
 			ClaimHash: model.HashInvitationClaim(model.NewCredentialToken()), Occurrence: occurrence, Delivery: delivery, DeliveryJob: job,
-			ActorUserID: inviter.ID, AuditEventID: audit.ID, AuditAt: model.GetMillis()})
+			ActorUserID: inviter.ID, AuditEventID: audit.ID, AuditAt: model.NowUTC()})
 		require.NoError(t, err)
 		requireTimeAuthorityInvitationPersisted(t, ctx, ss, resent.Invitation, invitation, model.InvitationPending)
 	})
@@ -119,7 +119,7 @@ func RunTimeAuthorityInvitationTransitions(t *testing.T, ss store.Store, probe T
 		invitation, class, inviter := timeAuthorityStudentInvitation(t, ctx, ss, probe, "revoke", "")
 		audit := saveInvitationLifecycleAuditAttempt(t, ctx, ss, inviter.ID, class.ID.String(), "invitation.revoke")
 		revoked, err := ss.Invitation().Revoke(ctx, &store.InvitationRevocation{ID: invitation.ID, ExpectedRevision: invitation.Revision,
-			ActorUserID: inviter.ID, AuditEventID: audit.ID, AuditAt: model.GetMillis()})
+			ActorUserID: inviter.ID, AuditEventID: audit.ID, AuditAt: model.NowUTC()})
 		require.NoError(t, err)
 		requireTimeAuthorityInvitationPersisted(t, ctx, ss, revoked.Invitation, invitation, model.InvitationRevoked)
 	})
@@ -139,7 +139,7 @@ func RunTimeAuthorityInvitationTransitions(t *testing.T, ss store.Store, probe T
 		_, err := ss.Invitation().Replace(ctx, &store.InvitationReplacement{CurrentID: invitation.ID,
 			ExpectedCurrentRevision: invitation.Revision, Replacement: &candidate, Lifetime: model.InvitationLifetime,
 			Occurrence: occurrence, Delivery: delivery, DeliveryJob: job, ActorUserID: inviter.ID,
-			CurrentAuditEventID: currentAudit.ID, ReplacementAuditEventID: replacementAudit.ID, AuditAt: model.GetMillis()})
+			CurrentAuditEventID: currentAudit.ID, ReplacementAuditEventID: replacementAudit.ID, AuditAt: model.NowUTC()})
 		require.NoError(t, err)
 		superseded, err := ss.Invitation().Get(ctx, invitation.ID)
 		require.NoError(t, err)
@@ -192,8 +192,8 @@ func RunTimeAuthorityUserDisable(t *testing.T, ss store.Store, probe TimeAuthori
 	require.NoError(t, err)
 	attempt := saveUserProfileAuditAttempt(t, ctx, ss, user.ID.String())
 	result, err := ss.User().SetDisabled(ctx, UserDisabledStateChangeWithNotice(t, &store.UserDisabledStateChange{
-		ID: user.ID, ExpectedRevision: led.Revision, Disabled: true, ChangedAt: model.GetMillis(),
-		RevocationReason: model.SessionRevocationAccountDisabled, AuditEventID: attempt.ID, AuditAt: model.MillisFromTime(attempt.CreatedAt),
+		ID: user.ID, ExpectedRevision: led.Revision, Disabled: true, ChangedAt: model.NowUTC(),
+		RevocationReason: model.SessionRevocationAccountDisabled, AuditEventID: attempt.ID, AuditAt: attempt.CreatedAt,
 		Capabilities: store.AccessDeploymentCapabilities{Providers: map[string]store.AccessProviderCapability{}},
 	}))
 	require.NoError(t, err)

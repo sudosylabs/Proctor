@@ -139,7 +139,7 @@ func (h retentionHandler) reconcilePage(ctx context.Context, e job.Execution, co
 			if err != nil {
 				return err
 			}
-			result, err := h.records.ReconcileSubmission(ctx, &store.RetentionReconciliation{SubmissionID: id, AuditEventID: auditID, AuditAt: model.MillisFromTime(h.now())})
+			result, err := h.records.ReconcileSubmission(ctx, &store.RetentionReconciliation{SubmissionID: id, AuditEventID: auditID, AuditAt: h.now()})
 			if err != nil {
 				return errors.Join(err, h.audit.FailRetention(ctx, auditID))
 			}

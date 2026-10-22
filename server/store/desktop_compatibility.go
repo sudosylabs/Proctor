@@ -9,6 +9,7 @@ package store
 
 import (
 	"context"
+	"time"
 
 	"github.com/sudosylabs/proctor/server/model"
 )
@@ -20,7 +21,7 @@ type DesktopCompatibilityPolicyReplacement struct {
 	ExpectedRevision int64
 	Settings         model.DesktopCompatibilityPolicySettings
 	AuditEventID     model.AuditEventID
-	AuditAt          int64
+	AuditAt          time.Time
 }
 
 // DesktopCompatibilityPolicyReplacementResult reports the authoritative

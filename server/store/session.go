@@ -27,10 +27,10 @@ type SessionRevocation struct {
 	Occurrence   *model.MailOccurrence
 	Delivery     *model.MailDelivery
 	DeliveryJob  *model.Job
-	RevokedAt    int64
+	RevokedAt    time.Time
 	Reason       model.SessionRevocationReason
 	AuditEventID model.AuditEventID
-	AuditAt      int64
+	AuditAt      time.Time
 }
 
 // SessionRevocationResult contains the revoked session and token hashes needed
@@ -60,10 +60,10 @@ type UserSessionsRevocation struct {
 	Occurrence   *model.MailOccurrence
 	Delivery     *model.MailDelivery
 	DeliveryJob  *model.Job
-	RevokedAt    int64
+	RevokedAt    time.Time
 	Reason       model.SessionRevocationReason
 	AuditEventID model.AuditEventID
-	AuditAt      int64
+	AuditAt      time.Time
 	Command      *CommandIdempotency
 	Replayed     bool
 	NoOp         bool
@@ -94,7 +94,7 @@ type SessionStore interface {
 	// has no actor and is a compensation rather than a decision, so the
 	// Session's closed revocation reason is its durable record. Any other
 	// reason is rejected.
-	Withdraw(context.Context, model.SessionID, model.UserID, int64, model.SessionRevocationReason) ([]string, error)
+	Withdraw(ctx context.Context, id model.SessionID, userID model.UserID, revokedAt time.Time, reason model.SessionRevocationReason) ([]string, error)
 	Revoke(context.Context, *SessionRevocation) (*SessionRevocationResult, error)
 	RevokeAllForUser(context.Context, *UserSessionsRevocation) (*UserSessionsRevocationResult, error)
 	// PurgeRetired deletes retired Sessions and their credentials once their
@@ -169,7 +169,7 @@ type SessionCreation struct {
 	// AuditEventID is the issuing login's persisted attempt. Creation completes
 	// it with the Session projection in the same transaction.
 	AuditEventID model.AuditEventID
-	AuditAt      int64
+	AuditAt      time.Time
 }
 
 type SessionRotation struct {

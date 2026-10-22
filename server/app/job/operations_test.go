@@ -109,7 +109,7 @@ func TestEnginePreparesAndAppliesDescriptorGovernedControls(t *testing.T) {
 	require.NoError(t, err, "PrepareCancellation()")
 	require.Equal(t, queued.ID, target.View().ID, "PrepareCancellation()")
 	target.Projection.ID = model.NewJobID()
-	audit := AuditReference{EventID: model.NewAuditEventID(), At: at.Add(time.Second).UnixMilli()}
+	audit := AuditReference{EventID: model.NewAuditEventID(), At: at.Add(time.Second)}
 	_, err = engine.Cancel(context.Background(), target, AuditReference{})
 	require.ErrorIs(t, err, ErrCancelUnsupported, "Cancel() with missing audit")
 	require.Nil(t, persistence.mutation, "Cancel() with missing audit")

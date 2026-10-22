@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 	"unicode/utf8"
 )
 
@@ -33,10 +34,10 @@ type ClusterDiscoveryNode struct {
 	ServerVersion    string
 	ProtocolMin      int
 	ProtocolMax      int
-	// ExpiresAt is the exclusive liveness deadline in UTC milliseconds.
-	ExpiresAt int64
-	// UpdatedAt is the last successful upsert/heartbeat time in UTC milliseconds.
-	UpdatedAt int64
+	// ExpiresAt is the exclusive liveness deadline.
+	ExpiresAt time.Time
+	// UpdatedAt is the last successful upsert/heartbeat time.
+	UpdatedAt time.Time
 }
 
 // Validate checks local discovery-record invariants without I/O.
@@ -63,15 +64,15 @@ func (n *ClusterDiscoveryNode) Validate() error {
 	if n.ProtocolMin <= 0 || n.ProtocolMax < n.ProtocolMin {
 		return fmt.Errorf("cluster discovery protocol range is invalid")
 	}
-	if n.UpdatedAt <= 0 || n.ExpiresAt <= n.UpdatedAt {
+	if n.UpdatedAt.IsZero() || !n.ExpiresAt.After(n.UpdatedAt) {
 		return fmt.Errorf("cluster discovery lifetime is invalid")
 	}
 	return nil
 }
 
 // IsLive reports whether the record is still within its exclusive expiry window.
-func (n *ClusterDiscoveryNode) IsLive(nowMillis int64) bool {
-	return n != nil && nowMillis > 0 && n.ExpiresAt > nowMillis
+func (n *ClusterDiscoveryNode) IsLive(now time.Time) bool {
+	return n != nil && !now.IsZero() && n.ExpiresAt.After(now)
 }
 
 // ClusterDiscoveryStore persists short-lived multi-node bootstrap records.
@@ -81,13 +82,14 @@ type ClusterDiscoveryStore interface {
 	// Upsert inserts or replaces the node record. The supplied ExpiresAt is
 	// authoritative for the new lease window.
 	Upsert(context.Context, *ClusterDiscoveryNode) error
-	// ListLive returns non-expired peers ordered by node ID. nowMillis is the
-	// exclusive liveness threshold (ExpiresAt > nowMillis).
-	ListLive(context.Context, int64) ([]*ClusterDiscoveryNode, error)
+	// ListLive returns non-expired peers ordered by node ID. liveAt is the
+	// exclusive liveness threshold (ExpiresAt after liveAt).
+	ListLive(ctx context.Context, liveAt time.Time) ([]*ClusterDiscoveryNode, error)
 	// Delete removes one node record, typically on graceful shutdown.
 	Delete(context.Context, string) error
 	// DeleteExpired removes stale records and returns the number of rows deleted.
-	DeleteExpired(context.Context, int64) (int64, error)
+	// expiredAt is the inclusive expiry threshold (ExpiresAt at or before it).
+	DeleteExpired(ctx context.Context, expiredAt time.Time) (int64, error)
 }
 
 func validClusterDiscoveryName(value string) bool {

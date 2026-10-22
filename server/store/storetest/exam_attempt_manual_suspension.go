@@ -32,7 +32,7 @@ func TestExamAttemptManualSuspensionStore(t *testing.T, ss store.Store) {
 		DPoPKeyThumbprint: fixture.session.DPoPKeyThumbprint, AttemptID: model.NewExamAttemptID(),
 		WorkspaceID: model.NewExamAttemptWorkspaceID(), ParticipationID: model.NewAttemptParticipationID(),
 		ConnectionID: model.NewAttemptConnectionID(), ContinuityCredentialHash: model.HashToken(model.NewCredentialToken()),
-		AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.GetMillis(),
+		AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.NowUTC(),
 	}
 	prepareExamAttemptConnect(t, ctx, ss, input)
 	connected, err := ss.ExamAttempt().Connect(ctx, input,
@@ -43,7 +43,7 @@ func TestExamAttemptManualSuspensionStore(t *testing.T, ss store.Store) {
 		return &store.ExamAttemptManualSuspension{ExamID: fixture.examID, SittingID: fixture.sitting.ID,
 			AttemptID: connected.Attempt.ID, SuspensionID: model.NewAttemptSuspensionID(), ActorUserID: actor,
 			ManagerOverride: override, ExpectedAttemptRevision: revision, PrivateReason: privateReason,
-			AuditEventID: saveExamAttemptReallowAudit(t, ctx, ss, fixture).ID, AuditAt: model.GetMillis()}
+			AuditEventID: saveExamAttemptReallowAudit(t, ctx, ss, fixture).ID, AuditAt: model.NowUTC()}
 	}
 
 	self := kick(fixture.candidate.ID, true, connected.Attempt.Revision)
@@ -114,7 +114,7 @@ func TestExamAttemptManualSuspensionStore(t *testing.T, ss store.Store) {
 	reallowed, err := ss.ExamAttempt().ReallowAttempt(ctx, &store.ExamAttemptReallow{ExamID: fixture.examID,
 		SittingID: fixture.sitting.ID, AttemptID: connected.Attempt.ID, SuspensionID: first.SuspensionID,
 		ActorUserID: fixture.manager.ID, ExpectedAttemptRevision: kicked.Attempt.Revision, PrivateReason: "candidate returned",
-		AuditEventID: saveExamAttemptReallowAudit(t, ctx, ss, fixture).ID, AuditAt: model.GetMillis()},
+		AuditEventID: saveExamAttemptReallowAudit(t, ctx, ss, fixture).ID, AuditAt: model.NowUTC()},
 		examCommand(fixture.manager.ID, store.ExamAttemptReallowOperation, "kick-reallow", "kick-reallow"))
 	require.NoError(t, err)
 	require.Equal(t, model.ExamAttemptReady, reallowed.Attempt.State)
@@ -126,7 +126,7 @@ func TestExamAttemptManualSuspensionStore(t *testing.T, ss store.Store) {
 	// Exact replay returns the original kick even after the episode closed.
 	replay := *first
 	replay.SuspensionID = model.NewAttemptSuspensionID()
-	replay.AuditEventID, replay.AuditAt = saveExamAttemptReallowAudit(t, ctx, ss, fixture).ID, model.GetMillis()
+	replay.AuditEventID, replay.AuditAt = saveExamAttemptReallowAudit(t, ctx, ss, fixture).ID, model.NowUTC()
 	replayed, err := ss.ExamAttempt().SuspendAttempt(ctx, &replay, command)
 	require.NoError(t, err)
 	require.True(t, replayed.Replayed)
@@ -164,7 +164,7 @@ func TestExamAttemptManualSuspensionBounds(t *testing.T, ss store.Store, probe E
 			DPoPKeyThumbprint: fixture.session.DPoPKeyThumbprint, AttemptID: model.NewExamAttemptID(),
 			WorkspaceID: model.NewExamAttemptWorkspaceID(), ParticipationID: model.NewAttemptParticipationID(),
 			ConnectionID: model.NewAttemptConnectionID(), ContinuityCredentialHash: model.HashToken(model.NewCredentialToken()),
-			AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.GetMillis(),
+			AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.NowUTC(),
 		}
 		prepareExamAttemptConnect(t, ctx, ss, input)
 		connected, err := ss.ExamAttempt().Connect(ctx, input,
@@ -177,7 +177,7 @@ func TestExamAttemptManualSuspensionBounds(t *testing.T, ss store.Store, probe E
 			SittingID: fixture.sitting.ID, AttemptID: connected.Attempt.ID, SuspensionID: model.NewAttemptSuspensionID(),
 			ActorUserID: fixture.manager.ID, ExpectedAttemptRevision: connected.Attempt.Revision,
 			PrivateReason: "candidate left the examination room",
-			AuditEventID:  saveExamAttemptReallowAudit(t, ctx, ss, fixture).ID, AuditAt: model.GetMillis()},
+			AuditEventID:  saveExamAttemptReallowAudit(t, ctx, ss, fixture).ID, AuditAt: model.NowUTC()},
 			examCommand(fixture.manager.ID, store.ExamAttemptSuspendOperation, key, key))
 		return err
 	}
@@ -203,7 +203,7 @@ func TestExamAttemptManualSuspensionBounds(t *testing.T, ss store.Store, probe E
 	expired, err := ss.ExamAttempt().ExpireParticipation(ctx, &store.ExamAttemptParticipationExpiry{
 		AttemptID: due.AttemptID, ParticipationID: due.ParticipationID, Generation: due.Generation,
 		EvidenceID: model.NewIntegrityEvidenceID(), FlagID: model.NewIntegrityFlagID(), SuspensionID: model.NewAttemptSuspensionID(),
-		AuditEventID: saveExamAttemptSystemAudit(t, ctx, ss, lapsed).ID, AuditAt: model.GetMillis(),
+		AuditEventID: saveExamAttemptSystemAudit(t, ctx, ss, lapsed).ID, AuditAt: model.NowUTC(),
 	})
 	require.NoError(t, err)
 	require.False(t, expired.Replayed)
@@ -236,7 +236,7 @@ func TestExamAttemptManagementLockAdmitsSittingRenewals(t *testing.T, ss store.S
 		DPoPKeyThumbprint: fixture.session.DPoPKeyThumbprint, AttemptID: model.NewExamAttemptID(),
 		WorkspaceID: model.NewExamAttemptWorkspaceID(), ParticipationID: model.NewAttemptParticipationID(),
 		ConnectionID: model.NewAttemptConnectionID(), ContinuityCredentialHash: model.HashToken(model.NewCredentialToken()),
-		AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.GetMillis(),
+		AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.NowUTC(),
 	}
 	prepareExamAttemptConnect(t, ctx, ss, kicked)
 	_, err := ss.ExamAttempt().Connect(ctx, kicked,
@@ -258,7 +258,7 @@ func TestExamAttemptManagementLockAdmitsSittingRenewals(t *testing.T, ss store.S
 		DesktopRegistrationID: session.DesktopRegistrationID, DPoPKeyThumbprint: session.DPoPKeyThumbprint,
 		AttemptID: model.NewExamAttemptID(), WorkspaceID: model.NewExamAttemptWorkspaceID(), ParticipationID: model.NewAttemptParticipationID(),
 		ConnectionID: model.NewAttemptConnectionID(), ContinuityCredentialHash: credentialHash,
-		AuditEventID: saveExamAttemptAudit(t, ctx, ss, peer).ID, AuditAt: model.GetMillis()}
+		AuditEventID: saveExamAttemptAudit(t, ctx, ss, peer).ID, AuditAt: model.NowUTC()}
 	prepareExamAttemptConnect(t, ctx, ss, renewing)
 	connected, err := ss.ExamAttempt().Connect(ctx, renewing,
 		examCommand(candidate.ID, store.ExamAttemptConnectOperation, "lock-renewing", "lock-renewing"))

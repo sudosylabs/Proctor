@@ -112,7 +112,7 @@ func (s *institutionService) UpdateInstitution(
 		s.deps.Now,
 		func(ctx context.Context, reference mutationAttemptReference) (*model.Institution, error) {
 			return s.deps.Store.Update(ctx, &store.InstitutionUpdate{
-				Institution: &candidate, AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis,
+				Institution: &candidate, AuditEventID: reference.ID, AuditAt: reference.MutationAt,
 			})
 		},
 		institutionStoreErrors.Translate,

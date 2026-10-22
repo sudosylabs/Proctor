@@ -86,7 +86,7 @@ func (s *desktopRegistrationService) RevokeDesktopRegistration(
 	}
 	result, err := s.deps.Registrations.Revoke(ctx, &store.DesktopRegistrationRevocation{
 		RegistrationID: registrationID, UserID: principal.UserID,
-		RevokedAt: at.UnixMilli(), AuditEventID: auditID, AuditAt: at.UnixMilli(),
+		RevokedAt: at, AuditEventID: auditID, AuditAt: at,
 	})
 	if err != nil {
 		failure := desktopRegistrationStoreErrors.Translate(err)

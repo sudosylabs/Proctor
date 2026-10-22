@@ -166,7 +166,7 @@ func (s *academicPeriodService) CreateAcademicPeriod(ctx context.Context, invoca
 		s.deps.Now,
 		func(ctx context.Context, reference mutationAttemptReference) (*store.AcademicPeriodCommandResult, error) {
 			input := &store.AcademicPeriodCreation{
-				Period: candidate, AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis,
+				Period: candidate, AuditEventID: reference.ID, AuditAt: reference.MutationAt,
 			}
 			if idempotency == nil {
 				period, createErr := s.deps.Store.Create(ctx, input)
@@ -240,7 +240,7 @@ func (s *academicPeriodService) UpdateAcademicPeriod(ctx context.Context, invoca
 		s.deps.Now,
 		func(ctx context.Context, reference mutationAttemptReference) (*model.AcademicPeriod, error) {
 			return s.deps.Store.Update(ctx, &store.AcademicPeriodUpdate{
-				Period: &candidate, AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis,
+				Period: &candidate, AuditEventID: reference.ID, AuditAt: reference.MutationAt,
 			})
 		},
 		academicPeriodStoreErrors.Translate,
@@ -279,8 +279,8 @@ func (s *academicPeriodService) ArchiveAcademicPeriod(ctx context.Context, invoc
 		func(ctx context.Context, reference mutationAttemptReference) (*model.AcademicPeriod, error) {
 			return s.deps.Store.Archive(ctx, &store.AcademicPeriodArchive{
 				ExpectedRevision: current.Revision,
-				ID:               current.ID, ArchiveAt: reference.MutationAtMillis,
-				AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis,
+				ID:               current.ID, ArchiveAt: reference.MutationAt,
+				AuditEventID: reference.ID, AuditAt: reference.MutationAt,
 			})
 		},
 		academicPeriodStoreErrors.Translate,

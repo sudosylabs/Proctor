@@ -58,7 +58,7 @@ func TestExamExportRetention(t *testing.T, ss store.Store, dates RetentionSQLPro
 	mutation := func(action model.Action) store.RetentionMutation {
 		a, err := ss.Audit().Save(ctx, &model.AuditEvent{ActorID: principal.UserID, SessionID: principal.SessionID, Action: string(action), Resource: model.Resource{Type: model.ResourceInstitution, ID: f.institutionID.String()}, ScopeType: model.RoleScopeInstitution, ScopeID: f.institutionID.String(), Status: model.AuditStatusAttempt, NodeID: "export-retention"})
 		require.NoError(t, err)
-		return store.RetentionMutation{Principal: principal, AuditEventID: a.ID, AuditAt: model.GetMillis(), RecentAuthenticationTTL: 10 * time.Minute}
+		return store.RetentionMutation{Principal: principal, AuditEventID: a.ID, AuditAt: model.NowUTC(), RecentAuthenticationTTL: 10 * time.Minute}
 	}
 	preview, err := ss.Retention().CreatePreview(ctx, &store.RetentionPreviewCreation{RetentionMutation: mutation(model.ActionRetentionPolicyView), PreviewID: model.NewRetentionPreviewID(), ExpectedPolicyRevision: policy.Revision}, examCommand(f.manager.ID, store.RetentionPreviewOperation, "export-retention-preview", "export-retention-preview"))
 	require.NoError(t, err)
@@ -73,7 +73,7 @@ func TestExamExportRetention(t *testing.T, ss store.Store, dates RetentionSQLPro
 	reconcile := func(expected store.RetentionReconciliationResult) {
 		a, err := ss.Audit().Save(ctx, &model.AuditEvent{Action: string(model.ActionRetentionCleanupManage), Resource: model.Resource{Type: model.ResourceSubmission, ID: id.String()}, ScopeType: model.RoleScopeInstitution, ScopeID: f.institutionID.String(), Status: model.AuditStatusAttempt, NodeID: "export-retention-peer"})
 		require.NoError(t, err)
-		result, err := peer.ReconcileSubmission(ctx, &store.RetentionReconciliation{SubmissionID: id, AuditEventID: a.ID, AuditAt: model.GetMillis()})
+		result, err := peer.ReconcileSubmission(ctx, &store.RetentionReconciliation{SubmissionID: id, AuditEventID: a.ID, AuditAt: model.NowUTC()})
 		require.NoError(t, err)
 		require.NotNil(t, result, "reconcile")
 		require.Equal(t, expected, *result, "reconcile")

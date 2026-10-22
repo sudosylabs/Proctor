@@ -47,7 +47,7 @@ func testProgrammeLevelStoreMutationAuditAtomicity(t *testing.T, ss store.Store)
 	createAttempt := saveProgrammeLevelAuditAttempt(t, ctx, ss, unit.ID.String())
 	candidate := &model.ProgrammeLevel{ProgrammeID: programme.ID, Name: "audited-level", DisplayName: "Audited Level"}
 	candidate.PrepareCreate(model.ProgrammeLevelID(model.NewID()), model.NowUTC())
-	created, err := ss.ProgrammeLevel().Create(ctx, &store.ProgrammeLevelCreation{Level: candidate, AuditEventID: createAttempt.ID, AuditAt: model.GetMillis()})
+	created, err := ss.ProgrammeLevel().Create(ctx, &store.ProgrammeLevelCreation{Level: candidate, AuditEventID: createAttempt.ID, AuditAt: model.NowUTC()})
 	require.NoError(t, err)
 	completed, err := ss.Audit().Get(ctx, createAttempt.ID)
 	require.NoError(t, err)
@@ -55,7 +55,7 @@ func testProgrammeLevelStoreMutationAuditAtomicity(t *testing.T, ss store.Store)
 
 	rolledBackCreate := &model.ProgrammeLevel{ProgrammeID: programme.ID, Name: "rolled-back-create", DisplayName: "Rolled Back Create"}
 	rolledBackCreate.PrepareCreate(model.ProgrammeLevelID(model.NewID()), model.NowUTC())
-	_, err = ss.ProgrammeLevel().Create(ctx, &store.ProgrammeLevelCreation{Level: rolledBackCreate, AuditEventID: model.NewAuditEventID(), AuditAt: model.GetMillis()})
+	_, err = ss.ProgrammeLevel().Create(ctx, &store.ProgrammeLevelCreation{Level: rolledBackCreate, AuditEventID: model.NewAuditEventID(), AuditAt: model.NowUTC()})
 	require.Error(t, err, "Create() succeeded without its audit attempt")
 	_, err = ss.ProgrammeLevel().Get(ctx, rolledBackCreate.ID)
 	require.True(t, store.IsNotFound(err), "create survived audit rollback")
@@ -64,7 +64,7 @@ func testProgrammeLevelStoreMutationAuditAtomicity(t *testing.T, ss store.Store)
 	updatedCandidate := *created
 	updatedCandidate.DisplayName = "Updated Level"
 	updatedCandidate.PrepareUpdate(model.NowUTC())
-	updated, err := ss.ProgrammeLevel().Update(ctx, &store.ProgrammeLevelUpdate{Level: &updatedCandidate, AuditEventID: updateAttempt.ID, AuditAt: model.GetMillis()})
+	updated, err := ss.ProgrammeLevel().Update(ctx, &store.ProgrammeLevelUpdate{Level: &updatedCandidate, AuditEventID: updateAttempt.ID, AuditAt: model.NowUTC()})
 	require.NoError(t, err)
 	completed, err = ss.Audit().Get(ctx, updateAttempt.ID)
 	require.NoError(t, err)
@@ -73,25 +73,25 @@ func testProgrammeLevelStoreMutationAuditAtomicity(t *testing.T, ss store.Store)
 	stale := *created
 	stale.DisplayName = "Stale Level"
 	stale.PrepareUpdate(model.NowUTC())
-	_, err = ss.ProgrammeLevel().Update(ctx, &store.ProgrammeLevelUpdate{Level: &stale, AuditEventID: staleAttempt.ID, AuditAt: model.GetMillis()})
+	_, err = ss.ProgrammeLevel().Update(ctx, &store.ProgrammeLevelUpdate{Level: &stale, AuditEventID: staleAttempt.ID, AuditAt: model.NowUTC()})
 	require.True(t, store.IsConflict(err), "stale Update() error")
 
 	rolledBack := *updated
 	rolledBack.DisplayName = "Must Roll Back"
 	rolledBack.PrepareUpdate(model.NowUTC())
-	_, err = ss.ProgrammeLevel().Update(ctx, &store.ProgrammeLevelUpdate{Level: &rolledBack, AuditEventID: model.NewAuditEventID(), AuditAt: model.GetMillis()})
+	_, err = ss.ProgrammeLevel().Update(ctx, &store.ProgrammeLevelUpdate{Level: &rolledBack, AuditEventID: model.NewAuditEventID(), AuditAt: model.NowUTC()})
 	require.Error(t, err, "Update() succeeded without its audit attempt")
 	persisted, err := ss.ProgrammeLevel().Get(ctx, updated.ID)
 	require.NoError(t, err)
 	require.Equal(t, updated.DisplayName, persisted.DisplayName)
 
 	archiveAttempt := saveProgrammeLevelAuditAttempt(t, ctx, ss, unit.ID.String())
-	archived, err := ss.ProgrammeLevel().Archive(ctx, &store.ProgrammeLevelArchive{ID: updated.ID, ArchiveAt: model.GetMillis(), AuditEventID: archiveAttempt.ID, AuditAt: model.GetMillis()})
+	archived, err := ss.ProgrammeLevel().Archive(ctx, &store.ProgrammeLevelArchive{ID: updated.ID, ArchiveAt: model.NowUTC(), AuditEventID: archiveAttempt.ID, AuditAt: model.NowUTC()})
 	require.NoError(t, err)
 	require.NotEqual(t, int64(0), archived.ArchivedAt.Millis())
 
 	archiveRollback := saveProgrammeLevel(t, ctx, ss, programme.ID.String(), "rolled-back-archive")
-	_, err = ss.ProgrammeLevel().Archive(ctx, &store.ProgrammeLevelArchive{ID: archiveRollback.ID, ArchiveAt: model.GetMillis(), AuditEventID: model.NewAuditEventID(), AuditAt: model.GetMillis()})
+	_, err = ss.ProgrammeLevel().Archive(ctx, &store.ProgrammeLevelArchive{ID: archiveRollback.ID, ArchiveAt: model.NowUTC(), AuditEventID: model.NewAuditEventID(), AuditAt: model.NowUTC()})
 	require.Error(t, err, "Archive() succeeded without its audit attempt")
 	_, err = ss.ProgrammeLevel().Get(ctx, archiveRollback.ID)
 	require.NoError(t, err)
@@ -100,7 +100,7 @@ func testProgrammeLevelStoreMutationAuditAtomicity(t *testing.T, ss store.Store)
 	period := saveAcademicPeriod(t, ctx, ss, unit.InstitutionID.String(), "2026-2027", 1_800_000_000_000)
 	saveClass(t, ctx, ss, withClass.ID.String(), period.ID.String(), "class-a")
 	blockedAttempt := saveProgrammeLevelAuditAttempt(t, ctx, ss, unit.ID.String())
-	_, err = ss.ProgrammeLevel().Archive(ctx, &store.ProgrammeLevelArchive{ID: withClass.ID, ArchiveAt: model.GetMillis(), AuditEventID: blockedAttempt.ID, AuditAt: model.GetMillis()})
+	_, err = ss.ProgrammeLevel().Archive(ctx, &store.ProgrammeLevelArchive{ID: withClass.ID, ArchiveAt: model.NowUTC(), AuditEventID: blockedAttempt.ID, AuditAt: model.NowUTC()})
 	require.True(t, store.IsConflict(err), "archive with active class error")
 }
 
@@ -128,7 +128,7 @@ func testProgrammeLevelStoreSearchAndArchive(t *testing.T, ss store.Store) {
 		require.Len(t, found, 1, "SearchByProgramme(%q)", query)
 		require.Equal(t, level.ID, found[0].ID, "SearchByProgramme(%q)", query)
 	}
-	archived, err := ArchiveProgrammeLevel(ctx, ss, level.ID, model.GetMillis())
+	archived, err := ArchiveProgrammeLevel(ctx, ss, level.ID, model.NowUTC())
 	require.NoError(t, err)
 	require.NotEqual(t, int64(0), archived.ArchivedAt.Millis())
 }
@@ -217,7 +217,7 @@ func testProgrammeLevelStoreUpdate(t *testing.T, ss store.Store) {
 	_, err = UpdateProgrammeLevel(ctx, ss, &missing)
 	require.True(t, store.IsNotFound(err), "Update(missing) error")
 	archivedProgramme := saveProgramme(t, ctx, ss, unit.ID.String(), "archived-programme")
-	_, err = ArchiveProgramme(ctx, ss, archivedProgramme.ID, model.GetMillis())
+	_, err = ArchiveProgramme(ctx, ss, archivedProgramme.ID, model.NowUTC())
 	require.NoError(t, err)
 	invalidMove := *updated
 	invalidMove.ProgrammeID = archivedProgramme.ID

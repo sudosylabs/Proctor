@@ -17,8 +17,8 @@ import (
 
 const securityNoticeLifetime = 24 * time.Hour
 
-func validateSecurityNoticeMail(userID model.UserID, occurrence *model.MailOccurrence, delivery *model.MailDelivery, job *model.Job, key model.MailTemplateKey, at int64) (string, error) {
-	when := model.TimeFromMillis(at)
+func validateSecurityNoticeMail(userID model.UserID, occurrence *model.MailOccurrence, delivery *model.MailDelivery, job *model.Job, key model.MailTemplateKey, at time.Time) (string, error) {
+	when := model.TimeUTC(at)
 	if !userID.IsValid() || occurrence == nil || delivery == nil || job == nil ||
 		occurrence.Kind != model.MailOccurrenceSecurityNotice || occurrence.TemplateKey != key || occurrence.ActorUserID != userID ||
 		delivery.TargetUserID != userID || delivery.TemplateKey != key || job.Type != model.JobTypeMailDeliver ||

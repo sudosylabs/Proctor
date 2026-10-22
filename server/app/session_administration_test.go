@@ -321,8 +321,8 @@ func TestAdminSessionRevocationOutcomesPreserveAuditAndBatchResult(t *testing.T)
 				want = append(want, "store-revoke-all")
 				input := persistence.revokeAllInput
 				require.Equal(t, model.AuditEventID(audit.beginID), input.AuditEventID)
-				require.Equal(t, now.UnixMilli(), input.AuditAt)
-				require.Equal(t, now.UnixMilli(), input.RevokedAt)
+				require.True(t, model.TimeUTC(now).Equal(input.AuditAt))
+				require.True(t, model.TimeUTC(now).Equal(input.RevokedAt))
 				require.NotNil(t, input.Command)
 				require.Equal(t, model.SessionRevocationAdministratorAllSessions, input.Reason)
 			}

@@ -131,7 +131,7 @@ func TestOnboardingImportCSVBuildsImmutableDuplicatePreview(t *testing.T) {
 	require.Equal(t, "same@example.edu", rows[0].Email)
 	require.Equal(t, class.Revision, rows[0].TargetRevision)
 	require.Equal(t, string(InvitationBatchStudentClassCreate), rows[0].Operation)
-	require.Equal(t, model.MillisFromTime(period.StartsAt), rows[0].StartsAt)
+	require.Equal(t, model.OptionalTimeFrom(model.TimeUTC(period.StartsAt)), rows[0].StartsAt)
 	require.Equal(t, "'=formula", escapeSpreadsheetFormula(rows[0].Reference))
 	current.ID = model.NewOnboardingImportID()
 	service.deps.Now = func() time.Time { return at.Add(time.Hour) }
@@ -160,7 +160,7 @@ func TestOnboardingImportCSVBuildsExistingUserAcademicPreview(t *testing.T) {
 	require.Equal(t, class.ID.String(), rows[0].ScopeID, "academic administration preview")
 	require.Equal(t, class.Revision, rows[0].TargetRevision, "academic administration preview")
 	require.Equal(t, user.ID, rows[0].UserID, "academic administration preview")
-	require.Equal(t, at.UnixMilli(), rows[0].StartsAt, "academic administration preview")
+	require.Equal(t, model.OptionalTimeFrom(model.TimeUTC(at)), rows[0].StartsAt, "academic administration preview")
 	require.Equal(t, model.OnboardingImportRowDuplicate, rows[0].PreviewStatus, "academic administration preview")
 	require.Equal(t, model.OnboardingImportRowDuplicate, rows[1].PreviewStatus, "academic administration preview")
 	service.deps.Now = func() time.Time { return at.Add(time.Hour) }
@@ -303,7 +303,7 @@ func TestOnboardingImportBoundsRequireRFC3339(t *testing.T) {
 	start := "2026-08-20T09:00:00+02:00"
 	got, _, err := parseOnboardingImportBounds(start, "")
 	require.NoError(t, err, "RFC3339 bound")
-	require.Equal(t, model.MillisFromTime(time.Date(2026, 8, 20, 7, 0, 0, 0, time.UTC)), got, "RFC3339 bound")
+	require.Equal(t, model.OptionalTimeFrom(model.TimeUTC(time.Date(2026, 8, 20, 7, 0, 0, 0, time.UTC))), got, "RFC3339 bound")
 }
 
 func TestOnboardingImportCSVValidatesTeacherAndInstitutionRolePackages(t *testing.T) {
@@ -328,7 +328,7 @@ func TestOnboardingImportCSVValidatesTeacherAndInstitutionRolePackages(t *testin
 	require.Equal(t, string(InvitationBatchTeacherAcademicUnitCreate), rows[0].Operation, "teacher preview")
 	require.Equal(t, role.ID, rows[0].RoleID, "teacher preview")
 	require.Equal(t, "Europe/Paris", rows[0].Timezone, "teacher preview")
-	require.Equal(t, model.MillisFromTime(at), rows[0].StartsAt, "teacher preview")
+	require.Equal(t, model.OptionalTimeFrom(model.TimeUTC(at)), rows[0].StartsAt, "teacher preview")
 
 	institutionImport := &store.OnboardingImport{ID: model.NewOnboardingImportID(), Mode: model.OnboardingImportInstitution, ScopeType: model.RoleScopeInstitution,
 		ScopeID: institution.ID.String(), ActorUserID: model.NewUserID()}
@@ -338,7 +338,7 @@ func TestOnboardingImportCSVValidatesTeacherAndInstitutionRolePackages(t *testin
 	require.Equal(t, model.OnboardingImportRowValid, rows[0].PreviewStatus, "institution Role preview")
 	require.Equal(t, string(InvitationBatchInstitutionRoleCreate), rows[0].Operation, "institution Role preview")
 	require.Equal(t, institution.ID.String(), rows[0].ScopeID, "institution Role preview")
-	require.Equal(t, model.MillisFromTime(at), rows[0].StartsAt, "institution Role preview")
+	require.Equal(t, model.OptionalTimeFrom(model.TimeUTC(at)), rows[0].StartsAt, "institution Role preview")
 	role.Permissions = []string{string(model.ActionAcademicUnitView)}
 	rows, _, _, err = service.parseCSV(context.Background(), invocation.Invocation{}, institutionImport,
 		strings.NewReader("email,kind,academic_unit,role\nunit-role@example.edu,academic_unit_role,science,auditor\n"))
