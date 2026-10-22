@@ -1184,6 +1184,9 @@ func testConcurrentExamAttemptAdmission(t *testing.T, ctx context.Context, ss st
 		prepareExamAttemptConnect(t, ctx, ss, inputs[index])
 		commands[index] = examCommand(candidate.ID, store.ExamAttemptConnectOperation,
 			"attempt-concurrent-retry", "attempt-concurrent-retry")
+		// The duplicate must wait out the winner's whole transaction to
+		// replay it; a loaded host can exceed the fixture's one-second wait.
+		commands[index].Wait = 30 * time.Second
 	}
 	start := make(chan struct{})
 	results := make(chan *store.ExamAttemptConnectResult, 2)
