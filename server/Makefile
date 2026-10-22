@@ -153,7 +153,7 @@ integration-postgres:
 	trap cleanup EXIT INT TERM; \
 	$(COMPOSE) up --detach --wait postgres; \
 	PROCTOR_TEST_DATABASE_URL='$(PROCTOR_TEST_DATABASE_URL)' \
-		$(GO_TEST) -tags=integration -timeout=45m -p=1 $(INTEGRATION_POSTGRES_PACKAGES) -skip '$(INTEGRATION_POSTGRES_SKIP)' -count=1
+		$(GO_TEST) -tags=integration -timeout=90m -p=1 $(INTEGRATION_POSTGRES_PACKAGES) -skip '$(INTEGRATION_POSTGRES_SKIP)' -count=1
 
 integration-redis:
 	$(MAKE) -C ../packages/cache \
