@@ -88,6 +88,62 @@
     "translation": "Perform host-only administrator operations"
   },
   {
+    "id": "cli.cluster.error.requires_subcommand",
+    "translation": "cluster requires a status subcommand"
+  },
+  {
+    "id": "cli.cluster.short",
+    "translation": "Inspect the serving nodes of this installation"
+  },
+  {
+    "id": "cli.cluster.status.database_time",
+    "translation": "database time {{.Time}}"
+  },
+  {
+    "id": "cli.cluster.status.discovery_header",
+    "translation": "NODE\tSTATE\tADDRESS\tVERSION\tPROTOCOL\tUPDATED\tEXPIRES"
+  },
+  {
+    "id": "cli.cluster.status.discovery_title",
+    "translation": "Cluster discovery"
+  },
+  {
+    "id": "cli.cluster.status.expired",
+    "translation": "expired"
+  },
+  {
+    "id": "cli.cluster.status.flag.json",
+    "translation": "write the cluster status as JSON"
+  },
+  {
+    "id": "cli.cluster.status.live",
+    "translation": "live"
+  },
+  {
+    "id": "cli.cluster.status.none",
+    "translation": "(none)"
+  },
+  {
+    "id": "cli.cluster.status.schema",
+    "translation": "database schema version {{.DatabaseVersion}}; server schema version {{.ServerVersion}}; pending migrations {{.PendingMigrations}}"
+  },
+  {
+    "id": "cli.cluster.status.serving_header",
+    "translation": "NODE\tSTATE\tUPDATED\tEXPIRES\tLEASE"
+  },
+  {
+    "id": "cli.cluster.status.serving_title",
+    "translation": "Serving nodes"
+  },
+  {
+    "id": "cli.cluster.status.short",
+    "translation": "List serving node leases, discovery rows, and the schema version without writing"
+  },
+  {
+    "id": "cli.cluster.status.truncated",
+    "translation": "output stopped at its row bound; more rows exist"
+  },
+  {
     "id": "cli.config.error.read_flag",
     "translation": "read config flag"
   },

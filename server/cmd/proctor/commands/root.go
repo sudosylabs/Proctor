@@ -49,6 +49,7 @@ type executors struct {
 	serve                 serveExecutor
 	validateConfig        configValidateExecutor
 	showConfig            configShowExecutor
+	clusterStatus         clusterStatusExecutor
 	migrateUp             migrateUpExecutor
 	migrateStatus         migrateStatusExecutor
 	recoverAdministrator  administratorRecoveryExecutor
@@ -62,6 +63,7 @@ func productionExecutors() executors {
 		serve:                 serve,
 		validateConfig:        server.ValidateConfig,
 		showConfig:            server.ShowEffectiveConfiguration,
+		clusterStatus:         server.InspectCluster,
 		migrateUp:             server.MigrateUp,
 		migrateStatus:         server.MigrateStatus,
 		recoverAdministrator:  server.RecoverAdministratorAccess,
@@ -141,6 +143,7 @@ func newRootCommand(stdin io.Reader, stdout, stderr io.Writer, execute executors
 		newServeCommand(execute.serve, text),
 		newConfigCommand(execute.validateConfig, execute.showConfig, text),
 		newMigrateCommand(execute.migrateUp, execute.migrateStatus, text),
+		newClusterCommand(execute.clusterStatus, text),
 		newAdministratorCommand(stdin, execute.recoverAdministrator, execute.resetAdministratorMFA, text),
 		newVersionCommand(execute.currentBuildInfo, text),
 	)

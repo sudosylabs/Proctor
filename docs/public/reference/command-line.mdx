@@ -24,6 +24,7 @@ Every command accepts `--config` (short form `-c`). An explicit path wins over
 | `proctor config show` | print the effective configuration with every secret redacted | no |
 | `proctor migrate status` | compare database and server schema versions and report pending migrations | no |
 | `proctor migrate up` | apply every pending migration deliberately | no |
+| `proctor cluster status` | list serving node leases, cluster discovery rows, and the schema version | no |
 | `proctor administrator recover` | host-only administrator local-authentication recovery while all nodes are stopped | no |
 | `proctor administrator reset-mfa` | reset an existing administrator's MFA and require reenrollment while all nodes are stopped | no |
 | `proctor version` | print build version, commit, build time, and Go version | no |
@@ -67,6 +68,30 @@ proctor migrate up --config /etc/proctor/config.json
 The current pre-release baseline does not support upgrading older incompatible
 development schemas. Status does not certify backup, rollback, or production
 upgrade safety.
+
+## Read-Only Inspection
+
+`migrate status` and `cluster status` only read. They open the database with
+every session set to `default_transaction_read_only`, so PostgreSQL itself
+rejects any write. They never migrate, never take the migration lock or
+another advisory lock, and never create a table, so they are safe to run
+beside serving nodes and do not require the schema to match the binary.
+
+```sh
+proctor cluster status --config /etc/proctor/config.json
+proctor cluster status --json --config /etc/proctor/config.json
+```
+
+`cluster status` prints the database and server schema versions with the
+pending migration count, the PostgreSQL time, and two tables. **Serving
+nodes** lists every serving node lease with its node ID, state, renewal time,
+expiry, and lease ID; a node may serve only while its lease is `live` by the
+PostgreSQL clock, and an `expired` row belongs to a node that stopped without
+withdrawing its lease. **Cluster discovery** lists the Memberlist bootstrap
+rows with advertise address, server version, and protocol range; these rows
+are disposable and written only by the `memberlist` cluster backend, never by
+`local`. Expired rows are shown rather than hidden. Each list stops at 500
+rows and says so. A database with no schema reports no nodes.
 
 ## Host-Only Administrator Recovery
 

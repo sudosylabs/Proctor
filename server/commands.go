@@ -97,36 +97,15 @@ type MigrationStatus struct {
 }
 
 // MigrateStatus reports the migration state of the configured database. It
-// only reads: it neither takes the migration lock nor creates tables.
+// only reads, through a read-only session: it neither takes the migration
+// lock nor creates tables.
 func MigrateStatus(ctx context.Context, configPath string) (MigrationStatus, error) {
-	configuration, err := openConfiguration(ctx, configPath)
+	database, closeDatabase, err := openReadOnlyDatabase(ctx, configPath)
 	if err != nil {
 		return MigrationStatus{}, err
 	}
-	defer func() { _ = configuration.Close() }()
-	database, err := sqlstore.New(ctx, sqlstore.SettingsFromConfig(configuration.Get().Database))
-	if err != nil {
-		return MigrationStatus{}, err
-	}
-	defer func() { _ = database.Close() }()
-
-	current, err := database.GetDBSchemaVersion(ctx)
-	if err != nil {
-		return MigrationStatus{}, err
-	}
-	local, err := sqlstore.LocalSchemaVersion()
-	if err != nil {
-		return MigrationStatus{}, err
-	}
-	pending, err := database.PendingMigrationCount(ctx)
-	if err != nil {
-		return MigrationStatus{}, err
-	}
-	return MigrationStatus{
-		DatabaseVersion:   current,
-		ServerVersion:     local,
-		PendingMigrations: pending,
-	}, nil
+	defer func() { _ = closeDatabase() }()
+	return readMigrationStatus(ctx, database)
 }
 
 // openConfiguration loads the required operator-owned deployment

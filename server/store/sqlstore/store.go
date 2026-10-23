@@ -41,6 +41,10 @@ type Settings struct {
 	ConnectionMaxIdleTime time.Duration
 	QueryTimeout          time.Duration
 	MigrationTimeout      time.Duration
+	// ReadOnly opens every session with default_transaction_read_only, so
+	// PostgreSQL itself rejects any write, DDL, or sequence advance the
+	// holder attempts. Operator inspection commands open the store this way.
+	ReadOnly bool
 }
 
 func SettingsFromConfig(cfg config.Database) Settings {
@@ -136,12 +140,14 @@ type SQLStore struct {
 	deliveryAppendSlots chan struct{}
 }
 
-// utcConnector connects with the session TimeZone fixed to UTC, replacing any
-// the data source or server default names. Interval arithmetic on timestamptz
-// (created_at + interval '7 days', CURRENT_TIMESTAMP - INTERVAL '30 days')
-// follows the session zone, so a server running in a daylight-saving zone
-// would otherwise shift lifetimes by an hour across a transition.
-func utcConnector(dataSource string) (*pq.Connector, error) {
+// sessionConnector connects with the session TimeZone fixed to UTC, replacing
+// any the data source or server default names. Interval arithmetic on
+// timestamptz (created_at + interval '7 days', CURRENT_TIMESTAMP - INTERVAL
+// '30 days') follows the session zone, so a server running in a
+// daylight-saving zone would otherwise shift lifetimes by an hour across a
+// transition. A read-only connector likewise replaces any
+// default_transaction_read_only the data source names.
+func sessionConnector(dataSource string, readOnly bool) (*pq.Connector, error) {
 	cfg, err := pq.NewConfig(dataSource)
 	if err != nil {
 		return nil, err
@@ -155,6 +161,14 @@ func utcConnector(dataSource string) (*pq.Connector, error) {
 		cfg.Runtime = map[string]string{}
 	}
 	cfg.Runtime["TimeZone"] = "UTC"
+	if readOnly {
+		for name := range cfg.Runtime {
+			if strings.EqualFold(name, "default_transaction_read_only") {
+				delete(cfg.Runtime, name)
+			}
+		}
+		cfg.Runtime["default_transaction_read_only"] = "on"
+	}
 	return pq.NewConnectorConfig(cfg)
 }
 
@@ -163,7 +177,7 @@ func New(ctx context.Context, settings Settings) (*SQLStore, error) {
 		return nil, err
 	}
 
-	connector, err := utcConnector(settings.DataSource)
+	connector, err := sessionConnector(settings.DataSource, settings.ReadOnly)
 	if err != nil {
 		return nil, fmt.Errorf("open PostgreSQL: %w", err)
 	}
