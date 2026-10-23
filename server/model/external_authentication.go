@@ -200,24 +200,8 @@ func (s *ExternalLoginState) Validate() error {
 			details,
 		)
 	}
-	if !s.Purpose.IsValid() ||
-		(s.Purpose == ExternalAuthenticationPurposeLogin && (!s.TargetUserID.IsZero() || !s.InvitationID.IsZero() || !s.BrowserAuthenticationTransactionID.IsZero() || s.AuditEventID != "")) ||
-		(s.Purpose == ExternalAuthenticationPurposeConnect && (!s.TargetUserID.IsValid() || !s.InvitationID.IsZero() || !s.BrowserAuthenticationTransactionID.IsZero() || !AuditEventID(s.AuditEventID).IsValid())) ||
-		(s.Purpose == ExternalAuthenticationPurposeInvitationAdmission && (!s.TargetUserID.IsZero() || !s.InvitationID.IsValid() || !s.BrowserAuthenticationTransactionID.IsZero() || s.AuditEventID != "")) ||
-		(s.Purpose == ExternalAuthenticationPurposeDesktopAuthorization && (!s.TargetUserID.IsZero() || !s.InvitationID.IsZero() || !s.BrowserAuthenticationTransactionID.IsValid() || s.AuditEventID != "")) {
-		return invalidModelError(where, "external_login_state", "purpose", "has an invalid target", details)
-	}
-	if s.Purpose == ExternalAuthenticationPurposeMFARecovery && (!s.TargetUserID.IsValid() || !s.InvitationID.IsZero() || !s.BrowserAuthenticationTransactionID.IsZero() || s.AuditEventID != "" || s.ReturnTo != "/account/security") {
-		return invalidModelError(where, "external_login_state", "recovery", "requires the exact User and security task", details)
-	}
-	if s.Purpose == ExternalAuthenticationPurposeReauthenticate {
-		if !s.TargetUserID.IsValid() || !s.SessionID.IsValid() || !s.SessionCredentialID.IsValid() || !s.ExternalIdentityID.IsValid() ||
-			!s.InvitationID.IsZero() || !s.BrowserAuthenticationTransactionID.IsZero() || !AuditEventID(s.AuditEventID).IsValid() ||
-			(s.ReturnTo != "/account/security" && s.ReturnTo != "/account/connect-provider") {
-			return invalidModelError(where, "external_login_state", "reauthentication", "has an invalid current Session or task", details)
-		}
-	} else if !s.SessionID.IsZero() || !s.SessionCredentialID.IsZero() || !s.ExternalIdentityID.IsZero() {
-		return invalidModelError(where, "external_login_state", "session_id", "requires the reauthentication purpose", details)
+	if err := s.validatePurposeTarget(details); err != nil {
+		return err
 	}
 	if !IsValidTokenHash(s.StateHash) || !IsValidTokenHash(s.BindingHash) {
 		return invalidModelError(
@@ -274,6 +258,31 @@ func (s *ExternalLoginState) Validate() error {
 			"must fall within the active lifetime",
 			details,
 		)
+	}
+	return nil
+}
+
+// validatePurposeTarget checks the target, recovery and reauthentication fields required by the purpose.
+func (s *ExternalLoginState) validatePurposeTarget(details string) error {
+	const where = "ExternalLoginState.Validate"
+	if !s.Purpose.IsValid() ||
+		(s.Purpose == ExternalAuthenticationPurposeLogin && (!s.TargetUserID.IsZero() || !s.InvitationID.IsZero() || !s.BrowserAuthenticationTransactionID.IsZero() || s.AuditEventID != "")) ||
+		(s.Purpose == ExternalAuthenticationPurposeConnect && (!s.TargetUserID.IsValid() || !s.InvitationID.IsZero() || !s.BrowserAuthenticationTransactionID.IsZero() || !AuditEventID(s.AuditEventID).IsValid())) ||
+		(s.Purpose == ExternalAuthenticationPurposeInvitationAdmission && (!s.TargetUserID.IsZero() || !s.InvitationID.IsValid() || !s.BrowserAuthenticationTransactionID.IsZero() || s.AuditEventID != "")) ||
+		(s.Purpose == ExternalAuthenticationPurposeDesktopAuthorization && (!s.TargetUserID.IsZero() || !s.InvitationID.IsZero() || !s.BrowserAuthenticationTransactionID.IsValid() || s.AuditEventID != "")) {
+		return invalidModelError(where, "external_login_state", "purpose", "has an invalid target", details)
+	}
+	if s.Purpose == ExternalAuthenticationPurposeMFARecovery && (!s.TargetUserID.IsValid() || !s.InvitationID.IsZero() || !s.BrowserAuthenticationTransactionID.IsZero() || s.AuditEventID != "" || s.ReturnTo != "/account/security") {
+		return invalidModelError(where, "external_login_state", "recovery", "requires the exact User and security task", details)
+	}
+	if s.Purpose == ExternalAuthenticationPurposeReauthenticate {
+		if !s.TargetUserID.IsValid() || !s.SessionID.IsValid() || !s.SessionCredentialID.IsValid() || !s.ExternalIdentityID.IsValid() ||
+			!s.InvitationID.IsZero() || !s.BrowserAuthenticationTransactionID.IsZero() || !AuditEventID(s.AuditEventID).IsValid() ||
+			(s.ReturnTo != "/account/security" && s.ReturnTo != "/account/connect-provider") {
+			return invalidModelError(where, "external_login_state", "reauthentication", "has an invalid current Session or task", details)
+		}
+	} else if !s.SessionID.IsZero() || !s.SessionCredentialID.IsZero() || !s.ExternalIdentityID.IsZero() {
+		return invalidModelError(where, "external_login_state", "session_id", "requires the reauthentication purpose", details)
 	}
 	return nil
 }
