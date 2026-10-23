@@ -17,6 +17,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"time"
 
 	"github.com/sudosylabs/proctor/packages/vfs"
@@ -66,30 +67,8 @@ This format is a portable record archive, not an installation backup or importer
 // verifies every original file while copying, closes the ZIP, then reopens and
 // hashes the managed object before returning verified publication metadata.
 func (c *Content) BuildExamExport(ctx context.Context, input exam.ExportArchiveInput) (*exam.ExportArchiveContent, error) {
-	if c == nil || c.filesystem == nil || !input.ExportID.IsValid() || !input.AttemptID.IsValid() || len(input.Records) < 1 || len(input.Records) > model.ExamExportMaximumSnapshotBytes || !json.Valid(input.Records) || len(input.Files) > model.ExamExportMaximumEntries {
-		return nil, errors.New("invalid Exam export input")
-	}
-	var envelope struct {
-		ExportID model.ExamExportID `json:"export_id"`
-	}
-	if json.Unmarshal(input.Records, &envelope) != nil || envelope.ExportID != input.ExportID {
-		return nil, errors.New("invalid Exam export records owner")
-	}
-	seen := make(map[string]struct{}, len(input.Files))
-	var total int64
-	for _, f := range input.Files {
-		if !f.SubmissionID.IsValid() || f.Entry.Validate() != nil || f.Entry.Kind != model.StarterWorkspaceEntryFile {
-			return nil, errors.New("invalid Exam export file")
-		}
-		name := examExportFileMember(f)
-		if _, exists := seen[name]; exists {
-			return nil, errors.New("duplicate Exam export file")
-		}
-		seen[name] = struct{}{}
-		total += f.Entry.SizeBytes
-		if total > model.ExamExportMaximumSourceBytes {
-			return nil, errors.New("Exam export exceeds byte limit")
-		}
+	if err := c.validateExamExportInput(input); err != nil {
+		return nil, err
 	}
 	release, err := c.beginWork(ctx)
 	if err != nil {
@@ -102,50 +81,8 @@ func (c *Content) BuildExamExport(ctx context.Context, input exam.ExportArchiveI
 	}
 	defer releaseSpool()
 	bounded := &examExportBoundedWriter{writer: spool, remaining: model.ExamExportMaximumArchiveBytes}
-	archive := zip.NewWriter(bounded)
-	manifest := examExportManifest{ExportID: input.ExportID, Entries: make([]examExportManifestEntry, 0, len(input.Files)+2)}
-	for _, item := range []struct {
-		name string
-		body []byte
-	}{{"records.json", input.Records}, {"README.txt", []byte(examExportReadme)}} {
-		size, digest, err := writeExamExportMember(ctx, archive, item.name, bytes.NewReader(item.body), int64(len(item.body)))
-		if err != nil {
-			return nil, sanitize("write Exam export records", err)
-		}
-		manifest.Entries = append(manifest.Entries, examExportManifestEntry{ArchivePath: item.name, SizeBytes: size, SHA256: digest})
-	}
-	for _, f := range input.Files {
-		var body io.ReadCloser
-		switch f.Entry.StorageOrigin {
-		case model.AttemptWorkspaceStorageStarter:
-			body, err = c.OpenStarterWorkspaceObject(ctx, f.Entry.StarterObjectID)
-		case model.AttemptWorkspaceStorageAttempt:
-			body, err = c.OpenAttemptWorkspaceObject(ctx, f.Entry.AttemptObjectID)
-		default:
-			return nil, errors.New("invalid Exam export storage origin")
-		}
-		if err != nil {
-			return nil, sanitize("open Exam export source", err)
-		}
-		size, digest, copyErr := writeExamExportMember(ctx, archive, examExportFileMember(f), body, f.Entry.SizeBytes)
-		closeErr := body.Close()
-		if copyErr != nil || closeErr != nil {
-			return nil, sanitize("copy Exam export source", errors.Join(copyErr, closeErr))
-		}
-		if size != f.Entry.SizeBytes || digest != f.Entry.SHA256 {
-			return nil, errors.New("Exam export source verification failed")
-		}
-		manifest.Entries = append(manifest.Entries, examExportManifestEntry{ArchivePath: examExportFileMember(f), SizeBytes: size, SHA256: digest, SubmissionID: f.SubmissionID, EntryID: f.Entry.EntryID, OriginalPath: f.Entry.Path, MediaType: f.Entry.MediaType})
-	}
-	encoded, err := json.Marshal(manifest)
-	if err != nil {
-		return nil, sanitize("encode Exam export manifest", err)
-	}
-	if _, _, err = writeExamExportMember(ctx, archive, "manifest.json", bytes.NewReader(encoded), int64(len(encoded))); err != nil {
-		return nil, sanitize("write Exam export manifest", err)
-	}
-	if err = archive.Close(); err != nil {
-		return nil, sanitize("close Exam export archive", err)
+	if err = c.writeExamExportArchive(ctx, zip.NewWriter(bounded), input); err != nil {
+		return nil, err
 	}
 	if _, err = spool.Seek(0, io.SeekStart); err != nil {
 		return nil, sanitize("rewind Exam export spool", err)
@@ -159,7 +96,100 @@ func (c *Content) BuildExamExport(ctx context.Context, input exam.ExportArchiveI
 	if !model.ValidExamExportContent(result.SizeBytes, result.SHA256) {
 		return nil, errors.New("invalid Exam export archive size")
 	}
-	key := examExportKey(input.ExportID, input.AttemptID)
+	return c.storeExamExport(ctx, examExportKey(input.ExportID, input.AttemptID), spool, result)
+}
+
+// validateExamExportInput rejects malformed records, foreign owners, invalid or duplicate files and oversized sources.
+func (c *Content) validateExamExportInput(input exam.ExportArchiveInput) error {
+	if c == nil || c.filesystem == nil || !input.ExportID.IsValid() || !input.AttemptID.IsValid() || len(input.Records) < 1 || len(input.Records) > model.ExamExportMaximumSnapshotBytes || !json.Valid(input.Records) || len(input.Files) > model.ExamExportMaximumEntries {
+		return errors.New("invalid Exam export input")
+	}
+	var envelope struct {
+		ExportID model.ExamExportID `json:"export_id"`
+	}
+	if json.Unmarshal(input.Records, &envelope) != nil || envelope.ExportID != input.ExportID {
+		return errors.New("invalid Exam export records owner")
+	}
+	seen := make(map[string]struct{}, len(input.Files))
+	var total int64
+	for _, f := range input.Files {
+		if !f.SubmissionID.IsValid() || f.Entry.Validate() != nil || f.Entry.Kind != model.StarterWorkspaceEntryFile {
+			return errors.New("invalid Exam export file")
+		}
+		name := examExportFileMember(f)
+		if _, exists := seen[name]; exists {
+			return errors.New("duplicate Exam export file")
+		}
+		seen[name] = struct{}{}
+		total += f.Entry.SizeBytes
+		if total > model.ExamExportMaximumSourceBytes {
+			return errors.New("Exam export exceeds byte limit")
+		}
+	}
+	return nil
+}
+
+// writeExamExportArchive writes the records, README, verified source files and manifest, then closes the ZIP.
+func (c *Content) writeExamExportArchive(ctx context.Context, archive *zip.Writer, input exam.ExportArchiveInput) error {
+	manifest := examExportManifest{ExportID: input.ExportID, Entries: make([]examExportManifestEntry, 0, len(input.Files)+2)}
+	for _, item := range []struct {
+		name string
+		body []byte
+	}{{"records.json", input.Records}, {"README.txt", []byte(examExportReadme)}} {
+		size, digest, err := writeExamExportMember(ctx, archive, item.name, bytes.NewReader(item.body), int64(len(item.body)))
+		if err != nil {
+			return sanitize("write Exam export records", err)
+		}
+		manifest.Entries = append(manifest.Entries, examExportManifestEntry{ArchivePath: item.name, SizeBytes: size, SHA256: digest})
+	}
+	for _, f := range input.Files {
+		entry, err := c.copyExamExportFile(ctx, archive, f)
+		if err != nil {
+			return err
+		}
+		manifest.Entries = append(manifest.Entries, entry)
+	}
+	encoded, err := json.Marshal(manifest)
+	if err != nil {
+		return sanitize("encode Exam export manifest", err)
+	}
+	if _, _, err = writeExamExportMember(ctx, archive, "manifest.json", bytes.NewReader(encoded), int64(len(encoded))); err != nil {
+		return sanitize("write Exam export manifest", err)
+	}
+	if err = archive.Close(); err != nil {
+		return sanitize("close Exam export archive", err)
+	}
+	return nil
+}
+
+// copyExamExportFile copies one source file into the archive and verifies its size and digest.
+func (c *Content) copyExamExportFile(ctx context.Context, archive *zip.Writer, f exam.ExportArchiveFile) (examExportManifestEntry, error) {
+	var body io.ReadCloser
+	var err error
+	switch f.Entry.StorageOrigin {
+	case model.AttemptWorkspaceStorageStarter:
+		body, err = c.OpenStarterWorkspaceObject(ctx, f.Entry.StarterObjectID)
+	case model.AttemptWorkspaceStorageAttempt:
+		body, err = c.OpenAttemptWorkspaceObject(ctx, f.Entry.AttemptObjectID)
+	default:
+		return examExportManifestEntry{}, errors.New("invalid Exam export storage origin")
+	}
+	if err != nil {
+		return examExportManifestEntry{}, sanitize("open Exam export source", err)
+	}
+	size, digest, copyErr := writeExamExportMember(ctx, archive, examExportFileMember(f), body, f.Entry.SizeBytes)
+	closeErr := body.Close()
+	if copyErr != nil || closeErr != nil {
+		return examExportManifestEntry{}, sanitize("copy Exam export source", errors.Join(copyErr, closeErr))
+	}
+	if size != f.Entry.SizeBytes || digest != f.Entry.SHA256 {
+		return examExportManifestEntry{}, errors.New("Exam export source verification failed")
+	}
+	return examExportManifestEntry{ArchivePath: examExportFileMember(f), SizeBytes: size, SHA256: digest, SubmissionID: f.SubmissionID, EntryID: f.Entry.EntryID, OriginalPath: f.Entry.Path, MediaType: f.Entry.MediaType}, nil
+}
+
+// storeExamExport writes the spooled archive under key and publishes it only after an independent read verifies it.
+func (c *Content) storeExamExport(ctx context.Context, key string, spool *os.File, result *exam.ExportArchiveContent) (*exam.ExportArchiveContent, error) {
 	conditional := c.filesystem.Capabilities().ConditionalWrite
 	if !conditional {
 		matching, verifyErr := c.verifyExamExport(ctx, key, result)
@@ -173,9 +203,10 @@ func (c *Content) BuildExamExport(ctx context.Context, input exam.ExportArchiveI
 			return nil, sanitize("inspect Exam export object", verifyErr)
 		}
 	}
-	if _, err = spool.Seek(0, io.SeekStart); err != nil {
+	if _, err := spool.Seek(0, io.SeekStart); err != nil {
 		return nil, sanitize("rewind Exam export spool", err)
 	}
+	size := result.SizeBytes
 	_, writeErr := c.filesystem.Write(ctx, key, workReader{ctx: ctx, reader: spool}, vfs.WriteOptions{Size: &size, NoOverwrite: conditional})
 	// An error acknowledgement can still mean the exact immutable write
 	// committed. Never publish until an independent read proves all bytes.
