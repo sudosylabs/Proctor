@@ -167,3 +167,57 @@ func TestShutdownRunsOnceForRunAndEveryClose(t *testing.T) {
 		"http-shutdown", "jobs-close", "websocket-close", "transport-close", "platform-close",
 	)
 }
+
+func TestForceStopDuringGracefulDrainClosesAtOnceAndReportsTheForcedStop(t *testing.T) {
+	t.Parallel()
+
+	events := &lifecycleEvents{}
+	draining := make(chan struct{})
+	// Connections never drain on their own.
+	httpService := &lifecycleHTTP{
+		events: events, started: make(chan struct{}), stopped: make(chan struct{}), drainUntilDone: true,
+		afterShutdown: func() { close(draining) },
+	}
+	node := newLifecycleTestServer(t, runtimeComponents{
+		platform: &lifecyclePlatform{events: events}, jobs: &lifecycleJobs{events: events},
+		websocket: &lifecycleWebSocket{events: events}, transport: &lifecycleTransport{events: events},
+		readiness: &lifecycleReadiness{events: events},
+		listen:    func(string, string) (net.Listener, error) { return &lifecycleListener{}, nil },
+		newHTTP:   func(httpServerSettings) httpRuntime { return httpService },
+	})
+	node.components.settings.shutdownTimeout = time.Minute
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- node.Run(ctx) }()
+	waitForLifecycleReady(t, node)
+	cancel()
+	<-draining
+	node.ForceStop()
+	err := receiveLifecycleResult(t, done, "Run after a forced stop")
+	require.ErrorIs(t, err, ErrShutdownForced, "Run() error")
+	require.ErrorIs(t, node.Close(), ErrShutdownForced, "Close() error")
+	assertLifecycleEvents(t, events,
+		"platform-start", "jobs-start", "websocket-start", "http-serve", "ready", "unready",
+		"http-shutdown", "http-force-close", "jobs-close", "websocket-close", "transport-close", "platform-close",
+	)
+}
+
+func TestForceStopOfARunningNodeStopsItAndReportsTheForcedStop(t *testing.T) {
+	t.Parallel()
+
+	events := &lifecycleEvents{}
+	httpService := &lifecycleHTTP{events: events, started: make(chan struct{}), stopped: make(chan struct{})}
+	node := newLifecycleTestServer(t, runtimeComponents{
+		platform: &lifecyclePlatform{events: events}, jobs: &lifecycleJobs{events: events},
+		websocket: &lifecycleWebSocket{events: events}, transport: &lifecycleTransport{events: events},
+		readiness: &lifecycleReadiness{events: events},
+		listen:    func(string, string) (net.Listener, error) { return &lifecycleListener{}, nil },
+		newHTTP:   func(httpServerSettings) httpRuntime { return httpService },
+	})
+	done := make(chan error, 1)
+	go func() { done <- node.Run(context.Background()) }()
+	waitForLifecycleReady(t, node)
+	node.ForceStop()
+	require.ErrorIs(t, receiveLifecycleResult(t, done, "Run after a forced stop"), ErrShutdownForced, "Run() error")
+	require.False(t, node.Ready(), "node stayed ready after a forced stop")
+}

@@ -11,6 +11,7 @@ import (
 	"context"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 
@@ -57,31 +58,102 @@ func serve(ctx context.Context, configPath string) error {
 type servingNode interface {
 	Run(context.Context) error
 	Reload(context.Context) error
+	ForceStop()
 }
 
-// serveNode constructs and runs one node, forwarding SIGHUP to its Reload.
-// The handler is registered before construction: the default SIGHUP action
-// terminates the process, and construction applies database migrations. A
-// reload requested before the node exists is held and runs once it does.
+// serveNode constructs and runs one node, forwarding SIGHUP to its Reload and
+// escalating repeated stop signals. Both handlers are registered before
+// construction: the default SIGHUP action terminates the process, and
+// construction applies database migrations. A reload requested before the
+// node exists is held and runs once it does.
 func serveNode(ctx context.Context, construct func(context.Context) (servingNode, error)) error {
 	reloadSignals := make(chan os.Signal, 1)
 	signal.Notify(reloadSignals, syscall.SIGHUP)
 	defer signal.Stop(reloadSignals)
-	node, err := construct(ctx)
+	stopSignals := make(chan os.Signal, 3)
+	signal.Notify(stopSignals, os.Interrupt, syscall.SIGTERM)
+	defer signal.Stop(stopSignals)
+
+	runCtx, stopRun := context.WithCancel(ctx)
+	defer stopRun()
+	var nodeMu sync.Mutex
+	var node servingNode
+	escalationDone := make(chan struct{})
+	served := make(chan struct{})
+	go func() {
+		defer close(escalationDone)
+		escalateStopSignals(served, stopSignals, stopEscalation{
+			stop: stopRun,
+			force: func() {
+				nodeMu.Lock()
+				defer nodeMu.Unlock()
+				if node != nil {
+					node.ForceStop()
+				}
+			},
+			exit: func() { os.Exit(immediateExitCode) },
+		})
+	}()
+	defer func() {
+		close(served)
+		<-escalationDone
+	}()
+
+	constructed, err := construct(runCtx)
 	if err != nil {
 		return err
 	}
-	reloadCtx, stopReloads := context.WithCancel(ctx)
+	nodeMu.Lock()
+	node = constructed
+	nodeMu.Unlock()
+	reloadCtx, stopReloads := context.WithCancel(runCtx)
 	reloadsDone := make(chan struct{})
 	go func() {
 		defer close(reloadsDone)
-		forwardReloadSignals(reloadCtx, reloadSignals, node.Reload)
+		forwardReloadSignals(reloadCtx, reloadSignals, constructed.Reload)
 	}()
 	defer func() {
 		stopReloads()
 		<-reloadsDone
 	}()
-	return node.Run(ctx)
+	return constructed.Run(runCtx)
+}
+
+// immediateExitCode is the status of a process ended by a third stop signal.
+const immediateExitCode = 1
+
+// stopEscalation is what successive stop signals do.
+type stopEscalation struct {
+	// stop requests graceful shutdown.
+	stop func()
+	// force ends a graceful drain at once; Run then reports the forced stop.
+	force func()
+	// exit terminates the process without waiting for shutdown.
+	exit func()
+}
+
+// escalateStopSignals handles SIGINT and SIGTERM until done closes. The first
+// signal requests graceful shutdown, a second during the drain forces an
+// immediate bounded close, and a third exits at once.
+func escalateStopSignals(done <-chan struct{}, signals <-chan os.Signal, escalation stopEscalation) {
+	received := 0
+	for {
+		select {
+		case <-done:
+			return
+		case <-signals:
+			received++
+			switch received {
+			case 1:
+				escalation.stop()
+			case 2:
+				escalation.force()
+			default:
+				escalation.exit()
+				return
+			}
+		}
+	}
 }
 
 // reloadSignalTimeout bounds one SIGHUP-triggered reload.

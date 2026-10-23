@@ -65,3 +65,9 @@ unready, drains HTTP under the configured timeout, stops Jobs and WebSocket,
 closes transport, withdraws the serving lease, closes metrics, then closes
 shared infrastructure. The tracked systemd/container stop windows are longer
 than the application drain budget.
+
+A second SIGTERM or SIGINT during the drain forces the stop: remaining HTTP
+connections close at once, Jobs and WebSocket close within their own bounds,
+and the process exits with status 1 so the supervisor records an incomplete
+drain. A third signal exits immediately without further cleanup; the serving
+and discovery leases then expire on their own.

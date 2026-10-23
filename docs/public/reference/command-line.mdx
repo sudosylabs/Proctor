@@ -40,6 +40,9 @@ proctor serve --config /etc/proctor/config.json
 ```
 
 `serve` integrates with systemd notification when `NOTIFY_SOCKET` is present.
+The first SIGTERM or SIGINT starts a graceful drain, a second forces it to
+finish at once and makes `serve` exit with status 1, and a third exits
+immediately. SIGHUP reloads configuration and static TLS certificates.
 The CLI warns when run as root; use a dedicated non-root service account.
 
 ## Show Effective Configuration

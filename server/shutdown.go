@@ -16,6 +16,10 @@ import (
 	"time"
 )
 
+// ErrShutdownForced reports that the host forced the stop before the graceful
+// drain finished, so in-flight work may have been cut off.
+var ErrShutdownForced = errors.New("shutdown was forced before the graceful drain finished")
+
 var errHTTPServerStopTimeout = errors.New("HTTP server did not stop after graceful shutdown")
 
 // forcedServeExitWait bounds the wait for Serve to return once HTTP has been
@@ -94,6 +98,9 @@ func (s *Server) runShutdown(plan stopPlan, endRun context.CancelFunc) error {
 	for _, step := range steps {
 		result = errors.Join(result, step(budget))
 	}
+	if s.forceRequested() {
+		result = errors.Join(result, ErrShutdownForced)
+	}
 	return result
 }
 
@@ -119,9 +126,52 @@ func (s *Server) beginStopping(running bool) {
 	}
 }
 
-// shutdownBudget is the one deadline the shutdown sequence shares.
+// shutdownBudget is the one deadline the shutdown sequence shares. A forced
+// stop ends it at once.
 func (s *Server) shutdownBudget() (context.Context, context.CancelFunc) {
-	return context.WithTimeout(context.Background(), s.components.settings.shutdownTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), s.components.settings.shutdownTimeout)
+	forced := s.forcedSignal()
+	go func() {
+		select {
+		case <-forced:
+			cancel()
+		case <-ctx.Done():
+		}
+	}()
+	return ctx, cancel
+}
+
+// ForceStop demands an immediate stop: a running node begins shutting down,
+// and a graceful drain already in progress ends at once by closing the
+// connections that remain. Run and Close then report ErrShutdownForced.
+// Jobs and WebSocket still close within their own bounds. ForceStop is safe
+// to call concurrently and more than once.
+func (s *Server) ForceStop() {
+	s.forceOnce.Do(func() { close(s.forcedSignal()) })
+	s.lifecycleMu.Lock()
+	cancel := s.runCancel
+	s.lifecycleMu.Unlock()
+	if cancel != nil {
+		cancel()
+	}
+}
+
+func (s *Server) forcedSignal() chan struct{} {
+	s.lifecycleMu.Lock()
+	defer s.lifecycleMu.Unlock()
+	if s.forced == nil {
+		s.forced = make(chan struct{})
+	}
+	return s.forced
+}
+
+func (s *Server) forceRequested() bool {
+	select {
+	case <-s.forcedSignal():
+		return true
+	default:
+		return false
+	}
 }
 
 func (s *Server) closeOwnedListener() error {

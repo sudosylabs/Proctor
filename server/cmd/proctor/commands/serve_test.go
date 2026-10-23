@@ -79,6 +79,8 @@ func TestServeHoldsSIGHUPReceivedDuringStartupUntilTheNodeExists(t *testing.T) {
 
 type reloadRecordingNode struct{ reloaded chan struct{} }
 
+func (*reloadRecordingNode) ForceStop() {}
+
 func (n *reloadRecordingNode) Reload(context.Context) error {
 	n.reloaded <- struct{}{}
 	return nil
@@ -90,5 +92,48 @@ func (n *reloadRecordingNode) Run(context.Context) error {
 		return nil
 	case <-time.After(5 * time.Second):
 		return errors.New("startup SIGHUP was not forwarded to the constructed node")
+	}
+}
+
+func TestStopSignalsEscalateFromGracefulToForcedToImmediateExit(t *testing.T) {
+	t.Parallel()
+
+	signals := make(chan os.Signal)
+	actions := make(chan string, 3)
+	done := make(chan struct{})
+	finished := make(chan struct{})
+	go func() {
+		defer close(finished)
+		escalateStopSignals(done, signals, stopEscalation{
+			stop:  func() { actions <- "stop" },
+			force: func() { actions <- "force" },
+			exit:  func() { actions <- "exit" },
+		})
+	}()
+	for _, want := range []string{"stop", "force", "exit"} {
+		signals <- syscall.SIGTERM
+		require.Equal(t, want, <-actions, "action for the next stop signal")
+	}
+	select {
+	case <-finished:
+	case <-time.After(time.Second):
+		require.FailNow(t, "escalation did not end after exiting")
+	}
+}
+
+func TestStopSignalEscalationEndsWhenServingEnds(t *testing.T) {
+	t.Parallel()
+
+	done := make(chan struct{})
+	finished := make(chan struct{})
+	go func() {
+		defer close(finished)
+		escalateStopSignals(done, make(chan os.Signal), stopEscalation{})
+	}()
+	close(done)
+	select {
+	case <-finished:
+	case <-time.After(time.Second):
+		require.FailNow(t, "escalation outlived serving")
 	}
 }

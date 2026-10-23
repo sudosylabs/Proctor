@@ -342,6 +342,10 @@ type Server struct {
 	http      httpRuntime
 	serveExit <-chan error
 
+	// forced closes once when the host demands an immediate stop.
+	forceOnce sync.Once
+	forced    chan struct{}
+
 	// closeErr is the one shutdown result shared by Run and every Close.
 	closeOnce sync.Once
 	closeErr  error
