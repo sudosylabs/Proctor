@@ -180,6 +180,12 @@ func (t *BrowserAuthenticationTransaction) Validate() error {
 	if t.ExpectedAuthenticationMethod != "" || t.ExpectedProviderID != "" {
 		return invalidModelError(where, "browser_authentication_transaction", "expected_authentication", "must be empty for desktop authorization", details)
 	}
+	return t.validateDesktopAuthorizationState(details, hasProposedKey, noProposedKey)
+}
+
+// validateDesktopAuthorizationState checks the desktop authorization fields required by the current state.
+func (t *BrowserAuthenticationTransaction) validateDesktopAuthorizationState(details string, hasProposedKey, noProposedKey bool) error {
+	const where = "BrowserAuthenticationTransaction.Validate"
 	switch t.State {
 	case BrowserAuthenticationStatePending:
 		if !IsValidTokenHash(t.HandleHash) || !IsValidTokenHash(t.BrowserProofHash) ||
