@@ -28,7 +28,7 @@ require (
 	github.com/redis/rueidis v1.0.77
 	github.com/spf13/cobra v1.10.2
 	github.com/stretchr/testify v1.11.1
-	github.com/sudosylabs/proctor/packages/cache v0.0.0-20261021095416-f4665b8e782b
+	github.com/sudosylabs/proctor/packages/cache v0.0.0-20261023082742-d368d3acc2dd
 	github.com/sudosylabs/proctor/packages/mail v0.0.0-20261022033035-a106025c0be4
 	github.com/sudosylabs/proctor/packages/vfs v0.0.0-20261022053940-b441636c4aff
 	golang.org/x/crypto v0.55.0

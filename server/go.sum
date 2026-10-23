@@ -313,8 +313,8 @@ github.com/stretchr/testify v1.4.0/go.mod h1:j7eGeouHqKxXV5pUuKE4zz7dFj8WfuZ+81P
 github.com/stretchr/testify v1.7.1/go.mod h1:6Fq8oRcR53rry900zMqJjRRixrwX3KX962/h/Wwjteg=
 github.com/stretchr/testify v1.8.0/go.mod h1:yNjHg4UonilssWZ8iaSj1OCr/vHnekPRkoO+kdMU+MU=
 github.com/stretchr/testify v1.8.4/go.mod h1:sz/lmYIOXD/1dqDmKjjqLyZ2RngseejIcXlSw2iwfAo=
-github.com/sudosylabs/proctor/packages/cache v0.0.0-20261021095416-f4665b8e782b h1:at3AUr7KAbWhh4UiSiH446GOikZN0A2MP7+YrAq8sj8=
-github.com/sudosylabs/proctor/packages/cache v0.0.0-20261021095416-f4665b8e782b/go.mod h1:/nfYgE//fpc03DchHGSVd8bpB/yHC7189mDOV8SpwfA=
+github.com/sudosylabs/proctor/packages/cache v0.0.0-20261023082742-d368d3acc2dd h1:REnMd9Pp4CAHZ57qsB7dQHWy4k1xKn/SFBwQPG0kf4Y=
+github.com/sudosylabs/proctor/packages/cache v0.0.0-20261023082742-d368d3acc2dd/go.mod h1:/nfYgE//fpc03DchHGSVd8bpB/yHC7189mDOV8SpwfA=
 github.com/sudosylabs/proctor/packages/mail v0.0.0-20261022033035-a106025c0be4 h1:Hb+49tgMR+Kktm9Ugpx4pK46lW6cipLc/Nfb6xCgxag=
 github.com/sudosylabs/proctor/packages/mail v0.0.0-20261022033035-a106025c0be4/go.mod h1:xIvMV1XI6xazERtTWgIeRt0zKffbe+GBPb08VAuOFRY=
 github.com/sudosylabs/proctor/packages/vfs v0.0.0-20261022053940-b441636c4aff h1:EXQO4vrcOqF3UqWWbuJju5GBRoWtV0yuz9gsUUZ6FXE=
