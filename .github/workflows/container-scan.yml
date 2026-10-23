@@ -1,0 +1,58 @@
+name: Container image scan
+
+on:
+  pull_request:
+    paths:
+      - 'build/**'
+      - '**/go.mod'
+      - '**/go.sum'
+      - 'go.work'
+      - 'go.work.sum'
+      - 'webapp/package.json'
+      - 'webapp/package-lock.json'
+      - 'server/templates/package.json'
+      - 'server/templates/package-lock.json'
+      - 'Makefile'
+      - '.github/workflows/container-scan.yml'
+      - '.github/actions/setup/**'
+  schedule:
+    - cron: '41 5 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: proctor-container-scan-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GOFLAGS: -buildvcs=false -mod=readonly
+  GOPRIVATE: github.com/sudosylabs/proctor
+
+jobs:
+  scan:
+    name: Runtime image vulnerabilities
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+        with:
+          token: ${{ github.token }}
+      - name: Build the runtime image with the release recipe
+        run: make container
+      - name: Fail on critical or fixable high vulnerabilities
+        run: make container-scan
+      - name: Upload the scan report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: container-scan-report
+          path: .build/container-scan/report.json
+          include-hidden-files: true
+          retention-days: 14
+          if-no-files-found: ignore

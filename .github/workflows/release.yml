@@ -171,6 +171,19 @@ jobs:
         run: |
           [[ "$IMAGE_DIGEST" =~ ^sha256:[a-f0-9]{64}$ ]]
           printf '%s@%s\n' "$RELEASE_IMAGE" "$IMAGE_DIGEST" > "$RELEASE_ASSETS/image-digest.txt"
+      # The pushed image stays unsigned, and the release a draft, if a scan fails.
+      # Each platform is pulled by digest through the existing login and saved to
+      # an archive, so the scanner never receives the job token.
+      - name: Scan each platform of the pushed image before signing
+        if: needs.metadata.outputs.server == 'true'
+        run: |
+          image=$(< "$RELEASE_ASSETS/image-digest.txt")
+          for platform in linux/amd64 linux/arm64; do
+            arch=${platform#linux/}
+            docker pull --quiet --platform "$platform" "$image"
+            make GO_HOST_OS=linux GO_HOST_ARCH=amd64 CONTAINER_ARCH="$arch" \
+              PROCTOR_RUNTIME_IMAGE="$image" container-scan
+          done
       - name: Bind release files to the source and CI execution
         run: node build/ci/release.mjs provenance "$RELEASE_ASSETS"
       - name: Sign and verify the release manifest and image digest

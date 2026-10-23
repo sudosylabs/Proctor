@@ -208,6 +208,7 @@ and the evidence produced by the smoke test.
 | `make buildenv-shell` | Opens an interactive shell in the pinned maintainer image with the checkout mounted at `/workspace`. |
 | `make container` | Packages Linux binaries for the host architecture with the same recipe as `make dist`, then builds the immutable, non-root runtime image from that package with the release Dockerfile. **Effect:** generated output below `.build/container`. |
 | `make container-load` | Compatibility alias for `make container`. Prefer `make container` in new automation. |
+| `make container-scan` | Saves the `CONTAINER_ARCH` platform (the host architecture by default) of `PROCTOR_RUNTIME_IMAGE` to an archive and scans it with the repository-pinned Trivy image. Fails on any critical vulnerability and on a high vulnerability that has a fixed version; unfixed high findings are listed but allowed. **Effect:** report below `.build/container-scan` and a vulnerability-database cache below `.build/trivy-cache`; downloads the database. |
 
 Package outputs deliberately refuse an existing destination. This protects an
 operator-owned configuration from being silently mixed into or overwritten by
