@@ -508,8 +508,9 @@ func newCache(settings config.Cache) (platform.Cache, error) {
 	switch settings.Backend {
 	case "memory":
 		store, err := memory.New(cache.BytesCodec(), memory.Config{
-			MaxEntries: settings.Memory.MaxEntries,
-			MaxBytes:   settings.Memory.MaxBytes,
+			MaxEntries:  settings.Memory.MaxEntries,
+			MaxBytes:    settings.Memory.MaxBytes,
+			MaxCounters: settings.Memory.MaxCounters,
 		})
 		if err != nil {
 			return nil, err

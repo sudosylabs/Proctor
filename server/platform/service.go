@@ -166,6 +166,7 @@ func newService(
 			logging.String("scope", "process_local"),
 			logging.Int("max_entries", snapshot.Cache.Memory.MaxEntries),
 			logging.Int64("max_bytes", snapshot.Cache.Memory.MaxBytes),
+			logging.Int("max_counters", snapshot.Cache.Memory.MaxCounters),
 		)
 	} else {
 		cacheFields = append(cacheFields, logging.String("scope", "installation_shared"))

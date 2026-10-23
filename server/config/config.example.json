@@ -55,7 +55,8 @@
     "Namespace": "proctor",
     "Memory": {
       "MaxEntries": 100000,
-      "MaxBytes": 67108864
+      "MaxBytes": 67108864,
+      "MaxCounters": 100000
     },
     "Redis": {
       "Addresses": [

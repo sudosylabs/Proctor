@@ -103,8 +103,9 @@ func Default() Config {
 			Backend:   "memory",
 			Namespace: "proctor",
 			Memory: CacheMemory{
-				MaxEntries: 100_000,
-				MaxBytes:   64 << 20,
+				MaxEntries:  100_000,
+				MaxBytes:    64 << 20,
+				MaxCounters: 100_000,
 			},
 			Redis: CacheRedis{
 				Addresses:      []string{"127.0.0.1:6379"},

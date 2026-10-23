@@ -78,9 +78,16 @@ The memory backend stores encoded bytes rather than retaining the original Go
 value. This prevents callers from mutating cached slices, maps, or pointers
 without a subsequent `Set`, and keeps behavior closer to remote backends. It
 evicts the least recently used entries until both configured limits are met;
-omitting `memory.Config` selects conservative defaults of 100,000 entries and
-64 MiB of retained key/value bytes. Runtime object overhead is intentionally
-outside the byte accounting.
+omitting `memory.Config` selects conservative defaults of 100,000 entries,
+64 MiB of retained key/value bytes and 100,000 counters. Runtime object
+overhead is intentionally outside the byte accounting.
+
+Counters often hold security state such as rate-limit windows, so the memory
+backend never evicts one: counters live outside the entry and byte bounds, in
+`MaxCounters` slots they leave only by expiring or being deleted. While every
+slot holds a live counter, `Add` refuses to create another with
+`cache.ErrCapacity`, and callers should fail closed. A zero `MaxCounters`
+disables counters; the store then does not advertise `AtomicCounter`.
 
 ## Redis example
 
@@ -145,7 +152,8 @@ value, err := counter.Add(ctx, "login-attempts/123", 1, cache.CounterOptions{
 Counter values are stored as base-10 signed integers. Keep counter keys
 separate from ordinary typed values unless the selected codec is intentionally
 compatible with that representation. Overflow and non-integer data return
-`cache.ErrInvalidValue`.
+`cache.ErrInvalidValue`. A bounded backend that cannot admit a new counter without evicting
+a live one returns `cache.ErrCapacity`.
 
 ## Capabilities
 

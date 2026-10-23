@@ -20,7 +20,7 @@ import (
 )
 
 func TestEnvironmentOverrideCatalogContracts(t *testing.T) {
-	require.Len(t, environmentOverrideCatalog, 127, "environment override definitions")
+	require.Len(t, environmentOverrideCatalog, 128, "environment override definitions")
 
 	seen := make(map[string]struct{}, len(environmentOverrideCatalog))
 	for _, definition := range environmentOverrideCatalog {

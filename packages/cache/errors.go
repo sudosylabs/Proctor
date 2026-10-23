@@ -21,6 +21,9 @@ var (
 	// ErrInvalidValue indicates that an operation cannot interpret the stored
 	// representation, for example when a counter key contains non-integer data.
 	ErrInvalidValue = errors.New("cache: invalid value")
+	// ErrCapacity indicates that a bounded backend cannot admit a new entry
+	// it must not evict to make room, such as a live atomic counter.
+	ErrCapacity = errors.New("cache: capacity exhausted")
 	// ErrUnsupported indicates that a backend cannot provide an optional
 	// operation or guarantee.
 	ErrUnsupported = errors.New("cache: unsupported operation")

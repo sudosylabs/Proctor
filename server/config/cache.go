@@ -22,9 +22,13 @@ type CacheRedis struct {
 
 // CacheMemory bounds the process-local disposable cache. MaxBytes accounts for
 // retained key and encoded-value bytes; implementation overhead is additional.
+// MaxCounters separately bounds the atomic counters that hold authentication
+// rate-limit windows: they are never evicted, so when every slot is live a new
+// counter is refused and the guarded action fails closed.
 type CacheMemory struct {
-	MaxEntries int   `json:"MaxEntries"`
-	MaxBytes   int64 `json:"MaxBytes"`
+	MaxEntries  int   `json:"MaxEntries"`
+	MaxBytes    int64 `json:"MaxBytes"`
+	MaxCounters int   `json:"MaxCounters"`
 }
 
 type Cache struct {
@@ -58,6 +62,9 @@ func validateCache(cache Cache, add func(string, string)) {
 		}
 		if cache.Memory.MaxBytes < 1<<20 || cache.Memory.MaxBytes > 1<<30 {
 			add("cache.memory.max_bytes", "must be between 1048576 and 1073741824")
+		}
+		if cache.Memory.MaxCounters < 1 || cache.Memory.MaxCounters > 1_000_000 {
+			add("cache.memory.max_counters", "must be between 1 and 1000000")
 		}
 	case "redis":
 		if len(cache.Redis.Addresses) == 0 {

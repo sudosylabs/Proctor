@@ -40,6 +40,7 @@ deployment sizes and PostgreSQL capacity assumptions are established. */}
 | `Cache.Namespace`<br />Default: `proctor` | Prefix separating this installation's cache keys. Must contain `1`–`128` ASCII letters, numbers, dots, underscores, or hyphens. Use a distinct value when Redis is shared. |
 | `Cache.Memory.MaxEntries`<br />Default: `100000` | Maximum retained entries for the `memory` backend. Must be between `1` and `1000000`. |
 | `Cache.Memory.MaxBytes`<br />Default: `67108864` (64 MiB) | Bound on retained key and encoded-value bytes for the `memory` backend. Must be between `1048576` and `1073741824`; implementation overhead is additional. |
+| `Cache.Memory.MaxCounters`<br />Default: `100000` | Maximum live authentication rate-limit counters for the `memory` backend, kept apart from the entry and byte bounds. Counters are never evicted to make room, so a flood of new usernames cannot erase another account's limit; while every slot holds an open window, new sign-in and recovery attempts are refused as temporarily unavailable until windows close. Must be between `1` and `1000000`. |
 | `Cache.Redis.Addresses[]`<br />Default: `127.0.0.1:6379` | One or more Redis endpoints for the `redis` backend. Each entry must be `host:port`; at least one is required. |
 | `Cache.Redis.Username`<br />Default: empty | Redis ACL username. Treat it as credential material when used. |
 | `Cache.Redis.Password`<br />Default: empty | Redis password. Secret; prefer a protected environment override. |
