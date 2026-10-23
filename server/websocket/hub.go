@@ -341,49 +341,10 @@ func (h *Hub) register(
 		return nil, false
 	}
 	h.pruneReplayLocked(shard, time.Now())
-	var userConnections, sessionConnections int
-	for _, connection := range shard.conns {
-		if connection.belongsToUser(principal.UserID.String()) {
-			userConnections++
-		}
-		if connection.belongsToSession(principal.SessionID.String()) {
-			sessionConnections++
-		}
-	}
-	if userConnections >= maximumPerUser ||
-		sessionConnections >= maximumPerSession {
+	if connectionLimitReachedLocked(shard, principal) {
 		return nil, false
 	}
-	connectionID := model.NewID()
-	nextSequence := int64(0)
-	var (
-		history       []*Event
-		subscriptions = make(map[string]Subscription)
-		replayEvents  []*Event
-		resumed       bool
-	)
-	if state := shard.replay[requestedID]; state != nil &&
-		state.userID == principal.UserID.String() &&
-		state.sessionID == principal.SessionID.String() &&
-		requestedSequence <= state.nextSequence {
-		oldest := state.nextSequence
-		if len(state.history) != 0 {
-			oldest = state.history[0].Sequence - 1
-		}
-		if requestedSequence >= oldest {
-			connectionID = requestedID
-			nextSequence = state.nextSequence
-			history = cloneEvents(state.history)
-			subscriptions = cloneSubscriptions(state.subscriptions)
-			for _, event := range state.history {
-				if event.Sequence > requestedSequence {
-					replayEvents = append(replayEvents, event.Clone())
-				}
-			}
-			resumed = true
-			delete(shard.replay, requestedID)
-		}
-	}
+	resume := takeReplayResumeLocked(shard, principal, requestedID, requestedSequence)
 	connection := newConnectionRuntime(
 		h.application,
 		h.logger,
@@ -393,13 +354,91 @@ func (h *Hub) register(
 		socket,
 		principal,
 		metadata,
-		connectionID,
-		nextSequence,
-		history,
-		subscriptions,
-		replayEvents,
+		resume.connectionID,
+		resume.nextSequence,
+		resume.history,
+		resume.subscriptions,
+		resume.replayEvents,
 	)
 	connection.recorder = h.recorder
+	attachFrameBudgetLocked(shard, connection, principal)
+	shard.conns[resume.connectionID] = connection
+	if h.recorder != nil {
+		if requestedID != "" {
+			result := "resync_required"
+			if resume.resumed {
+				result = "resumed"
+			}
+			h.recorder.ObserveWebSocketReplay(result, len(resume.replayEvents))
+		}
+		h.recorder.AddWebSocketSubscriptions(len(resume.subscriptions))
+	}
+	return connection, resume.resumed
+}
+
+// replayResume is the connection identity and replay state a registration starts from.
+type replayResume struct {
+	connectionID  string
+	nextSequence  int64
+	history       []*Event
+	subscriptions map[string]Subscription
+	replayEvents  []*Event
+	resumed       bool
+}
+
+// connectionLimitReachedLocked reports whether the principal's user or Session already holds the maximum connections in the locked shard.
+func connectionLimitReachedLocked(shard *shard, principal model.Principal) bool {
+	var userConnections, sessionConnections int
+	for _, connection := range shard.conns {
+		if connection.belongsToUser(principal.UserID.String()) {
+			userConnections++
+		}
+		if connection.belongsToSession(principal.SessionID.String()) {
+			sessionConnections++
+		}
+	}
+	return userConnections >= maximumPerUser ||
+		sessionConnections >= maximumPerSession
+}
+
+// takeReplayResumeLocked claims the principal's retained replay state when the requested sequence is still covered, or starts a fresh connection.
+func takeReplayResumeLocked(
+	shard *shard,
+	principal model.Principal,
+	requestedID string,
+	requestedSequence int64,
+) replayResume {
+	resume := replayResume{
+		connectionID:  model.NewID(),
+		subscriptions: make(map[string]Subscription),
+	}
+	if state := shard.replay[requestedID]; state != nil &&
+		state.userID == principal.UserID.String() &&
+		state.sessionID == principal.SessionID.String() &&
+		requestedSequence <= state.nextSequence {
+		oldest := state.nextSequence
+		if len(state.history) != 0 {
+			oldest = state.history[0].Sequence - 1
+		}
+		if requestedSequence >= oldest {
+			resume.connectionID = requestedID
+			resume.nextSequence = state.nextSequence
+			resume.history = cloneEvents(state.history)
+			resume.subscriptions = cloneSubscriptions(state.subscriptions)
+			for _, event := range state.history {
+				if event.Sequence > requestedSequence {
+					resume.replayEvents = append(resume.replayEvents, event.Clone())
+				}
+			}
+			resume.resumed = true
+			delete(shard.replay, requestedID)
+		}
+	}
+	return resume
+}
+
+// attachFrameBudgetLocked shares the principal's inbound frame budget from the locked shard with the connection.
+func attachFrameBudgetLocked(shard *shard, connection *connectionRuntime, principal model.Principal) {
 	budgetKey := frameBudgetKey(principal)
 	budget := shard.budgets[budgetKey]
 	if budget == nil {
@@ -408,18 +447,6 @@ func (h *Hub) register(
 	}
 	budget.holders++
 	connection.inbound.shared = budget
-	shard.conns[connectionID] = connection
-	if h.recorder != nil {
-		if requestedID != "" {
-			result := "resync_required"
-			if resumed {
-				result = "resumed"
-			}
-			h.recorder.ObserveWebSocketReplay(result, len(replayEvents))
-		}
-		h.recorder.AddWebSocketSubscriptions(len(subscriptions))
-	}
-	return connection, resumed
 }
 
 func (h *Hub) unregister(connection *connectionRuntime) {
