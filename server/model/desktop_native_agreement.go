@@ -160,21 +160,34 @@ func NewDesktopNativeAgreement(registryDigest, sourceManifestDigest, matrixDiges
 			return nil, errNativeAgreement
 		}
 	}
-	previous = ""
+	if err := validateNativeDetectors(detectors, definitions); err != nil {
+		return nil, err
+	}
+	result := &DesktopNativeAgreement{registryDigest: registryDigest, sourceManifestDigest: sourceManifestDigest, matrixDigest: matrixDigest,
+		detectorCatalogDigest: detectorCatalogDigest, releaseID: matrix.ReleaseID, targetTuple: matrix.TargetTuple}
+	result.definitions = cloneNativeDefinitions(definitions)
+	result.matrix = cloneNativeMatrix(matrix)
+	result.detectors = cloneNativeDetectors(detectors)
+	return result, nil
+}
+
+// validateNativeDetectors checks that detectors are ordered and only use certified sources and claims.
+func validateNativeDetectors(detectors []NativeDetectorDefinition, definitions []NativeCoverageDefinition) error {
+	previous := ""
 	var version int64
 	for _, detector := range detectors {
 		if !IsValidAgreementID(detector.DetectorID) || detector.Version < 1 || detector.Version > 9007199254740991 ||
 			detector.DetectorID < previous || detector.DetectorID == previous && detector.Version <= version ||
 			!IsValidAgreementID(detector.CapabilityID) || validateNativeConditionIDs(detector.ConditionIDs) != nil ||
 			len(detector.SourceIDs) == 0 || len(detector.SourceIDs) > len(NativeSources()) || len(detector.AllowedModes) == 0 || len(detector.AllowedModes) > 2 {
-			return nil, errNativeAgreement
+			return errNativeAgreement
 		}
 		previous, version = detector.DetectorID, detector.Version
 		lastSource := -1
 		for _, source := range detector.SourceIDs {
 			order := slices.Index(NativeSources(), source)
 			if order < 0 || order <= lastSource {
-				return nil, errNativeAgreement
+				return errNativeAgreement
 			}
 			lastSource = order
 			found := false
@@ -184,12 +197,12 @@ func NewDesktopNativeAgreement(registryDigest, sourceManifestDigest, matrixDiges
 				}
 			}
 			if !found {
-				return nil, errNativeAgreement
+				return errNativeAgreement
 			}
 		}
 		for i, mode := range detector.AllowedModes {
 			if mode != NativeClaimObserve && mode != NativeClaimEnforce || slices.Contains(detector.AllowedModes[:i], mode) {
-				return nil, errNativeAgreement
+				return errNativeAgreement
 			}
 			supported := false
 			for _, definition := range definitions {
@@ -198,16 +211,11 @@ func NewDesktopNativeAgreement(registryDigest, sourceManifestDigest, matrixDiges
 				}
 			}
 			if !supported {
-				return nil, errNativeAgreement
+				return errNativeAgreement
 			}
 		}
 	}
-	result := &DesktopNativeAgreement{registryDigest: registryDigest, sourceManifestDigest: sourceManifestDigest, matrixDigest: matrixDigest,
-		detectorCatalogDigest: detectorCatalogDigest, releaseID: matrix.ReleaseID, targetTuple: matrix.TargetTuple}
-	result.definitions = cloneNativeDefinitions(definitions)
-	result.matrix = cloneNativeMatrix(matrix)
-	result.detectors = cloneNativeDetectors(detectors)
-	return result, nil
+	return nil
 }
 
 func validateNativePermissions(values []string) error {
