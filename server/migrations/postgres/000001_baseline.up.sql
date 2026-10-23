@@ -3885,6 +3885,10 @@ ALTER TABLE mail_key_state
     ADD CONSTRAINT mail_key_state_active_rekey_job_id_canonical_check
     CHECK (active_rekey_job_id IS NULL OR active_rekey_job_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
 
+ALTER TABLE mfa_key_state
+    ADD CONSTRAINT mfa_key_state_active_rekey_job_id_canonical_check
+    CHECK (active_rekey_job_id IS NULL OR active_rekey_job_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
+
 ALTER TABLE command_outcomes
     ADD CONSTRAINT command_outcomes_user_id_canonical_check
     CHECK (user_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
