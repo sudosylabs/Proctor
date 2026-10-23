@@ -43,142 +43,217 @@ func (s *SQLExamAttemptStore) RenewParticipation(ctx context.Context, input *sto
 	return s.changeParticipationControl(ctx, input, true)
 }
 
+// participationRenewalAttemptRow is the Attempt and Sitting state a
+// Participation renewal locks before the Participation itself.
+type participationRenewalAttemptRow struct {
+	CandidateID    string    `db:"candidate_user_id"`
+	ExamID         string    `db:"exam_id"`
+	SittingID      string    `db:"exam_sitting_id"`
+	State          string    `db:"state"`
+	SittingState   string    `db:"sitting_state"`
+	ScheduledEndAt time.Time `db:"scheduled_end_at"`
+}
+
 func (s *SQLExamAttemptStore) changeParticipationControl(ctx context.Context, input *store.ExamAttemptParticipationRenewal, renew bool) (*store.ExamAttemptParticipationRenewalResult, error) {
+	if !validParticipationControl(input, renew) {
+		return nil, store.NewErrInvalidInput("attempt_participation", "renewal", nil)
+	}
+	return runSQLTransaction(ctx, s.GetMaster().Begin, "renew Attempt Participation", func(ctx context.Context, tx *sqlxTxWrapper) (*store.ExamAttemptParticipationRenewalResult, error) {
+		return s.changeParticipationControlInTx(ctx, tx, input, renew)
+	})
+}
+
+// validParticipationControl reports whether input is a well-formed renewal,
+// or with renew false a well-formed sequence-zero control check.
+func validParticipationControl(input *store.ExamAttemptParticipationRenewal, renew bool) bool {
 	if input == nil || !input.AttemptID.IsValid() || !input.ParticipationID.IsValid() || !input.ConnectionID.IsValid() ||
 		!input.CandidateUserID.IsValid() || !input.SessionID.IsValid() || input.Generation < 1 || renew && input.Sequence < 1 || !renew && input.Sequence != 0 || input.DesktopCompatibilityPolicyRevision < 1 || input.DesktopBuild.Validate() != nil || input.DesktopBuild.NativeAgreement == nil || input.SecurityCoverage.Validate() != nil ||
 		!input.DesktopRegistrationID.IsValid() || !model.IsValidDPoPKeyThumbprint(input.DPoPKeyThumbprint) ||
 		!model.IsValidTokenHash(input.ContinuityCredentialHash) {
-		return nil, store.NewErrInvalidInput("attempt_participation", "renewal", nil)
+		return false
 	}
-	return runSQLTransaction(ctx, s.GetMaster().Begin, "renew Attempt Participation", func(ctx context.Context, tx *sqlxTxWrapper) (*store.ExamAttemptParticipationRenewalResult, error) {
-		if err := requireDesktopCompatibilityPolicyRevision(ctx, tx, input.DesktopCompatibilityPolicyRevision); err != nil {
-			return nil, err
-		}
-		var attempt struct {
-			CandidateID    string    `db:"candidate_user_id"`
-			ExamID         string    `db:"exam_id"`
-			SittingID      string    `db:"exam_sitting_id"`
-			State          string    `db:"state"`
-			SittingState   string    `db:"sitting_state"`
-			ScheduledEndAt time.Time `db:"scheduled_end_at"`
-		}
-		if err := tx.Get(ctx, &attempt, `SELECT a.candidate_user_id,a.exam_id,a.exam_sitting_id,a.state,s.state AS sitting_state,s.scheduled_end_at
+	return true
+}
+
+// changeParticipationControlInTx locks and checks the Attempt, Participation,
+// Session and Connection, processes security coverage, and advances the lease
+// when renew carries a new sequence.
+func (s *SQLExamAttemptStore) changeParticipationControlInTx(ctx context.Context, tx *sqlxTxWrapper, input *store.ExamAttemptParticipationRenewal,
+	renew bool,
+) (*store.ExamAttemptParticipationRenewalResult, error) {
+	if err := requireDesktopCompatibilityPolicyRevision(ctx, tx, input.DesktopCompatibilityPolicyRevision); err != nil {
+		return nil, err
+	}
+	attempt, examID, sittingID, err := lockParticipationRenewalAttempt(ctx, tx, input)
+	if err != nil {
+		return nil, err
+	}
+	row, err := lockParticipationRenewalCredential(ctx, tx, input, attempt.State)
+	if err != nil {
+		return nil, err
+	}
+	if err = lockParticipationRenewalConnection(ctx, tx, input); err != nil {
+		return nil, err
+	}
+	if attempt.SittingState != string(model.ExamSittingOpen) && attempt.SittingState != string(model.ExamSittingPaused) {
+		return nil, store.NewErrConflict("exam_sitting", "exam_sitting_state", nil)
+	}
+	if err = checkParticipationRenewalTime(ctx, tx, input, &row, attempt.ScheduledEndAt, renew); err != nil {
+		return nil, err
+	}
+	coverage, err := s.processSecurityCoverage(ctx, tx, input, attempt.SittingState == string(model.ExamSittingOpen), row.DatabaseNow)
+	if err != nil {
+		return nil, err
+	}
+	if !renew || input.Sequence == row.RenewalSequence {
+		return &store.ExamAttemptParticipationRenewalResult{SecurityCoverage: coverage, AttemptID: input.AttemptID, ExamID: examID, SittingID: sittingID,
+			CandidateUserID: input.CandidateUserID, ParticipationID: input.ParticipationID,
+			Generation: row.Generation, AcceptedSequence: row.RenewalSequence, DatabaseTime: model.TimeUTC(row.UpdatedAt),
+			LeaseExpiresAt: model.TimeUTC(row.LeaseExpiresAt), Duplicate: true}, nil
+	}
+	participation, err := applyParticipationRenewal(ctx, tx, input, row, attempt.ScheduledEndAt)
+	if err != nil {
+		return nil, err
+	}
+	return &store.ExamAttemptParticipationRenewalResult{SecurityCoverage: coverage, AttemptID: input.AttemptID, ExamID: examID, SittingID: sittingID,
+		CandidateUserID: input.CandidateUserID, ParticipationID: input.ParticipationID,
+		Generation: participation.Generation, AcceptedSequence: participation.RenewalSequence,
+		DatabaseTime: participation.UpdatedAt, LeaseExpiresAt: participation.LeaseExpiresAt}, nil
+}
+
+// lockParticipationRenewalAttempt locks the Attempt and shares its Sitting,
+// requiring the input Candidate to own the Attempt.
+func lockParticipationRenewalAttempt(ctx context.Context, tx *sqlxTxWrapper, input *store.ExamAttemptParticipationRenewal,
+) (participationRenewalAttemptRow, model.ExamID, model.ExamSittingID, error) {
+	var attempt participationRenewalAttemptRow
+	if err := tx.Get(ctx, &attempt, `SELECT a.candidate_user_id,a.exam_id,a.exam_sitting_id,a.state,s.state AS sitting_state,s.scheduled_end_at
 			FROM exam_attempts a JOIN exam_sittings s ON s.id=a.exam_sitting_id AND s.exam_id=a.exam_id
 			WHERE a.id=? FOR UPDATE OF a FOR SHARE OF s`, input.AttemptID.String()); err != nil {
-			if errors.Is(err, sql.ErrNoRows) {
-				return nil, store.NewErrConflict("attempt_participation", "attempt_participation_credential", nil)
-			}
-			return nil, fmt.Errorf("lock Exam Attempt for renewal: %w", err)
+		if errors.Is(err, sql.ErrNoRows) {
+			return attempt, "", "", store.NewErrConflict("attempt_participation", "attempt_participation_credential", nil)
 		}
-		if attempt.CandidateID != input.CandidateUserID.String() {
-			return nil, store.NewErrConflict("attempt_participation", "attempt_participation_credential", nil)
-		}
-		examID, examErr := model.ParseExamID(attempt.ExamID)
-		sittingID, sittingErr := model.ParseExamSittingID(attempt.SittingID)
-		if examErr != nil || sittingErr != nil {
-			return nil, invalidPersistedState("exam_attempt", "ownership", errors.Join(examErr, sittingErr))
-		}
-		var row attemptParticipationRenewalRow
-		if err := tx.Get(ctx, &row, `SELECT p.state,p.session_id,se.desktop_registration_id,se.dpop_key_thumbprint,
+		return attempt, "", "", fmt.Errorf("lock Exam Attempt for renewal: %w", err)
+	}
+	if attempt.CandidateID != input.CandidateUserID.String() {
+		return attempt, "", "", store.NewErrConflict("attempt_participation", "attempt_participation_credential", nil)
+	}
+	examID, examErr := model.ParseExamID(attempt.ExamID)
+	sittingID, sittingErr := model.ParseExamSittingID(attempt.SittingID)
+	if examErr != nil || sittingErr != nil {
+		return attempt, "", "", invalidPersistedState("exam_attempt", "ownership", errors.Join(examErr, sittingErr))
+	}
+	return attempt, examID, sittingID, nil
+}
+
+// lockParticipationRenewalCredential locks the Participation with its Session
+// and Desktop Registration and checks the credential, generation and states.
+func lockParticipationRenewalCredential(ctx context.Context, tx *sqlxTxWrapper, input *store.ExamAttemptParticipationRenewal,
+	attemptState string,
+) (attemptParticipationRenewalRow, error) {
+	var row attemptParticipationRenewalRow
+	if err := tx.Get(ctx, &row, `SELECT p.state,p.session_id,se.desktop_registration_id,se.dpop_key_thumbprint,
 			p.generation,p.renewal_sequence,p.continuity_credential_hash,p.started_at,p.updated_at,
 			p.lease_expires_at,p.ended_at,p.end_reason,se.idle_expires_at AS session_idle_expires_at,se.expires_at AS session_expires_at
 			FROM exam_attempt_participations p JOIN sessions se ON se.id=p.session_id
 			JOIN desktop_registrations dr ON dr.id=se.desktop_registration_id AND dr.user_id=se.user_id
 			WHERE p.id=? AND p.exam_attempt_id=? AND se.user_id=? AND se.archived_at IS NULL AND se.revoked_at IS NULL
 			AND dr.revoked_at IS NULL FOR UPDATE OF p,se,dr`, input.ParticipationID.String(), input.AttemptID.String(), input.CandidateUserID.String()); err != nil {
-			if errors.Is(err, sql.ErrNoRows) {
-				return nil, store.NewErrConflict("attempt_participation", "attempt_participation_credential", nil)
-			}
-			return nil, fmt.Errorf("lock Attempt Participation renewal: %w", err)
+		if errors.Is(err, sql.ErrNoRows) {
+			return row, store.NewErrConflict("attempt_participation", "attempt_participation_credential", nil)
 		}
-		if row.SessionID != input.SessionID.String() || row.RegistrationID != input.DesktopRegistrationID.String() ||
-			row.KeyThumbprint != input.DPoPKeyThumbprint {
-			return nil, store.NewErrConflict("attempt_participation", "attempt_participation_credential", nil)
-		}
-		if input.Generation != row.Generation {
-			return nil, store.NewErrConflict("attempt_participation", "attempt_participation_generation", nil)
-		}
-		if subtle.ConstantTimeCompare([]byte(row.CredentialHash), []byte(input.ContinuityCredentialHash)) != 1 {
-			return nil, store.NewErrConflict("attempt_participation", "attempt_participation_credential", nil)
-		}
-		if row.State != string(model.AttemptParticipationActive) {
-			return nil, store.NewErrConflict("attempt_participation", "attempt_participation_expired", nil)
-		}
-		if attempt.State != string(model.ExamAttemptActive) {
-			return nil, store.NewErrConflict("exam_attempt", "exam_attempt_state", nil)
-		}
+		return row, fmt.Errorf("lock Attempt Participation renewal: %w", err)
+	}
+	if row.SessionID != input.SessionID.String() || row.RegistrationID != input.DesktopRegistrationID.String() ||
+		row.KeyThumbprint != input.DPoPKeyThumbprint {
+		return row, store.NewErrConflict("attempt_participation", "attempt_participation_credential", nil)
+	}
+	if input.Generation != row.Generation {
+		return row, store.NewErrConflict("attempt_participation", "attempt_participation_generation", nil)
+	}
+	if subtle.ConstantTimeCompare([]byte(row.CredentialHash), []byte(input.ContinuityCredentialHash)) != 1 {
+		return row, store.NewErrConflict("attempt_participation", "attempt_participation_credential", nil)
+	}
+	if row.State != string(model.AttemptParticipationActive) {
+		return row, store.NewErrConflict("attempt_participation", "attempt_participation_expired", nil)
+	}
+	if attemptState != string(model.ExamAttemptActive) {
+		return row, store.NewErrConflict("exam_attempt", "exam_attempt_state", nil)
+	}
+	return row, nil
+}
 
-		var connection struct {
-			SessionID string `db:"session_id"`
-			State     string `db:"state"`
-		}
-		if err := tx.Get(ctx, &connection, `SELECT session_id,state FROM exam_attempt_connections
+// lockParticipationRenewalConnection locks the renewing Connection and
+// requires it to be open on the input Session.
+func lockParticipationRenewalConnection(ctx context.Context, tx *sqlxTxWrapper, input *store.ExamAttemptParticipationRenewal) error {
+	var connection struct {
+		SessionID string `db:"session_id"`
+		State     string `db:"state"`
+	}
+	if err := tx.Get(ctx, &connection, `SELECT session_id,state FROM exam_attempt_connections
 			WHERE id=? AND exam_attempt_id=? AND participation_id=? FOR UPDATE`, input.ConnectionID.String(), input.AttemptID.String(), input.ParticipationID.String()); err != nil {
-			if errors.Is(err, sql.ErrNoRows) {
-				return nil, store.NewErrConflict("attempt_participation", "attempt_participation_credential", nil)
-			}
-			return nil, fmt.Errorf("lock Attempt Connection renewal: %w", err)
+		if errors.Is(err, sql.ErrNoRows) {
+			return store.NewErrConflict("attempt_participation", "attempt_participation_credential", nil)
 		}
-		if connection.SessionID != input.SessionID.String() || connection.State != string(model.AttemptConnectionOpen) {
-			return nil, store.NewErrConflict("attempt_participation", "attempt_participation_credential", nil)
-		}
-		if attempt.SittingState != string(model.ExamSittingOpen) && attempt.SittingState != string(model.ExamSittingPaused) {
-			return nil, store.NewErrConflict("exam_sitting", "exam_sitting_state", nil)
-		}
-		if err := tx.Get(ctx, &row.DatabaseNow, `SELECT statement_timestamp()`); err != nil {
-			return nil, fmt.Errorf("read Attempt Participation renewal decision time: %w", err)
-		}
-		if !row.DatabaseNow.Before(row.SessionIdleExpiresAt) || !row.DatabaseNow.Before(row.SessionExpiresAt) {
-			return nil, store.NewErrConflict("attempt_participation", "attempt_participation_credential", nil)
-		}
-		if !row.DatabaseNow.Before(attempt.ScheduledEndAt) || !row.DatabaseNow.Before(row.LeaseExpiresAt) {
-			return nil, store.NewErrConflict("attempt_participation", "attempt_participation_expired", nil)
-		}
-		if renew && input.Sequence < row.RenewalSequence {
-			return nil, store.NewErrConflict("attempt_participation", "attempt_participation_sequence", nil)
-		}
-		coverage, err := s.processSecurityCoverage(ctx, tx, input, attempt.SittingState == string(model.ExamSittingOpen), row.DatabaseNow)
-		if err != nil {
-			return nil, err
-		}
-		if !renew || input.Sequence == row.RenewalSequence {
-			return &store.ExamAttemptParticipationRenewalResult{SecurityCoverage: coverage, AttemptID: input.AttemptID, ExamID: examID, SittingID: sittingID,
-				CandidateUserID: input.CandidateUserID, ParticipationID: input.ParticipationID,
-				Generation: row.Generation, AcceptedSequence: row.RenewalSequence, DatabaseTime: model.TimeUTC(row.UpdatedAt),
-				LeaseExpiresAt: model.TimeUTC(row.LeaseExpiresAt), Duplicate: true}, nil
-		}
+		return fmt.Errorf("lock Attempt Connection renewal: %w", err)
+	}
+	if connection.SessionID != input.SessionID.String() || connection.State != string(model.AttemptConnectionOpen) {
+		return store.NewErrConflict("attempt_participation", "attempt_participation_credential", nil)
+	}
+	return nil
+}
 
-		participation := &model.AttemptParticipation{ID: input.ParticipationID, AttemptID: input.AttemptID, SessionID: input.SessionID,
-			State: model.AttemptParticipationActive, Generation: row.Generation, RenewalSequence: row.RenewalSequence,
-			ContinuityCredentialHash: row.CredentialHash, StartedAt: model.TimeUTC(row.StartedAt), UpdatedAt: model.TimeUTC(row.UpdatedAt),
-			LeaseExpiresAt: model.TimeUTC(row.LeaseExpiresAt), EndedAt: OptionalTimeFromNullTime(row.EndedAt),
-			EndReason: model.AttemptParticipationEndReason(row.EndReason.String)}
-		if err := participation.Validate(); err != nil {
-			return nil, invalidPersistedState("attempt_participation", "value", err)
-		}
-		if _, err := participation.Renew(input.Generation, input.Sequence, row.DatabaseNow); err != nil {
-			return nil, fmt.Errorf("renew Attempt Participation domain state: %w", err)
-		}
-		if participation.LeaseExpiresAt.After(attempt.ScheduledEndAt) {
-			participation.LeaseExpiresAt = model.TimeUTC(attempt.ScheduledEndAt)
-		}
-		result, err := tx.Exec(ctx, `UPDATE exam_attempt_participations SET renewal_sequence=?,updated_at=?,lease_expires_at=?
+// checkParticipationRenewalTime reads the decision time into row and checks
+// the Session, Sitting deadline, lease and renewal sequence against it.
+func checkParticipationRenewalTime(ctx context.Context, tx *sqlxTxWrapper, input *store.ExamAttemptParticipationRenewal,
+	row *attemptParticipationRenewalRow, scheduledEndAt time.Time, renew bool,
+) error {
+	if err := tx.Get(ctx, &row.DatabaseNow, `SELECT statement_timestamp()`); err != nil {
+		return fmt.Errorf("read Attempt Participation renewal decision time: %w", err)
+	}
+	if !row.DatabaseNow.Before(row.SessionIdleExpiresAt) || !row.DatabaseNow.Before(row.SessionExpiresAt) {
+		return store.NewErrConflict("attempt_participation", "attempt_participation_credential", nil)
+	}
+	if !row.DatabaseNow.Before(scheduledEndAt) || !row.DatabaseNow.Before(row.LeaseExpiresAt) {
+		return store.NewErrConflict("attempt_participation", "attempt_participation_expired", nil)
+	}
+	if renew && input.Sequence < row.RenewalSequence {
+		return store.NewErrConflict("attempt_participation", "attempt_participation_sequence", nil)
+	}
+	return nil
+}
+
+// applyParticipationRenewal renews the Participation domain state, bounds the
+// lease by the Sitting end, and writes it fenced on the prior sequence.
+func applyParticipationRenewal(ctx context.Context, tx *sqlxTxWrapper, input *store.ExamAttemptParticipationRenewal,
+	row attemptParticipationRenewalRow, scheduledEndAt time.Time,
+) (*model.AttemptParticipation, error) {
+	participation := &model.AttemptParticipation{ID: input.ParticipationID, AttemptID: input.AttemptID, SessionID: input.SessionID,
+		State: model.AttemptParticipationActive, Generation: row.Generation, RenewalSequence: row.RenewalSequence,
+		ContinuityCredentialHash: row.CredentialHash, StartedAt: model.TimeUTC(row.StartedAt), UpdatedAt: model.TimeUTC(row.UpdatedAt),
+		LeaseExpiresAt: model.TimeUTC(row.LeaseExpiresAt), EndedAt: OptionalTimeFromNullTime(row.EndedAt),
+		EndReason: model.AttemptParticipationEndReason(row.EndReason.String)}
+	if err := participation.Validate(); err != nil {
+		return nil, invalidPersistedState("attempt_participation", "value", err)
+	}
+	if _, err := participation.Renew(input.Generation, input.Sequence, row.DatabaseNow); err != nil {
+		return nil, fmt.Errorf("renew Attempt Participation domain state: %w", err)
+	}
+	if participation.LeaseExpiresAt.After(scheduledEndAt) {
+		participation.LeaseExpiresAt = model.TimeUTC(scheduledEndAt)
+	}
+	result, err := tx.Exec(ctx, `UPDATE exam_attempt_participations SET renewal_sequence=?,updated_at=?,lease_expires_at=?
 			WHERE id=? AND exam_attempt_id=? AND state='active' AND renewal_sequence=?`, participation.RenewalSequence,
-			participation.UpdatedAt, participation.LeaseExpiresAt, input.ParticipationID.String(), input.AttemptID.String(), row.RenewalSequence)
-		if err != nil {
-			return nil, fmt.Errorf("renew Attempt Participation: %w", err)
+		participation.UpdatedAt, participation.LeaseExpiresAt, input.ParticipationID.String(), input.AttemptID.String(), row.RenewalSequence)
+	if err != nil {
+		return nil, fmt.Errorf("renew Attempt Participation: %w", err)
+	}
+	if affected, rowsErr := result.RowsAffected(); rowsErr != nil || affected != 1 {
+		if rowsErr != nil {
+			return nil, fmt.Errorf("inspect Attempt Participation renewal: %w", rowsErr)
 		}
-		if affected, rowsErr := result.RowsAffected(); rowsErr != nil || affected != 1 {
-			if rowsErr != nil {
-				return nil, fmt.Errorf("inspect Attempt Participation renewal: %w", rowsErr)
-			}
-			return nil, store.NewErrConflict("attempt_participation", "attempt_participation_sequence", nil)
-		}
-		return &store.ExamAttemptParticipationRenewalResult{SecurityCoverage: coverage, AttemptID: input.AttemptID, ExamID: examID, SittingID: sittingID,
-			CandidateUserID: input.CandidateUserID, ParticipationID: input.ParticipationID,
-			Generation: participation.Generation, AcceptedSequence: participation.RenewalSequence,
-			DatabaseTime: participation.UpdatedAt, LeaseExpiresAt: participation.LeaseExpiresAt}, nil
-	})
+		return nil, store.NewErrConflict("attempt_participation", "attempt_participation_sequence", nil)
+	}
+	return participation, nil
 }
 
 type participationExpiryDueRow struct {
