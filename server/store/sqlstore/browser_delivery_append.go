@@ -176,255 +176,14 @@ func (s *SQLExamAttemptStore) appendBrowserActivity(ctx context.Context, input *
 	if err := s.debitBrowserAppend(ctx, access); err != nil {
 		return nil, err
 	}
-	perform := func(ctx context.Context, tx *sqlxTxWrapper, audit bool) (browserAppendResult, error) {
-		if err := s.lockBrowserDelivery(ctx, tx, access); err != nil {
-			return browserAppendResult{}, err
-		}
-		status, err := browserSourceStatus(ctx, tx, input.SourceSessionID)
-		if err != nil {
-			return browserAppendResult{}, err
-		}
-		if status.PolicyRevisionID != input.PolicyRevisionID || status.PolicyDigest != input.PolicyDigest || status.Generation != input.Generation {
-			return browserAppendResult{}, store.NewErrConflict("browser_activity", "browser_source_fence", nil)
-		}
-		if (status.Closure.ClosedAt != nil) != (command != nil) {
-			return browserAppendResult{}, store.NewErrConflict("browser_activity", "browser_source_fence", nil)
-		}
-		if status.Closure.UploadExpiresAt != nil && !status.ServerTime.Before(*status.Closure.UploadExpiresAt) {
-			return browserAppendResult{}, model.ErrDeliveryExpired
-		}
-		_, gaps, err := browserDeliveryRanges(ctx, tx, input.SourceSessionID)
-		if err != nil {
-			return browserAppendResult{}, err
-		}
-		var source struct {
-			Exam    string `db:"exam_id"`
-			Sitting string `db:"exam_sitting_id"`
-			Policy  []byte `db:"browser_policy_canonical"`
-		}
-		if err := tx.Get(ctx, &source, `SELECT s.exam_id,s.exam_sitting_id,r.browser_policy_canonical FROM browser_activity_sources s JOIN exam_revisions r ON r.id=s.policy_revision_id AND r.exam_id=s.exam_id AND r.browser_policy_digest=s.policy_digest WHERE s.id=?::uuid`, string(input.SourceSessionID)); err != nil {
-			return browserAppendResult{}, err
-		}
-		policy, err := model.DecodeBrowserPolicy(source.Policy)
-		if err != nil {
-			return browserAppendResult{}, err
-		}
-		receipts := make([]model.BrowserEventReceipt, 0, len(input.Events))
-		fresh := make([]browserAppendRecord, 0, len(input.Events))
-		var bytes, metadataBytes int64
-		allocated := status.AllocatedThrough
-		windowBase := max(status.HighestContiguous, status.SettledThrough)
-		for _, event := range input.Events {
-			fingerprint, err := event.Fingerprint()
-			if err != nil {
-				return browserAppendResult{}, err
-			}
-			var retained struct {
-				Fingerprint string `db:"event_fingerprint"`
-				Receipt     []byte `db:"receipt_canonical"`
-			}
-			err = tx.Get(ctx, &retained, `SELECT event_fingerprint,receipt_canonical FROM browser_activity_events WHERE source_session_id=?::uuid AND sequence=?`, string(input.SourceSessionID), event.Sequence)
-			if err == nil {
-				if retained.Fingerprint != fingerprint {
-					return browserAppendResult{}, store.NewErrConflict("browser_activity", "browser_activity_sequence", nil)
-				}
-				var receipt model.BrowserEventReceipt
-				if json.Unmarshal(retained.Receipt, &receipt) != nil || receipt.Validate() != nil {
-					return browserAppendResult{}, invalidPersistedState("browser_delivery", "receipt", model.ErrDeliveryInvalid)
-				}
-				receipts = append(receipts, receipt)
-				continue
-			}
-			if !errors.Is(err, sql.ErrNoRows) {
-				return browserAppendResult{}, err
-			}
-			if event.Sequence <= status.TerminalMissingThrough || status.DetailMode == "summary_only" {
-				return browserAppendResult{}, store.NewErrConflict("browser_delivery", "detail_budget_exhausted", nil)
-			}
-			if slices.ContainsFunc(gaps, func(r model.SequenceRange) bool { return r.First <= event.Sequence && event.Sequence <= r.Last }) {
-				return browserAppendResult{}, store.NewErrConflict("browser_delivery", "declaration_conflict", nil)
-			}
-			if status.Closure.ClosedAt != nil {
-				boundary := *status.Closure.KnownAtClose
-				if status.Closure.FinalSequence != nil {
-					boundary = *status.Closure.FinalSequence
-				}
-				if event.Sequence > boundary {
-					return browserAppendResult{}, store.NewErrConflict("browser_delivery", "replay_window_exceeded", nil)
-				}
-			}
-			if event.Sequence > windowBase+model.BrowserReceiveWindow {
-				return browserAppendResult{}, store.NewErrConflict("browser_delivery", "replay_window_exceeded", nil)
-			}
-			prior, err := browserVerifiedPrior(ctx, tx, input.SourceSessionID, event.RedirectFromSequence)
-			if err != nil {
-				return browserAppendResult{}, err
-			}
-			if _, err := model.ValidateBrowserPolicyEvent(event, policy, prior); err != nil {
-				return browserAppendResult{}, store.NewErrConflict("browser_activity", "browser_activity_policy_semantics", nil)
-			}
-			raw, err := event.Canonical()
-			if err != nil {
-				return browserAppendResult{}, err
-			}
-			receipt := model.BrowserEventReceipt{Sequence: event.Sequence, EventDigest: fingerprint, ReceivedAt: status.ServerTime}
-			receiptRaw, err := canonicalPreflightValue(receipt)
-			if err != nil {
-				return browserAppendResult{}, err
-			}
-			metadata, err := canonicalPreflightValue(browserEventMetadata{})
-			if err != nil {
-				return browserAppendResult{}, err
-			}
-			count := int64(len(raw) + len(receiptRaw) + len(metadata))
-			if len(raw) > model.BrowserActivityAppendMaximumBytes {
-				return browserAppendResult{}, model.ErrDeliveryInvalid
-			}
-			if len(receiptRaw) > 512 || len(metadata) > 256 {
-				return browserAppendResult{}, invalidPersistedState("browser_delivery", "receipt", model.ErrDeliveryInvalid)
-			}
-			fresh = append(fresh, browserAppendRecord{Event: event, Raw: raw, Receipt: receiptRaw, Metadata: metadata, Fingerprint: fingerprint, Bytes: count})
-			receipts = append(receipts, receipt)
-			bytes += count
-			metadataBytes += int64(len(receiptRaw) + len(metadata))
-			allocated = max(allocated, event.Sequence)
-		}
-		if metadataBytes > 64*1024 || bytes > 320*1024 {
-			return browserAppendResult{}, store.NewErrInvalidInput("browser_activity", "counted_batch_size", nil)
-		}
-		if len(fresh) > 0 {
-			part, attempt, pending, err := browserQuotas(ctx, tx, input.ParticipationID, input.Access.AttemptID)
-			if err != nil {
-				return browserAppendResult{}, err
-			}
-			delta := allocated - status.AllocatedThrough
-			nextPart, err := part.Charge(int64(len(fresh)), bytes, delta)
-			if err != nil {
-				return browserAppendResult{}, err
-			}
-			nextAttempt, err := attempt.Charge(int64(len(fresh)), bytes, delta)
-			if err != nil {
-				return browserAppendResult{}, err
-			}
-			if nextPart.SummaryOnly || nextAttempt.SummaryOnly {
-				reason := nextPart.StopReason
-				attemptScope := nextAttempt.SummaryOnly
-				if attemptScope {
-					reason = nextAttempt.StopReason
-				}
-				if reason == nil {
-					return browserAppendResult{}, invalidPersistedState("browser_delivery", "receipt", model.ErrDeliveryInvalid)
-				}
-				if err := latchBrowserDelivery(ctx, tx, input.Access.AttemptID, input.ParticipationID, *reason, attemptScope); err != nil {
-					return browserAppendResult{}, err
-				}
-				code := "detail_budget_exhausted"
-				if *reason == model.DeliveryStopPositions {
-					code = "sequence_limit"
-				}
-				if err := completeBrowserAppendAuditIf(ctx, tx, input, code, audit); err != nil {
-					return browserAppendResult{}, err
-				}
-				return browserAppendResult{Refusal: code}, nil
-			}
-			repair := input.Events[0].Sequence == windowBase+1
-			for i := 1; i < len(input.Events); i++ {
-				repair = repair && input.Events[i].Sequence == input.Events[i-1].Sequence+1
-			}
-			var recoverable bool
-			if err := tx.Get(ctx, &recoverable, `SELECT EXISTS(SELECT 1 FROM browser_activity_sources WHERE exam_attempt_id=? AND allocated_through_sequence>GREATEST(highest_contiguous,settled_through_sequence,terminal_missing_through_sequence))`, input.Access.AttemptID.String()); err != nil {
-				return browserAppendResult{}, err
-			}
-			// Include the earlier gap this proposed out-of-order append creates;
-			// persisted watermarks still describe the state before admission.
-			recoverable = recoverable || !repair
-			if !model.CanRetainPendingDelivery(pending, part.RetainedBytes, part.ByteLimit, bytes, repair, recoverable) || !model.CanRetainPendingDelivery(pending, attempt.RetainedBytes, attempt.ByteLimit, bytes, repair, recoverable) {
-				return browserAppendResult{}, store.NewErrConflict("browser_delivery", "pending_capacity", nil)
-			}
-			if err := markBrowserInventoryChanged(ctx, tx, input.Access.AttemptID); err != nil {
-				return browserAppendResult{}, err
-			}
-			for _, record := range fresh {
-				if err := insertBrowserEvent(ctx, tx, input, source.Exam, source.Sitting, record, status.ServerTime); err != nil {
-					return browserAppendResult{}, err
-				}
-			}
-			if _, err := tx.Exec(ctx, `UPDATE browser_activity_sources SET allocated_through_sequence=?,highest_seen=GREATEST(highest_seen,?) WHERE id=?::uuid`, allocated, fresh[len(fresh)-1].Event.Sequence, string(input.SourceSessionID)); err != nil {
-				return browserAppendResult{}, err
-			}
-			if _, err := tx.Exec(ctx, `UPDATE exam_attempt_security_owners SET browser_retained_records=?,browser_retained_bytes=?,browser_allocated_positions=? WHERE participation_id=?`, nextPart.RetainedRecords, nextPart.RetainedBytes, nextPart.AllocatedPositions, input.ParticipationID.String()); err != nil {
-				return browserAppendResult{}, err
-			}
-			if _, err := tx.Exec(ctx, `UPDATE exam_attempt_delivery_budgets SET browser_retained_records=?,browser_retained_bytes=?,browser_allocated_positions=?,browser_pending_bytes=browser_pending_bytes+? WHERE exam_attempt_id=?`, nextAttempt.RetainedRecords, nextAttempt.RetainedBytes, nextAttempt.AllocatedPositions, bytes, input.Access.AttemptID.String()); err != nil {
-				return browserAppendResult{}, err
-			}
-		}
-		current, err := settleBrowserSource(ctx, tx, input.SourceSessionID)
-		if err != nil {
-			return browserAppendResult{}, err
-		}
-		if err := advanceBrowserInterpretation(ctx, tx, input.SourceSessionID, input.Access.AttemptID, policy, current.SettledThrough); err != nil {
-			return browserAppendResult{}, err
-		}
-		if _, err := tx.Exec(ctx, `UPDATE browser_activity_sources SET highest_contiguous=?,settled_through_sequence=? WHERE id=?::uuid`, current.HighestContiguous, current.SettledThrough, string(input.SourceSessionID)); err != nil {
-			return browserAppendResult{}, err
-		}
-		acknowledgement := &model.BrowserActivityAcknowledgement{SourceSessionID: input.SourceSessionID, Receipts: receipts, HighestContiguous: current.HighestContiguous, SettledThrough: current.SettledThrough, HighestSeen: current.HighestSeen, AllocatedThrough: current.AllocatedThrough, TerminalMissingThrough: current.TerminalMissingThrough, MissingRanges: []model.BrowserActivityMissingRange{}, MissingRangesTruncated: current.MissingRangesTruncated, ServerTime: current.ServerTime, ExamID: model.ExamID(source.Exam), SittingID: model.ExamSittingID(source.Sitting)}
-		for _, r := range current.MissingRanges {
-			acknowledgement.MissingRanges = append(acknowledgement.MissingRanges, model.BrowserActivityMissingRange{First: r.First, Last: r.Last})
-		}
-		if err := completeBrowserAppendAuditIf(ctx, tx, input, "retained", audit); err != nil {
-			return browserAppendResult{}, err
-		}
-		return browserAppendResult{Acknowledgement: acknowledgement}, nil
-	}
-	execute := func(ctx context.Context, tx *sqlxTxWrapper) (browserAppendResult, error) {
-		return perform(ctx, tx, true)
-	}
 	var result browserAppendResult
 	var err error
 	if command == nil {
-		result, err = runSQLTransaction(ctx, s.GetMaster().Begin, "append Browser Activity", execute)
-	} else {
-		outcome, mutationErr := runIdempotentMutation(ctx, s.SQLStore, "historical browser append", idempotentMutation[browserAppendResult]{command: command, auditEventID: input.AuditEventID, execute: execute,
-			encode: encodeBrowserAppendOutcome,
-			decode: decodeBrowserAppendOutcome,
-			hydrateReplay: func(ctx context.Context, tx *sqlxTxWrapper, value browserAppendResult) (browserAppendResult, error) {
-				owner, err := s.lockBrowserDeclaration(ctx, tx, access)
-				if err != nil {
-					return browserAppendResult{}, err
-				}
-				if owner.Closure.ClosedAt == nil {
-					return browserAppendResult{}, model.ErrDeliveryConflict
-				}
-				if value.Refusal != "" {
-					return value, nil
-				}
-				// The retained per-event ledger, rather than the cached HTTP outcome, remains
-				// the acknowledgement authority on every replay.
-				for _, event := range input.Events {
-					var digest string
-					if err := tx.Get(ctx, &digest, `SELECT event_fingerprint FROM browser_activity_events WHERE source_session_id=?::uuid AND sequence=?`, string(input.SourceSessionID), event.Sequence); err != nil {
-						if errors.Is(err, sql.ErrNoRows) {
-							return browserAppendResult{}, model.ErrDeliveryExpired
-						}
-						return browserAppendResult{}, err
-					}
-					want, err := event.Fingerprint()
-					if err != nil || digest != want {
-						return browserAppendResult{}, model.ErrDeliveryConflict
-					}
-				}
-				return perform(ctx, tx, false)
-			},
-			completeReplay: func(ctx context.Context, tx *sqlxTxWrapper, value browserAppendResult, original string) error {
-				return completeBrowserDeliveryAudit(ctx, tx, input.AuditEventID, input.AuditAt, input.SourceSessionID, true)
-			},
+		result, err = runSQLTransaction(ctx, s.GetMaster().Begin, "append Browser Activity", func(ctx context.Context, tx *sqlxTxWrapper) (browserAppendResult, error) {
+			return s.performBrowserAppend(ctx, tx, input, access, command, true)
 		})
-		err = mutationErr
-		if outcome != nil {
-			result = outcome.Value
-		}
+	} else {
+		result, err = s.runHistoricalBrowserAppend(ctx, input, access, command)
 	}
 
 	if err != nil {
@@ -434,6 +193,370 @@ func (s *SQLExamAttemptStore) appendBrowserActivity(ctx context.Context, input *
 		return nil, &store.BrowserDeliveryRefusal{Reason: result.Refusal}
 	}
 	return result.Acknowledgement, nil
+}
+
+// runHistoricalBrowserAppend runs a historical append as an idempotent
+// mutation whose replay is re-acknowledged from the retained event ledger.
+func (s *SQLExamAttemptStore) runHistoricalBrowserAppend(ctx context.Context, input *store.BrowserActivityAppend, access store.BrowserDeliveryAccess, command *store.CommandIdempotency) (browserAppendResult, error) {
+	execute := func(ctx context.Context, tx *sqlxTxWrapper) (browserAppendResult, error) {
+		return s.performBrowserAppend(ctx, tx, input, access, command, true)
+	}
+	outcome, err := runIdempotentMutation(ctx, s.SQLStore, "historical browser append", idempotentMutation[browserAppendResult]{command: command, auditEventID: input.AuditEventID, execute: execute,
+		encode: encodeBrowserAppendOutcome,
+		decode: decodeBrowserAppendOutcome,
+		hydrateReplay: func(ctx context.Context, tx *sqlxTxWrapper, value browserAppendResult) (browserAppendResult, error) {
+			return s.hydrateBrowserAppendReplay(ctx, tx, input, access, command, value)
+		},
+		completeReplay: func(ctx context.Context, tx *sqlxTxWrapper, value browserAppendResult, original string) error {
+			return completeBrowserDeliveryAudit(ctx, tx, input.AuditEventID, input.AuditAt, input.SourceSessionID, true)
+		},
+	})
+	var result browserAppendResult
+	if outcome != nil {
+		result = outcome.Value
+	}
+	return result, err
+}
+
+// hydrateBrowserAppendReplay checks a replayed historical append against the
+// retained event ledger and recomputes its acknowledgement without auditing.
+func (s *SQLExamAttemptStore) hydrateBrowserAppendReplay(ctx context.Context, tx *sqlxTxWrapper, input *store.BrowserActivityAppend, access store.BrowserDeliveryAccess, command *store.CommandIdempotency, value browserAppendResult) (browserAppendResult, error) {
+	owner, err := s.lockBrowserDeclaration(ctx, tx, access)
+	if err != nil {
+		return browserAppendResult{}, err
+	}
+	if owner.Closure.ClosedAt == nil {
+		return browserAppendResult{}, model.ErrDeliveryConflict
+	}
+	if value.Refusal != "" {
+		return value, nil
+	}
+	// The retained per-event ledger, rather than the cached HTTP outcome, remains
+	// the acknowledgement authority on every replay.
+	for _, event := range input.Events {
+		var digest string
+		if err := tx.Get(ctx, &digest, `SELECT event_fingerprint FROM browser_activity_events WHERE source_session_id=?::uuid AND sequence=?`, string(input.SourceSessionID), event.Sequence); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return browserAppendResult{}, model.ErrDeliveryExpired
+			}
+			return browserAppendResult{}, err
+		}
+		want, err := event.Fingerprint()
+		if err != nil || digest != want {
+			return browserAppendResult{}, model.ErrDeliveryConflict
+		}
+	}
+	return s.performBrowserAppend(ctx, tx, input, access, command, false)
+}
+
+// browserAppendSource is the Exam, Sitting and canonical policy of the Browser
+// source an append targets.
+type browserAppendSource struct {
+	Exam    string `db:"exam_id"`
+	Sitting string `db:"exam_sitting_id"`
+	Policy  []byte `db:"browser_policy_canonical"`
+}
+
+// browserAppendAdmission is the receipts and fresh records an append admitted
+// together with their counted totals.
+type browserAppendAdmission struct {
+	receipts      []model.BrowserEventReceipt
+	fresh         []browserAppendRecord
+	bytes         int64
+	metadataBytes int64
+	allocated     int64
+	windowBase    int64
+}
+
+// performBrowserAppend admits, retains and acknowledges one append inside the
+// caller's transaction, completing its audit when audit is true.
+func (s *SQLExamAttemptStore) performBrowserAppend(ctx context.Context, tx *sqlxTxWrapper, input *store.BrowserActivityAppend, access store.BrowserDeliveryAccess, command *store.CommandIdempotency, audit bool) (browserAppendResult, error) {
+	status, err := s.fenceBrowserAppend(ctx, tx, input, access, command)
+	if err != nil {
+		return browserAppendResult{}, err
+	}
+	_, gaps, err := browserDeliveryRanges(ctx, tx, input.SourceSessionID)
+	if err != nil {
+		return browserAppendResult{}, err
+	}
+	var source browserAppendSource
+	if err = tx.Get(ctx, &source, `SELECT s.exam_id,s.exam_sitting_id,r.browser_policy_canonical FROM browser_activity_sources s JOIN exam_revisions r ON r.id=s.policy_revision_id AND r.exam_id=s.exam_id AND r.browser_policy_digest=s.policy_digest WHERE s.id=?::uuid`, string(input.SourceSessionID)); err != nil {
+		return browserAppendResult{}, err
+	}
+	policy, err := model.DecodeBrowserPolicy(source.Policy)
+	if err != nil {
+		return browserAppendResult{}, err
+	}
+	admission, err := admitBrowserAppendEvents(ctx, tx, input, status, gaps, policy)
+	if err != nil {
+		return browserAppendResult{}, err
+	}
+	if admission.metadataBytes > 64*1024 || admission.bytes > 320*1024 {
+		return browserAppendResult{}, store.NewErrInvalidInput("browser_activity", "counted_batch_size", nil)
+	}
+	if len(admission.fresh) > 0 {
+		refusal, err := retainBrowserAppendRecords(ctx, tx, input, status, source, admission, audit)
+		if err != nil {
+			return browserAppendResult{}, err
+		}
+		if refusal != "" {
+			return browserAppendResult{Refusal: refusal}, nil
+		}
+	}
+	return acknowledgeBrowserAppend(ctx, tx, input, source, policy, admission.receipts, audit)
+}
+
+// fenceBrowserAppend locks the delivery and checks the source's policy,
+// generation, closure and upload expiry fence.
+func (s *SQLExamAttemptStore) fenceBrowserAppend(ctx context.Context, tx *sqlxTxWrapper, input *store.BrowserActivityAppend, access store.BrowserDeliveryAccess, command *store.CommandIdempotency) (*model.BrowserSourceStatus, error) {
+	if err := s.lockBrowserDelivery(ctx, tx, access); err != nil {
+		return nil, err
+	}
+	status, err := browserSourceStatus(ctx, tx, input.SourceSessionID)
+	if err != nil {
+		return nil, err
+	}
+	if status.PolicyRevisionID != input.PolicyRevisionID || status.PolicyDigest != input.PolicyDigest || status.Generation != input.Generation {
+		return nil, store.NewErrConflict("browser_activity", "browser_source_fence", nil)
+	}
+	if (status.Closure.ClosedAt != nil) != (command != nil) {
+		return nil, store.NewErrConflict("browser_activity", "browser_source_fence", nil)
+	}
+	if status.Closure.UploadExpiresAt != nil && !status.ServerTime.Before(*status.Closure.UploadExpiresAt) {
+		return nil, model.ErrDeliveryExpired
+	}
+	return status, nil
+}
+
+// admitBrowserAppendEvents admits each submitted event as a retained receipt
+// or a fresh record and totals the fresh records.
+func admitBrowserAppendEvents(ctx context.Context, tx *sqlxTxWrapper, input *store.BrowserActivityAppend, status *model.BrowserSourceStatus, gaps []model.SequenceRange, policy model.BrowserPolicy) (browserAppendAdmission, error) {
+	admission := browserAppendAdmission{
+		receipts:   make([]model.BrowserEventReceipt, 0, len(input.Events)),
+		fresh:      make([]browserAppendRecord, 0, len(input.Events)),
+		allocated:  status.AllocatedThrough,
+		windowBase: max(status.HighestContiguous, status.SettledThrough),
+	}
+	for _, event := range input.Events {
+		receipt, record, err := admitBrowserAppendEvent(ctx, tx, input, status, gaps, policy, admission.windowBase, event)
+		if err != nil {
+			return browserAppendAdmission{}, err
+		}
+		if record == nil {
+			admission.receipts = append(admission.receipts, receipt)
+			continue
+		}
+		admission.fresh = append(admission.fresh, *record)
+		admission.receipts = append(admission.receipts, receipt)
+		admission.bytes += record.Bytes
+		admission.metadataBytes += int64(len(record.Receipt) + len(record.Metadata))
+		admission.allocated = max(admission.allocated, event.Sequence)
+	}
+	return admission, nil
+}
+
+// admitBrowserAppendEvent returns the retained receipt of an already stored
+// event, or the receipt and fresh record of a newly admissible one.
+func admitBrowserAppendEvent(ctx context.Context, tx *sqlxTxWrapper, input *store.BrowserActivityAppend, status *model.BrowserSourceStatus, gaps []model.SequenceRange, policy model.BrowserPolicy, windowBase int64, event model.BrowserActivityEvent) (model.BrowserEventReceipt, *browserAppendRecord, error) {
+	fingerprint, err := event.Fingerprint()
+	if err != nil {
+		return model.BrowserEventReceipt{}, nil, err
+	}
+	retained, err := retainedBrowserAppendReceipt(ctx, tx, input.SourceSessionID, event.Sequence, fingerprint)
+	if err != nil {
+		return model.BrowserEventReceipt{}, nil, err
+	}
+	if retained != nil {
+		return *retained, nil, nil
+	}
+	if err = checkBrowserAppendPosition(status, gaps, windowBase, event.Sequence); err != nil {
+		return model.BrowserEventReceipt{}, nil, err
+	}
+	prior, err := browserVerifiedPrior(ctx, tx, input.SourceSessionID, event.RedirectFromSequence)
+	if err != nil {
+		return model.BrowserEventReceipt{}, nil, err
+	}
+	if _, err = model.ValidateBrowserPolicyEvent(event, policy, prior); err != nil {
+		return model.BrowserEventReceipt{}, nil, store.NewErrConflict("browser_activity", "browser_activity_policy_semantics", nil)
+	}
+	raw, err := event.Canonical()
+	if err != nil {
+		return model.BrowserEventReceipt{}, nil, err
+	}
+	receipt := model.BrowserEventReceipt{Sequence: event.Sequence, EventDigest: fingerprint, ReceivedAt: status.ServerTime}
+	receiptRaw, err := canonicalPreflightValue(receipt)
+	if err != nil {
+		return model.BrowserEventReceipt{}, nil, err
+	}
+	metadata, err := canonicalPreflightValue(browserEventMetadata{})
+	if err != nil {
+		return model.BrowserEventReceipt{}, nil, err
+	}
+	count := int64(len(raw) + len(receiptRaw) + len(metadata))
+	if len(raw) > model.BrowserActivityAppendMaximumBytes {
+		return model.BrowserEventReceipt{}, nil, model.ErrDeliveryInvalid
+	}
+	if len(receiptRaw) > 512 || len(metadata) > 256 {
+		return model.BrowserEventReceipt{}, nil, invalidPersistedState("browser_delivery", "receipt", model.ErrDeliveryInvalid)
+	}
+	return receipt, &browserAppendRecord{Event: event, Raw: raw, Receipt: receiptRaw, Metadata: metadata, Fingerprint: fingerprint, Bytes: count}, nil
+}
+
+// retainedBrowserAppendReceipt returns the stored receipt for a sequence the
+// source already retains, or nil when the sequence is not yet stored.
+func retainedBrowserAppendReceipt(ctx context.Context, tx *sqlxTxWrapper, source model.BrowserSourceSessionID, sequence int64, fingerprint string) (*model.BrowserEventReceipt, error) {
+	var retained struct {
+		Fingerprint string `db:"event_fingerprint"`
+		Receipt     []byte `db:"receipt_canonical"`
+	}
+	err := tx.Get(ctx, &retained, `SELECT event_fingerprint,receipt_canonical FROM browser_activity_events WHERE source_session_id=?::uuid AND sequence=?`, string(source), sequence)
+	if err == nil {
+		if retained.Fingerprint != fingerprint {
+			return nil, store.NewErrConflict("browser_activity", "browser_activity_sequence", nil)
+		}
+		var receipt model.BrowserEventReceipt
+		if json.Unmarshal(retained.Receipt, &receipt) != nil || receipt.Validate() != nil {
+			return nil, invalidPersistedState("browser_delivery", "receipt", model.ErrDeliveryInvalid)
+		}
+		return &receipt, nil
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return nil, err
+	}
+	return nil, nil
+}
+
+// checkBrowserAppendPosition refuses a fresh sequence outside the source's
+// detail budget, declared gaps, closure boundary or receive window.
+func checkBrowserAppendPosition(status *model.BrowserSourceStatus, gaps []model.SequenceRange, windowBase, sequence int64) error {
+	if sequence <= status.TerminalMissingThrough || status.DetailMode == "summary_only" {
+		return store.NewErrConflict("browser_delivery", "detail_budget_exhausted", nil)
+	}
+	if slices.ContainsFunc(gaps, func(r model.SequenceRange) bool { return r.First <= sequence && sequence <= r.Last }) {
+		return store.NewErrConflict("browser_delivery", "declaration_conflict", nil)
+	}
+	if status.Closure.ClosedAt != nil {
+		boundary := *status.Closure.KnownAtClose
+		if status.Closure.FinalSequence != nil {
+			boundary = *status.Closure.FinalSequence
+		}
+		if sequence > boundary {
+			return store.NewErrConflict("browser_delivery", "replay_window_exceeded", nil)
+		}
+	}
+	if sequence > windowBase+model.BrowserReceiveWindow {
+		return store.NewErrConflict("browser_delivery", "replay_window_exceeded", nil)
+	}
+	return nil
+}
+
+// retainBrowserAppendRecords charges the fresh records to the delivery quotas
+// and stores them, returning a refusal code when the detail budget latches.
+func retainBrowserAppendRecords(ctx context.Context, tx *sqlxTxWrapper, input *store.BrowserActivityAppend, status *model.BrowserSourceStatus, source browserAppendSource, admission browserAppendAdmission, audit bool) (string, error) {
+	part, attempt, pending, err := browserQuotas(ctx, tx, input.ParticipationID, input.Access.AttemptID)
+	if err != nil {
+		return "", err
+	}
+	delta := admission.allocated - status.AllocatedThrough
+	nextPart, err := part.Charge(int64(len(admission.fresh)), admission.bytes, delta)
+	if err != nil {
+		return "", err
+	}
+	nextAttempt, err := attempt.Charge(int64(len(admission.fresh)), admission.bytes, delta)
+	if err != nil {
+		return "", err
+	}
+	if nextPart.SummaryOnly || nextAttempt.SummaryOnly {
+		return refuseBrowserAppendOverBudget(ctx, tx, input, nextPart, nextAttempt, audit)
+	}
+	if err := checkBrowserPendingCapacity(ctx, tx, input, admission, pending, part, attempt); err != nil {
+		return "", err
+	}
+	if err := markBrowserInventoryChanged(ctx, tx, input.Access.AttemptID); err != nil {
+		return "", err
+	}
+	for _, record := range admission.fresh {
+		if err := insertBrowserEvent(ctx, tx, input, source.Exam, source.Sitting, record, status.ServerTime); err != nil {
+			return "", err
+		}
+	}
+	if _, err := tx.Exec(ctx, `UPDATE browser_activity_sources SET allocated_through_sequence=?,highest_seen=GREATEST(highest_seen,?) WHERE id=?::uuid`, admission.allocated, admission.fresh[len(admission.fresh)-1].Event.Sequence, string(input.SourceSessionID)); err != nil {
+		return "", err
+	}
+	if _, err := tx.Exec(ctx, `UPDATE exam_attempt_security_owners SET browser_retained_records=?,browser_retained_bytes=?,browser_allocated_positions=? WHERE participation_id=?`, nextPart.RetainedRecords, nextPart.RetainedBytes, nextPart.AllocatedPositions, input.ParticipationID.String()); err != nil {
+		return "", err
+	}
+	if _, err := tx.Exec(ctx, `UPDATE exam_attempt_delivery_budgets SET browser_retained_records=?,browser_retained_bytes=?,browser_allocated_positions=?,browser_pending_bytes=browser_pending_bytes+? WHERE exam_attempt_id=?`, nextAttempt.RetainedRecords, nextAttempt.RetainedBytes, nextAttempt.AllocatedPositions, admission.bytes, input.Access.AttemptID.String()); err != nil {
+		return "", err
+	}
+	return "", nil
+}
+
+// refuseBrowserAppendOverBudget latches summary-only delivery for the scope
+// whose charge exhausted it and returns the refusal code it audits.
+func refuseBrowserAppendOverBudget(ctx context.Context, tx *sqlxTxWrapper, input *store.BrowserActivityAppend, nextPart, nextAttempt model.DeliveryQuotaUsage, audit bool) (string, error) {
+	reason := nextPart.StopReason
+	attemptScope := nextAttempt.SummaryOnly
+	if attemptScope {
+		reason = nextAttempt.StopReason
+	}
+	if reason == nil {
+		return "", invalidPersistedState("browser_delivery", "receipt", model.ErrDeliveryInvalid)
+	}
+	if err := latchBrowserDelivery(ctx, tx, input.Access.AttemptID, input.ParticipationID, *reason, attemptScope); err != nil {
+		return "", err
+	}
+	code := "detail_budget_exhausted"
+	if *reason == model.DeliveryStopPositions {
+		code = "sequence_limit"
+	}
+	if err := completeBrowserAppendAuditIf(ctx, tx, input, code, audit); err != nil {
+		return "", err
+	}
+	return code, nil
+}
+
+// checkBrowserPendingCapacity refuses fresh records the pending delivery
+// capacity cannot hold unless they repair the contiguous prefix.
+func checkBrowserPendingCapacity(ctx context.Context, tx *sqlxTxWrapper, input *store.BrowserActivityAppend, admission browserAppendAdmission, pending int64, part, attempt model.DeliveryQuotaUsage) error {
+	repair := input.Events[0].Sequence == admission.windowBase+1
+	for i := 1; i < len(input.Events); i++ {
+		repair = repair && input.Events[i].Sequence == input.Events[i-1].Sequence+1
+	}
+	var recoverable bool
+	if err := tx.Get(ctx, &recoverable, `SELECT EXISTS(SELECT 1 FROM browser_activity_sources WHERE exam_attempt_id=? AND allocated_through_sequence>GREATEST(highest_contiguous,settled_through_sequence,terminal_missing_through_sequence))`, input.Access.AttemptID.String()); err != nil {
+		return err
+	}
+	// Include the earlier gap this proposed out-of-order append creates;
+	// persisted watermarks still describe the state before admission.
+	recoverable = recoverable || !repair
+	if !model.CanRetainPendingDelivery(pending, part.RetainedBytes, part.ByteLimit, admission.bytes, repair, recoverable) || !model.CanRetainPendingDelivery(pending, attempt.RetainedBytes, attempt.ByteLimit, admission.bytes, repair, recoverable) {
+		return store.NewErrConflict("browser_delivery", "pending_capacity", nil)
+	}
+	return nil
+}
+
+// acknowledgeBrowserAppend settles and interprets the source and returns the
+// acknowledgement of the append, completing its audit when audit is true.
+func acknowledgeBrowserAppend(ctx context.Context, tx *sqlxTxWrapper, input *store.BrowserActivityAppend, source browserAppendSource, policy model.BrowserPolicy, receipts []model.BrowserEventReceipt, audit bool) (browserAppendResult, error) {
+	current, err := settleBrowserSource(ctx, tx, input.SourceSessionID)
+	if err != nil {
+		return browserAppendResult{}, err
+	}
+	if err := advanceBrowserInterpretation(ctx, tx, input.SourceSessionID, input.Access.AttemptID, policy, current.SettledThrough); err != nil {
+		return browserAppendResult{}, err
+	}
+	if _, err := tx.Exec(ctx, `UPDATE browser_activity_sources SET highest_contiguous=?,settled_through_sequence=? WHERE id=?::uuid`, current.HighestContiguous, current.SettledThrough, string(input.SourceSessionID)); err != nil {
+		return browserAppendResult{}, err
+	}
+	acknowledgement := &model.BrowserActivityAcknowledgement{SourceSessionID: input.SourceSessionID, Receipts: receipts, HighestContiguous: current.HighestContiguous, SettledThrough: current.SettledThrough, HighestSeen: current.HighestSeen, AllocatedThrough: current.AllocatedThrough, TerminalMissingThrough: current.TerminalMissingThrough, MissingRanges: []model.BrowserActivityMissingRange{}, MissingRangesTruncated: current.MissingRangesTruncated, ServerTime: current.ServerTime, ExamID: model.ExamID(source.Exam), SittingID: model.ExamSittingID(source.Sitting)}
+	for _, r := range current.MissingRanges {
+		acknowledgement.MissingRanges = append(acknowledgement.MissingRanges, model.BrowserActivityMissingRange(r))
+	}
+	if err := completeBrowserAppendAuditIf(ctx, tx, input, "retained", audit); err != nil {
+		return browserAppendResult{}, err
+	}
+	return browserAppendResult{Acknowledgement: acknowledgement}, nil
 }
 
 func browserQuotas(ctx context.Context, tx *sqlxTxWrapper, partID model.AttemptParticipationID, attemptID model.ExamAttemptID) (model.DeliveryQuotaUsage, model.DeliveryQuotaUsage, int64, error) {
