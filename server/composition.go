@@ -233,49 +233,9 @@ func composeConsumers(
 	// 3. Construct consumers in dependency order. Every failure releases only
 	// the consumers already built, followed by Platform.
 	release := compositionRelease{platform: applicationPlatform, shutdownTimeout: snapshot.Server.ShutdownTimeout.Duration, metrics: capabilities.metrics, tracing: capabilities.tracing}
-	content, err := constructors.fileContent(capabilities)
+	applicationDeps, err := composeApplicationDependencies(ctx, snapshot, capabilities, input, constructors)
 	if err != nil {
-		return nil, release.fail(fmt.Errorf("construct file content: %w", err))
-	}
-	applicationDeps, err := constructors.dependencies(capabilities, content)
-	if err != nil {
-		return nil, release.fail(fmt.Errorf("project application dependencies: %w", err))
-	}
-	if capabilities.metrics != nil && capabilities.metrics.Enabled() {
-		applicationDeps.JobRecorder = jobMetricsRecorder{metrics: capabilities.metrics}
-		applicationDeps.OperationalRecorder = applicationMetricsRecorder{metrics: capabilities.metrics}
-		applicationDeps.PasswordWorkRecorder = workMetricsRecorder{metrics: capabilities.metrics, pool: "password"}
-	}
-	if capabilities.tracing.Enabled() {
-		applicationDeps.JobTracer = jobTracing{tracing: capabilities.tracing}
-	}
-	mailMetrics := input.overrides.MailMetrics
-	if capabilities.metrics != nil && capabilities.metrics.Enabled() {
-		prometheusMetrics := newPrometheusMailRecorder(capabilities.metrics)
-		if mailMetrics == nil {
-			mailMetrics = prometheusMetrics
-		} else {
-			mailMetrics = fanoutMailDeliveryRecorder{first: mailMetrics, second: prometheusMetrics}
-		}
-	}
-	if mailMetrics != nil {
-		mailDeliveryRecorder, mailMetricsReader := newMailTelemetry(capabilities.logger, mailMetrics)
-		applicationDeps.MailDeliveryRecorder = mailDeliveryRecorder
-		applicationDeps.MailMetricsReader = mailMetricsReader
-	}
-	var installations bootstrapStatusStore
-	if capabilities.persistence != nil {
-		if current := capabilities.persistence.Installation(); current != nil {
-			installations = current
-		}
-	}
-	bootstrapOutput := input.overrides.BootstrapSecretWriter
-	if bootstrapOutput == nil {
-		bootstrapOutput = os.Stderr
-	}
-	applicationDeps.BootstrapProtection, err = resolveBootstrapProtection(ctx, snapshot, installations, bootstrapOutput)
-	if err != nil {
-		return nil, release.fail(fmt.Errorf("protect installation bootstrap: %w", err))
+		return nil, release.fail(err)
 	}
 	application, err := constructors.application(applicationDeps)
 	if err != nil {
@@ -285,28 +245,15 @@ func composeConsumers(
 	if err != nil {
 		return nil, release.fail(fmt.Errorf("construct realtime cluster adapter: %w", err))
 	}
-	if err := constructors.attachRealtime(application, clusterFanout); err != nil {
+	if err = constructors.attachRealtime(application, clusterFanout); err != nil {
 		return nil, release.fail(fmt.Errorf("attach realtime cluster fan-out: %w", err))
 	}
 
-	// Readiness requires both the lifecycle flag and a live, bounded probe of
-	// the mandatory platform dependencies (PostgreSQL, cache, cluster, VFS).
-	var dependencyProbe app.DependencyProbe
-	if checker, ok := applicationPlatform.(interface{ CheckDependencies(context.Context) error }); ok {
-		dependencyProbe = checker.CheckDependencies
-	}
-	readiness, err := app.NewHealth(app.HealthDependencies{Probe: dependencyProbe, Timeout: app.DefaultReadinessProbeTimeout, Interval: time.Second})
+	readiness, err := composeReadiness(applicationPlatform)
 	if err != nil {
-		return nil, release.fail(fmt.Errorf("construct readiness: %w", err))
+		return nil, release.fail(err)
 	}
-	buildInfo := input.overrides.BuildInfo
-	if buildInfo == (httpapi.BuildInfo{}) {
-		current := app.CurrentBuildInfo()
-		buildInfo = httpapi.BuildInfo{
-			Version: current.Version, Commit: current.Commit,
-			BuildTime: current.BuildTime, GoVersion: current.GoVersion,
-		}
-	}
+	buildInfo := resolveBuildInfo(input.overrides.BuildInfo)
 	webSocketHub, err := constructors.websocket(
 		application, capabilities.logger,
 		snapshot.Server.PublicURL, capabilities.nodeID,
@@ -318,66 +265,25 @@ func composeConsumers(
 	if attachable, ok := webSocketHub.(interface {
 		AttachRecorder(websocket.Recorder) error
 	}); ok && capabilities.metrics != nil && capabilities.metrics.Enabled() {
-		if err := attachable.AttachRecorder(capabilities.metrics); err != nil {
+		if err = attachable.AttachRecorder(capabilities.metrics); err != nil {
 			return nil, release.fail(fmt.Errorf("attach WebSocket metrics: %w", err))
 		}
 	}
-	if err := constructors.attachSink(application, webSocketHub); err != nil {
+	if err = constructors.attachSink(application, webSocketHub); err != nil {
 		return nil, release.fail(fmt.Errorf("attach realtime sink: %w", err))
 	}
-	var httpMetrics httpapi.Metrics
-	if capabilities.metrics != nil && capabilities.metrics.Enabled() {
-		httpMetrics = capabilities.metrics
-	}
-	var httpTracer httpapi.Tracing
-	if capabilities.tracing.Enabled() {
-		httpTracer = httpTracing{tracing: capabilities.tracing}
-	}
-	trustedProxies, err := config.ParseTrustedProxies(snapshot.Server.TrustedProxies)
+	httpOptions, err := httpAPIOptions(application, readiness, buildInfo, snapshot, capabilities, webSocketHub)
 	if err != nil {
-		return nil, release.fail(fmt.Errorf("parse trusted proxies: %w", err))
+		return nil, release.fail(err)
 	}
-	httpTransport, httpAPI, err := constructors.http(httpapi.Options{
-		Logger: apiLogger{log: capabilities.logger}, Health: readiness,
-		Metrics:     httpMetrics,
-		Tracing:     httpTracer,
-		Application: application, AcademicUnits: application, Institutions: application,
-		Programmes: application, ProgrammeLevels: application, AcademicPeriods: application,
-		Classes: application, Affiliations: application, AcademicUnitMembers: application,
-		ClassMembers: application, UserProfiles: application, UserSettings: application, AccountStates: application,
-		Invitations:                   application,
-		BrowserInvitations:            application,
-		OnboardingImports:             application,
-		StudentProgressions:           application,
-		AcademicAdministrationBatches: application,
-		SessionAdministrations:        application, Roles: application, RoleBindings: application,
-		AuditListings: application, Bootstrap: application, AccessPolicy: application, BuildInfo: buildInfo,
-		Mail:      application,
-		PublicURL: snapshot.Server.PublicURL, MaxBodyBytes: snapshot.Server.MaxBodyBytes,
-		ReadTimeout: snapshot.Server.ReadTimeout.Duration, WriteTimeout: snapshot.Server.WriteTimeout.Duration,
-		TrustedProxies:          trustedProxies,
-		RecentAuthenticationTTL: snapshot.Authentication.RecentAuthenticationTTL.Duration,
-		NodeID:                  capabilities.nodeID, WebSocket: webSocketHub,
-	})
+	httpTransport, httpAPI, err := constructors.http(httpOptions)
 	if err != nil {
 		return nil, release.fail(fmt.Errorf("construct HTTP API: %w", err))
 	}
 	release.transport = httpTransport.Close
-	webappOptions := webui.Options{
-		BuildVersion: buildInfo.Version,
-		BuildCommit:  buildInfo.Commit,
-	}
-	if problems, ok := httpAPI.(browserRouteProblems); ok {
-		webappOptions.NotFound = problems.NotFoundHandler()
-		webappOptions.MethodNotAllowed = problems.MethodNotAllowedHandler(http.MethodGet, http.MethodHead)
-	}
-	webappHandler, err := constructors.webapp(webappOptions)
+	rootTransport, err := composeRootTransport(httpTransport, httpAPI, buildInfo, snapshot, constructors)
 	if err != nil {
-		return nil, release.fail(fmt.Errorf("construct hosted webapp: %w", err))
-	}
-	rootTransport, err := newRootHTTPTransport(httpTransport, httpAPI, webappHandler, snapshot.Server.StrictTransportSecurity())
-	if err != nil {
-		return nil, release.fail(fmt.Errorf("compose HTTP transports: %w", err))
+		return nil, release.fail(err)
 	}
 	release.transport = rootTransport.Close
 	jobRuntime := constructors.jobs(application)
@@ -403,6 +309,168 @@ func composeConsumers(
 			application: application, handler: rootTransport,
 		},
 	}, nil
+}
+
+// composeApplicationDependencies constructs File Content and projects the application dependencies with telemetry and bootstrap protection.
+func composeApplicationDependencies(
+	ctx context.Context,
+	snapshot config.Config,
+	capabilities constructionCapabilities,
+	input compositionInput,
+	constructors consumerConstructors,
+) (app.Dependencies, error) {
+	content, err := constructors.fileContent(capabilities)
+	if err != nil {
+		return app.Dependencies{}, fmt.Errorf("construct file content: %w", err)
+	}
+	applicationDeps, err := constructors.dependencies(capabilities, content)
+	if err != nil {
+		return app.Dependencies{}, fmt.Errorf("project application dependencies: %w", err)
+	}
+	attachApplicationTelemetry(&applicationDeps, capabilities, input.overrides.MailMetrics)
+	var installations bootstrapStatusStore
+	if capabilities.persistence != nil {
+		if current := capabilities.persistence.Installation(); current != nil {
+			installations = current
+		}
+	}
+	bootstrapOutput := input.overrides.BootstrapSecretWriter
+	if bootstrapOutput == nil {
+		bootstrapOutput = os.Stderr
+	}
+	applicationDeps.BootstrapProtection, err = resolveBootstrapProtection(ctx, snapshot, installations, bootstrapOutput)
+	if err != nil {
+		return app.Dependencies{}, fmt.Errorf("protect installation bootstrap: %w", err)
+	}
+	return applicationDeps, nil
+}
+
+// attachApplicationTelemetry wires Job, operational, password-work and mail delivery recorders and the Job tracer into the dependencies.
+func attachApplicationTelemetry(
+	applicationDeps *app.Dependencies,
+	capabilities constructionCapabilities,
+	mailMetrics app.MailDeliveryRecorder,
+) {
+	if capabilities.metrics != nil && capabilities.metrics.Enabled() {
+		applicationDeps.JobRecorder = jobMetricsRecorder{metrics: capabilities.metrics}
+		applicationDeps.OperationalRecorder = applicationMetricsRecorder{metrics: capabilities.metrics}
+		applicationDeps.PasswordWorkRecorder = workMetricsRecorder{metrics: capabilities.metrics, pool: "password"}
+	}
+	if capabilities.tracing.Enabled() {
+		applicationDeps.JobTracer = jobTracing{tracing: capabilities.tracing}
+	}
+	if capabilities.metrics != nil && capabilities.metrics.Enabled() {
+		prometheusMetrics := newPrometheusMailRecorder(capabilities.metrics)
+		if mailMetrics == nil {
+			mailMetrics = prometheusMetrics
+		} else {
+			mailMetrics = fanoutMailDeliveryRecorder{first: mailMetrics, second: prometheusMetrics}
+		}
+	}
+	if mailMetrics != nil {
+		mailDeliveryRecorder, mailMetricsReader := newMailTelemetry(capabilities.logger, mailMetrics)
+		applicationDeps.MailDeliveryRecorder = mailDeliveryRecorder
+		applicationDeps.MailMetricsReader = mailMetricsReader
+	}
+}
+
+// composeReadiness builds readiness over a live, bounded probe of the mandatory platform dependencies.
+func composeReadiness(applicationPlatform runtimePlatform) (*app.Health, error) {
+	// Readiness requires both the lifecycle flag and a live, bounded probe of
+	// the mandatory platform dependencies (PostgreSQL, cache, cluster, VFS).
+	var dependencyProbe app.DependencyProbe
+	if checker, ok := applicationPlatform.(interface{ CheckDependencies(context.Context) error }); ok {
+		dependencyProbe = checker.CheckDependencies
+	}
+	readiness, err := app.NewHealth(app.HealthDependencies{Probe: dependencyProbe, Timeout: app.DefaultReadinessProbeTimeout, Interval: time.Second})
+	if err != nil {
+		return nil, fmt.Errorf("construct readiness: %w", err)
+	}
+	return readiness, nil
+}
+
+// resolveBuildInfo returns the overridden build information or, when none is set, this binary's own.
+func resolveBuildInfo(buildInfo httpapi.BuildInfo) httpapi.BuildInfo {
+	if buildInfo == (httpapi.BuildInfo{}) {
+		current := app.CurrentBuildInfo()
+		buildInfo = httpapi.BuildInfo{
+			Version: current.Version, Commit: current.Commit,
+			BuildTime: current.BuildTime, GoVersion: current.GoVersion,
+		}
+	}
+	return buildInfo
+}
+
+// httpAPIOptions projects the application, readiness, WebSocket hub and server settings into HTTP API options.
+func httpAPIOptions(
+	application *app.App,
+	readiness *app.Health,
+	buildInfo httpapi.BuildInfo,
+	snapshot config.Config,
+	capabilities constructionCapabilities,
+	webSocketHub composedWebSocket,
+) (httpapi.Options, error) {
+	var httpMetrics httpapi.Metrics
+	if capabilities.metrics != nil && capabilities.metrics.Enabled() {
+		httpMetrics = capabilities.metrics
+	}
+	var httpTracer httpapi.Tracing
+	if capabilities.tracing.Enabled() {
+		httpTracer = httpTracing{tracing: capabilities.tracing}
+	}
+	trustedProxies, err := config.ParseTrustedProxies(snapshot.Server.TrustedProxies)
+	if err != nil {
+		return httpapi.Options{}, fmt.Errorf("parse trusted proxies: %w", err)
+	}
+	return httpapi.Options{
+		Logger: apiLogger{log: capabilities.logger}, Health: readiness,
+		Metrics:     httpMetrics,
+		Tracing:     httpTracer,
+		Application: application, AcademicUnits: application, Institutions: application,
+		Programmes: application, ProgrammeLevels: application, AcademicPeriods: application,
+		Classes: application, Affiliations: application, AcademicUnitMembers: application,
+		ClassMembers: application, UserProfiles: application, UserSettings: application, AccountStates: application,
+		Invitations:                   application,
+		BrowserInvitations:            application,
+		OnboardingImports:             application,
+		StudentProgressions:           application,
+		AcademicAdministrationBatches: application,
+		SessionAdministrations:        application, Roles: application, RoleBindings: application,
+		AuditListings: application, Bootstrap: application, AccessPolicy: application, BuildInfo: buildInfo,
+		Mail:      application,
+		PublicURL: snapshot.Server.PublicURL, MaxBodyBytes: snapshot.Server.MaxBodyBytes,
+		ReadTimeout: snapshot.Server.ReadTimeout.Duration, WriteTimeout: snapshot.Server.WriteTimeout.Duration,
+		TrustedProxies:          trustedProxies,
+		RecentAuthenticationTTL: snapshot.Authentication.RecentAuthenticationTTL.Duration,
+		NodeID:                  capabilities.nodeID, WebSocket: webSocketHub,
+	}, nil
+}
+
+// composeRootTransport constructs the hosted webapp and wraps it with the HTTP API in the root transport.
+func composeRootTransport(
+	httpTransport runtimeTransport,
+	httpAPI http.Handler,
+	buildInfo httpapi.BuildInfo,
+	snapshot config.Config,
+	constructors consumerConstructors,
+) (runtimeTransport, error) {
+	webappOptions := webui.Options{
+		BuildVersion: buildInfo.Version,
+		BuildCommit:  buildInfo.Commit,
+	}
+	if problems, ok := httpAPI.(browserRouteProblems); ok {
+		webappOptions.NotFound = problems.NotFoundHandler()
+		webappOptions.MethodNotAllowed = problems.MethodNotAllowedHandler(http.MethodGet, http.MethodHead)
+	}
+	webappHandler, err := constructors.webapp(webappOptions)
+	if err != nil {
+		return nil, fmt.Errorf("construct hosted webapp: %w", err)
+	}
+	rootTransport, err := newRootHTTPTransport(httpTransport, httpAPI, webappHandler, snapshot.Server.StrictTransportSecurity())
+	if err != nil {
+		return nil, fmt.Errorf("compose HTTP transports: %w", err)
+	}
+	return rootTransport, nil
 }
 
 // compositionRelease records the owners a failed composition must release:
