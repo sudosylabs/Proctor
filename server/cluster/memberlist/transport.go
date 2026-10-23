@@ -284,53 +284,10 @@ func (t *Transport) Start(ctx context.Context) error {
 		return cluster.ErrStopped
 	}
 
-	bindHost, bindPort, err := net.SplitHostPort(t.cfg.BindAddress)
+	config, admission, err := t.memberlistConfig(ctx)
 	if err != nil {
 		return err
 	}
-	advertiseHost, advertisePort, err := net.SplitHostPort(t.cfg.AdvertiseAddress)
-	if err != nil {
-		return err
-	}
-	advertiseHost, err = t.resolveAdvertiseHost(ctx, advertiseHost)
-	if err != nil {
-		return err
-	}
-	bindPortNumber, err := net.LookupPort("tcp", bindPort)
-	if err != nil {
-		return fmt.Errorf("bind port: %w", err)
-	}
-	advertisePortNumber, err := net.LookupPort("tcp", advertisePort)
-	if err != nil {
-		return fmt.Errorf("advertise port: %w", err)
-	}
-
-	config := hashimemberlist.DefaultLANConfig()
-	// A crashed process cannot announce StateLeft. Once peers have declared it
-	// dead, wait one full discovery lease before allowing the stable name to
-	// move to another address; periodic rediscovery keeps retrying during that
-	// safety window.
-	config.DeadNodeReclaimTime = t.cfg.DiscoveryTTL
-	config.Name = t.cfg.NodeID
-	config.BindAddr = bindHost
-	config.BindPort = bindPortNumber
-	config.AdvertiseAddr = advertiseHost
-	config.AdvertisePort = advertisePortNumber
-	keyring, err := hashimemberlist.NewKeyring(cloneKeys(t.cfg.DecryptionKeys), append([]byte(nil), t.cfg.EncryptionKey...))
-	if err != nil {
-		return fmt.Errorf("create memberlist keyring: %w", err)
-	}
-	admission := newAdmissionDelegate(t)
-	config.Keyring = keyring
-	config.Delegate = &delegate{transport: t}
-	config.Events = &eventDelegate{transport: t}
-	config.Alive = admission
-	config.Merge = admission
-	config.Conflict = admission
-	config.DelegateProtocolVersion = uint8(wireProtocolVersion)
-	config.DelegateProtocolMin = uint8(supportedProtocolMin)
-	config.DelegateProtocolMax = uint8(supportedProtocolMax)
-	config.Logger = newMemberlistLogger(t.cfg.Logger)
 
 	list, err := hashimemberlist.Create(config)
 	if err != nil {
@@ -342,18 +299,7 @@ func (t *Transport) Start(ctx context.Context) error {
 		_ = list.Shutdown()
 		return err
 	}
-	if len(seeds) > 0 {
-		if _, err := list.Join(seeds); err != nil {
-			if t.cfg.Metrics != nil {
-				t.cfg.Metrics.ObserveClusterDiscovery("initial_join", "error")
-			}
-			t.cfg.Logger.ErrorContext(ctx, "memberlist join incomplete", err)
-		} else if t.cfg.Metrics != nil {
-			t.cfg.Metrics.ObserveClusterDiscovery("initial_join", "success")
-		}
-	} else if t.cfg.Metrics != nil {
-		t.cfg.Metrics.ObserveClusterDiscovery("initial_join", "empty")
-	}
+	t.joinInitialSeeds(ctx, list, seeds)
 	if err := admission.finishStartup(); err != nil {
 		t.discovery.rollback(ctx)
 		_ = list.Shutdown()
@@ -384,6 +330,74 @@ func (t *Transport) Start(ctx context.Context) error {
 		})
 	}()
 	return nil
+}
+
+// memberlistConfig resolves the bind and advertise addresses and builds the keyed memberlist configuration with its admission delegate.
+func (t *Transport) memberlistConfig(ctx context.Context) (*hashimemberlist.Config, *admissionDelegate, error) {
+	bindHost, bindPort, err := net.SplitHostPort(t.cfg.BindAddress)
+	if err != nil {
+		return nil, nil, err
+	}
+	advertiseHost, advertisePort, err := net.SplitHostPort(t.cfg.AdvertiseAddress)
+	if err != nil {
+		return nil, nil, err
+	}
+	advertiseHost, err = t.resolveAdvertiseHost(ctx, advertiseHost)
+	if err != nil {
+		return nil, nil, err
+	}
+	bindPortNumber, err := net.LookupPort("tcp", bindPort)
+	if err != nil {
+		return nil, nil, fmt.Errorf("bind port: %w", err)
+	}
+	advertisePortNumber, err := net.LookupPort("tcp", advertisePort)
+	if err != nil {
+		return nil, nil, fmt.Errorf("advertise port: %w", err)
+	}
+
+	config := hashimemberlist.DefaultLANConfig()
+	// A crashed process cannot announce StateLeft. Once peers have declared it
+	// dead, wait one full discovery lease before allowing the stable name to
+	// move to another address; periodic rediscovery keeps retrying during that
+	// safety window.
+	config.DeadNodeReclaimTime = t.cfg.DiscoveryTTL
+	config.Name = t.cfg.NodeID
+	config.BindAddr = bindHost
+	config.BindPort = bindPortNumber
+	config.AdvertiseAddr = advertiseHost
+	config.AdvertisePort = advertisePortNumber
+	keyring, err := hashimemberlist.NewKeyring(cloneKeys(t.cfg.DecryptionKeys), append([]byte(nil), t.cfg.EncryptionKey...))
+	if err != nil {
+		return nil, nil, fmt.Errorf("create memberlist keyring: %w", err)
+	}
+	admission := newAdmissionDelegate(t)
+	config.Keyring = keyring
+	config.Delegate = &delegate{transport: t}
+	config.Events = &eventDelegate{transport: t}
+	config.Alive = admission
+	config.Merge = admission
+	config.Conflict = admission
+	config.DelegateProtocolVersion = uint8(wireProtocolVersion)
+	config.DelegateProtocolMin = uint8(supportedProtocolMin)
+	config.DelegateProtocolMax = uint8(supportedProtocolMax)
+	config.Logger = newMemberlistLogger(t.cfg.Logger)
+	return config, admission, nil
+}
+
+// joinInitialSeeds joins the discovered seeds, logging an incomplete join and recording the initial-join outcome.
+func (t *Transport) joinInitialSeeds(ctx context.Context, list *hashimemberlist.Memberlist, seeds []string) {
+	if len(seeds) > 0 {
+		if _, err := list.Join(seeds); err != nil {
+			if t.cfg.Metrics != nil {
+				t.cfg.Metrics.ObserveClusterDiscovery("initial_join", "error")
+			}
+			t.cfg.Logger.ErrorContext(ctx, "memberlist join incomplete", err)
+		} else if t.cfg.Metrics != nil {
+			t.cfg.Metrics.ObserveClusterDiscovery("initial_join", "success")
+		}
+	} else if t.cfg.Metrics != nil {
+		t.cfg.Metrics.ObserveClusterDiscovery("initial_join", "empty")
+	}
 }
 
 // resolveAdvertiseHost translates a stable service name into the concrete IP
