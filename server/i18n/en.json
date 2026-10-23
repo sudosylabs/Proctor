@@ -180,6 +180,118 @@
     "translation": "configuration is valid"
   },
   {
+    "id": "cli.jobs.error.limit",
+    "translation": "--limit must be between 1 and {{.Maximum}}"
+  },
+  {
+    "id": "cli.jobs.error.requires_subcommand",
+    "translation": "jobs requires a list or show subcommand"
+  },
+  {
+    "id": "cli.jobs.error.unknown_state",
+    "translation": "unknown job state {{.Value}}; known states: {{.Known}}"
+  },
+  {
+    "id": "cli.jobs.error.unknown_type",
+    "translation": "unknown job type {{.Value}}; known types: {{.Known}}"
+  },
+  {
+    "id": "cli.jobs.flag.json",
+    "translation": "write the result as JSON"
+  },
+  {
+    "id": "cli.jobs.list.flag.limit",
+    "translation": "list at most this many Jobs (at most 200)"
+  },
+  {
+    "id": "cli.jobs.list.flag.state",
+    "translation": "only list Jobs in this state (repeatable or comma-separated)"
+  },
+  {
+    "id": "cli.jobs.list.flag.type",
+    "translation": "only list Jobs of this type (repeatable or comma-separated)"
+  },
+  {
+    "id": "cli.jobs.list.header",
+    "translation": "ID\tTYPE\tSTATE\tATTEMPTS\tLAST ERROR\tAVAILABLE\tUPDATED"
+  },
+  {
+    "id": "cli.jobs.list.more",
+    "translation": "more Jobs match; narrow --type or --state, or raise --limit"
+  },
+  {
+    "id": "cli.jobs.list.none",
+    "translation": "no Jobs match"
+  },
+  {
+    "id": "cli.jobs.list.short",
+    "translation": "List the newest Jobs with their state, attempts, and last error code"
+  },
+  {
+    "id": "cli.jobs.short",
+    "translation": "Inspect durable background Jobs without changing them"
+  },
+  {
+    "id": "cli.jobs.show.attempt_header",
+    "translation": "ATTEMPT\tSTATE\tNODE\tSTARTED\tHEARTBEAT\tLEASE EXPIRES\tCOMPLETED\tERROR"
+  },
+  {
+    "id": "cli.jobs.show.attempts",
+    "translation": "Attempts"
+  },
+  {
+    "id": "cli.jobs.show.available",
+    "translation": "Available"
+  },
+  {
+    "id": "cli.jobs.show.completed",
+    "translation": "Completed"
+  },
+  {
+    "id": "cli.jobs.show.created",
+    "translation": "Created"
+  },
+  {
+    "id": "cli.jobs.show.id",
+    "translation": "ID"
+  },
+  {
+    "id": "cli.jobs.show.last_error",
+    "translation": "Last error code"
+  },
+  {
+    "id": "cli.jobs.show.more_attempts",
+    "translation": "older attempts are not shown"
+  },
+  {
+    "id": "cli.jobs.show.no_attempts",
+    "translation": "no attempts yet"
+  },
+  {
+    "id": "cli.jobs.show.progress",
+    "translation": "Progress"
+  },
+  {
+    "id": "cli.jobs.show.short",
+    "translation": "Show one Job and its most recent attempts"
+  },
+  {
+    "id": "cli.jobs.show.started",
+    "translation": "Started"
+  },
+  {
+    "id": "cli.jobs.show.state",
+    "translation": "State"
+  },
+  {
+    "id": "cli.jobs.show.type",
+    "translation": "Type"
+  },
+  {
+    "id": "cli.jobs.show.updated",
+    "translation": "Updated"
+  },
+  {
     "id": "cli.migrate.error.requires_subcommand",
     "translation": "migrate requires an up or status subcommand"
   },

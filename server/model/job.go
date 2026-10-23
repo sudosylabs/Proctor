@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 )
@@ -128,7 +129,7 @@ func NewJobWithDedupePolicy(id JobID, jobType JobType, command json.RawMessage, 
 }
 
 func (j *Job) Validate() error {
-	if j == nil || !j.ID.IsValid() || !validJobType(j.Type) || !validJobStatus(j.Status) || j.CreatedAt.IsZero() || j.UpdatedAt.Before(j.CreatedAt) || j.AvailableAt.IsZero() || !validJobDocument(j.Command, false) || len(j.DedupeKey) == 0 || len(j.DedupeKey) > 255 || !validJobDedupePolicy(j.DedupePolicy) || j.AttemptCount < 0 || j.MaximumAttempts <= 0 || j.AttemptCount > j.MaximumAttempts || j.WorkReserved < 0 || j.Revision <= 0 {
+	if j == nil || !j.ID.IsValid() || !j.Type.IsValid() || !j.Status.IsValid() || j.CreatedAt.IsZero() || j.UpdatedAt.Before(j.CreatedAt) || j.AvailableAt.IsZero() || !validJobDocument(j.Command, false) || len(j.DedupeKey) == 0 || len(j.DedupeKey) > 255 || !validJobDedupePolicy(j.DedupePolicy) || j.AttemptCount < 0 || j.MaximumAttempts <= 0 || j.AttemptCount > j.MaximumAttempts || j.WorkReserved < 0 || j.Revision <= 0 {
 		return invalidModelError("Job.Validate", "job", "", "invalid job", "")
 	}
 	if !validJobDocument(j.Checkpoint, true) || !validJobDocument(j.Result, true) || !validPublicJobCode(j.PublicErrorCode) || !validJobProgress(j.Progress) {
@@ -347,15 +348,36 @@ func (t JobClaimToken) IsValid() bool {
 var jobSafeCode = regexp.MustCompile(`^[a-z][a-z0-9_.-]{0,127}$`)
 var jobSafeStage = regexp.MustCompile(`^[a-z][a-z0-9_.-]{0,63}$`)
 
-func validJobType(value JobType) bool {
-	if value == JobTypeRetentionExpire || value == JobTypeRetentionReconcile || value == JobTypeRetentionPurge || value == JobTypeRetentionNotices || value == JobTypeExamExportBuild || value == JobTypeExamExportCleanup {
-		return true
-	}
-	return value == JobTypeProfilePictureGenerateDefault || value == JobTypeProfilePictureReconcile || value == JobTypeFilePurgeExpiredContent || value == JobTypeCleanup || value == JobTypeCommandOutcomeCleanup || value == JobTypeAuditAttemptSweep || value == JobTypeSessionPurgeRetired || value == JobTypeExamSittingLifecycle || value == JobTypeExamSittingLifecycleRecovery || value == JobTypeExamSittingSealing || value == JobTypeMailDeliver || value == JobTypeMailDeliverCredential || value == JobTypeMailCleanup || value == JobTypeMailRekey || value == JobTypeMFARekey || value == JobTypeMailExpandSitting || value == JobTypeInvitationMaintenance || value == JobTypeOnboardingImportParse || value == JobTypeOnboardingImportExecute || value == JobTypeStudentProgressionPreview
+// jobTypes is the closed Job type vocabulary in declaration order.
+var jobTypes = []JobType{
+	JobTypeProfilePictureGenerateDefault, JobTypeProfilePictureReconcile, JobTypeFilePurgeExpiredContent,
+	JobTypeCleanup, JobTypeRetentionReconcile, JobTypeRetentionPurge, JobTypeRetentionNotices,
+	JobTypeRetentionExpire, JobTypeCommandOutcomeCleanup, JobTypeAuditAttemptSweep, JobTypeSessionPurgeRetired,
+	JobTypeExamSittingLifecycle, JobTypeExamSittingLifecycleRecovery, JobTypeExamSittingSealing,
+	JobTypeMailDeliver, JobTypeMailDeliverCredential, JobTypeMailCleanup, JobTypeMailRekey, JobTypeMFARekey,
+	JobTypeMailExpandSitting, JobTypeInvitationMaintenance, JobTypeOnboardingImportParse,
+	JobTypeOnboardingImportExecute, JobTypeStudentProgressionPreview, JobTypeExamExportBuild,
+	JobTypeExamExportCleanup,
 }
-func validJobStatus(value JobStatus) bool {
-	return value == JobStatusQueued || value == JobStatusRunning || value == JobStatusCancelRequested || value == JobStatusSucceeded || value == JobStatusFailed || value == JobStatusCanceled
+
+// jobStatuses is the closed Job status vocabulary in lifecycle order.
+var jobStatuses = []JobStatus{
+	JobStatusQueued, JobStatusRunning, JobStatusCancelRequested, JobStatusSucceeded, JobStatusFailed, JobStatusCanceled,
 }
+
+// JobTypes returns every Job type, including those no operator surface
+// shows. Host inspection lists across all of them.
+func JobTypes() []JobType { return slices.Clone(jobTypes) }
+
+// JobStatuses returns every Job status in lifecycle order.
+func JobStatuses() []JobStatus { return slices.Clone(jobStatuses) }
+
+// IsValid reports whether t is a known Job type.
+func (t JobType) IsValid() bool { return slices.Contains(jobTypes, t) }
+
+// IsValid reports whether s is a known Job status.
+func (s JobStatus) IsValid() bool { return slices.Contains(jobStatuses, s) }
+
 func validJobAttemptStatus(value JobAttemptStatus) bool {
 	return value == JobAttemptStatusRunning || value == JobAttemptStatusSucceeded || value == JobAttemptStatusFailed || value == JobAttemptStatusCanceled || value == JobAttemptStatusLeaseExpired || value == JobAttemptStatusIncompatible
 }

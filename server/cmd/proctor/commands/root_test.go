@@ -102,7 +102,7 @@ func TestRunHelpDescribesTheExplicitCommandTree(t *testing.T) {
 	for _, args := range [][]string{{"help"}, {"--help"}, {"-h"}} {
 		code, stdout, stderr := executeForTest(context.Background(), args, nil, testExecutors())
 		require.Equal(t, 0, code, "run(%q) code = %d, stderr = %q", args, code, stderr)
-		for _, command := range []string{"administrator", "completion", "config", "migrate", "serve", "version"} {
+		for _, command := range []string{"administrator", "cluster", "completion", "config", "jobs", "migrate", "serve", "version"} {
 			require.Contains(t, stdout, command, "run(%q) help does not contain %q:\n", args, command)
 		}
 		require.Empty(t, stderr, "run(%q) stderr", args)

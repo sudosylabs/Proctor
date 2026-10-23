@@ -25,6 +25,8 @@ Every command accepts `--config` (short form `-c`). An explicit path wins over
 | `proctor migrate status` | compare database and server schema versions and report pending migrations | no |
 | `proctor migrate up` | apply every pending migration deliberately | no |
 | `proctor cluster status` | list serving node leases, cluster discovery rows, and the schema version | no |
+| `proctor jobs list` | list the newest durable Jobs with state, attempts, last error code, and availability | no |
+| `proctor jobs show` | show one Job and its most recent attempts | no |
 | `proctor administrator recover` | host-only administrator local-authentication recovery while all nodes are stopped | no |
 | `proctor administrator reset-mfa` | reset an existing administrator's MFA and require reenrollment while all nodes are stopped | no |
 | `proctor version` | print build version, commit, build time, and Go version | no |
@@ -71,7 +73,7 @@ upgrade safety.
 
 ## Read-Only Inspection
 
-`migrate status` and `cluster status` only read. They open the database with
+`migrate status`, `cluster status`, `jobs list`, and `jobs show` only read. They open the database with
 every session set to `default_transaction_read_only`, so PostgreSQL itself
 rejects any write. They never migrate, never take the migration lock or
 another advisory lock, and never create a table, so they are safe to run
@@ -92,6 +94,31 @@ rows with advertise address, server version, and protocol range; these rows
 are disposable and written only by the `memberlist` cluster backend, never by
 `local`. Expired rows are shown rather than hidden. Each list stops at 500
 rows and says so. A database with no schema reports no nodes.
+
+```sh
+proctor jobs list --config /etc/proctor/config.json
+proctor jobs list --state failed --type mail.deliver,mail.cleanup --limit 20
+proctor jobs show <job-id>
+proctor jobs show <job-id> --json
+```
+
+`jobs list` prints the newest Jobs first, at most `--limit` of them (default
+50, at most 200), with ID, type, state, attempts used of the maximum, last
+public error code, the time the Job is next available to a worker, and the
+last update. `--type` and `--state` are repeatable or comma-separated and
+accept only known values; the error for an unknown value lists them. States
+are `queued`, `running`, `cancel_requested`, `succeeded`, `failed`, and
+`canceled`. Unlike the administrator API, host listing includes internal Job
+types. When more Jobs match, the output says so; narrow the filters rather
+than paging. `jobs show` adds creation, start, completion, and progress
+times and the 20 most recent attempts with node, heartbeat, lease expiry, and
+error code.
+
+Neither command prints a Job's command, checkpoint, result, deduplication
+key, or an attempt's claim token, because those can carry user identifiers or
+content. Both refuse a database without a schema. `--json` writes the same
+fields for automation. To cancel or retry a Job, use the administrator Jobs
+API, which authorizes and audits the change; the CLI never changes Jobs.
 
 ## Host-Only Administrator Recovery
 
