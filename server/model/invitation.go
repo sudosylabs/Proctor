@@ -255,6 +255,15 @@ func (i *Invitation) Validate() error {
 	if err := validateInvitationSuggestions(i.Suggestions); err != nil {
 		return invalidModelError(where, "invitation", "suggestions", err.Error(), details)
 	}
+	if err := i.validatePackage(details); err != nil {
+		return err
+	}
+	return i.validateAcceptance(details)
+}
+
+// validatePackage checks the frozen package fields required by the Invitation purpose.
+func (i *Invitation) validatePackage(details string) error {
+	const where = "Invitation.Validate"
 	if i.Purpose == InvitationPurposeStudentClass {
 		if !i.ClassID.IsValid() || !i.AcademicPeriodID.IsValid() {
 			return invalidModelError(where, "invitation", "student_class", "must identify a Class and Academic Period", details)
@@ -308,6 +317,12 @@ func (i *Invitation) Validate() error {
 			return invalidModelError(where, "invitation", "scoped_role", "must identify its exact authorization scope", details)
 		}
 	}
+	return nil
+}
+
+// validateAcceptance checks that acceptance fields are present exactly in the accepted state.
+func (i *Invitation) validateAcceptance(details string) error {
+	const where = "Invitation.Validate"
 	if i.State == InvitationAccepted {
 		if !i.AcceptedAt.Valid || !i.AcceptedUserID.IsValid() ||
 			i.AcceptedAt.Time.Before(i.CreatedAt) || !i.AcceptedAt.Time.Before(i.ExpiresAt) {
