@@ -56,10 +56,11 @@ func TestMetricsListenerReloadsItsCertificateOnRequest(t *testing.T) {
 
 func metricsServedSerial(t *testing.T, address string) int64 {
 	t.Helper()
-	connection, err := tls.Dial("tcp", address, &tls.Config{InsecureSkipVerify: true, MinVersion: tls.VersionTLS12}) //nolint:gosec // the test inspects the served certificate
+	dialer := &tls.Dialer{Config: &tls.Config{InsecureSkipVerify: true, MinVersion: tls.VersionTLS12}} //nolint:gosec // the test inspects the served certificate
+	connection, err := dialer.DialContext(t.Context(), "tcp", address)
 	require.NoError(t, err)
 	defer connection.Close()
-	return connection.ConnectionState().PeerCertificates[0].SerialNumber.Int64()
+	return connection.(*tls.Conn).ConnectionState().PeerCertificates[0].SerialNumber.Int64()
 }
 
 func writeMetricsTestCertificate(t *testing.T, certificateFile, privateKeyFile string, serial int64) {

@@ -73,7 +73,7 @@ func (s *auditListingService) ListAuditEvents(ctx context.Context, invocation in
 	}
 	events, err := s.deps.Audits.List(ctx, store.AuditListOptions{
 		ActorID: model.UserID(strings.TrimSpace(query.ActorID.String())), Action: strings.TrimSpace(query.Action),
-		Resource: query.Resource, BeforeCreatedAt: query.BeforeCreatedAt, BeforeID: model.AuditEventID(query.BeforeID), Limit: query.Limit + 1,
+		Resource: query.Resource, BeforeCreatedAt: query.BeforeCreatedAt, BeforeID: query.BeforeID, Limit: query.Limit + 1,
 		Visibility: visibility,
 	})
 	if err != nil {

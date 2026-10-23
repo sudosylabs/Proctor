@@ -69,6 +69,7 @@ func DecodeMFARekeyResult(document json.RawMessage) (MFARekeyResult, error) {
 	return value, err
 }
 
+// MFARekeyJobStore is the Store surface the MFA rekey handler uses.
 type MFARekeyJobStore interface {
 	ListRekeyTargets(context.Context, *store.MFARekeyTargetPageRequest) (*store.MFARekeyTargetPage, error)
 	ReplaceRekeyTarget(context.Context, *store.MFARekeyReplacement) (bool, error)

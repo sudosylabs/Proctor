@@ -70,7 +70,7 @@ func TestMFARekeyAcceptsOnlyAKeyIdentity(t *testing.T) {
 	t.Parallel()
 	fake := &mfaKeyAPIFake{}
 	module := mfaKeyResourceModule{application: fake}
-	request, _ := http.NewRequest(http.MethodPost, "/api/v1/mfa/rekey", bytes.NewBufferString(`{"retiring_key_id":"11111111111111111111111111111111"}`))
+	request, _ := http.NewRequestWithContext(t.Context(), http.MethodPost, "/api/v1/mfa/rekey", bytes.NewBufferString(`{"retiring_key_id":"11111111111111111111111111111111"}`))
 	request.Header.Set("Content-Type", "application/json")
 	result, err := module.startRekey(operationRequest{request: request})
 	require.NoError(t, err)
@@ -78,7 +78,7 @@ func TestMFARekeyAcceptsOnlyAKeyIdentity(t *testing.T) {
 	require.Equal(t, app.StartMFARekeyCommand{RetiringKeyID: "11111111111111111111111111111111"}, fake.started)
 
 	fake.started = app.StartMFARekeyCommand{}
-	secretBearing, _ := http.NewRequest(http.MethodPost, "/api/v1/mfa/rekey",
+	secretBearing, _ := http.NewRequestWithContext(t.Context(), http.MethodPost, "/api/v1/mfa/rekey",
 		bytes.NewBufferString(`{"retiring_key_id":"11111111111111111111111111111111","encryption_key":"secret"}`))
 	secretBearing.Header.Set("Content-Type", "application/json")
 	_, err = module.startRekey(operationRequest{request: secretBearing})

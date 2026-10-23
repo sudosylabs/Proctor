@@ -66,6 +66,8 @@ func requireMFASecretPrimary(ctx context.Context, tx sqlxExecutor, keyID string)
 	return nil
 }
 
+// InspectKeyState reads the MFA primary-key fence and the live credentials
+// per sealing key in one snapshot.
 func (s SQLMFAStore) InspectKeyState(ctx context.Context) (*store.MFAKeyState, error) {
 	return runSQLTransaction(ctx, s.GetMaster().Begin, "MFA key-state inspection", func(ctx context.Context, tx *sqlxTxWrapper) (*store.MFAKeyState, error) {
 		var fence struct {
@@ -91,6 +93,9 @@ func (s SQLMFAStore) InspectKeyState(ctx context.Context) (*store.MFAKeyState, e
 	})
 }
 
+// StartRekey advances the MFA primary-key fence and queues the rekey Job,
+// completing its audit, unless another rekey is active or the current
+// primary is unproven.
 func (s SQLMFAStore) StartRekey(ctx context.Context, input *store.MFARekeyStart) (*store.MFARekeyOperation, error) {
 	if err := validateMFARekeyStart(input); err != nil {
 		return nil, err
@@ -189,6 +194,8 @@ func validateMFARekeyStart(input *store.MFARekeyStart) error {
 	return nil
 }
 
+// ListRekeyTargets pages the live credentials sealed with another key than
+// the fenced primary, for the Job holding the fence.
 func (s SQLMFAStore) ListRekeyTargets(ctx context.Context, request *store.MFARekeyTargetPageRequest) (*store.MFARekeyTargetPage, error) {
 	if request == nil || !request.JobID.IsValid() || !validMFAKeyID(request.PrimaryKeyID) || request.Limit < 1 || request.Limit > 500 ||
 		(!request.AfterCredentialID.IsZero() && !request.AfterCredentialID.IsValid()) {
@@ -224,6 +231,8 @@ func (s SQLMFAStore) ListRekeyTargets(ctx context.Context, request *store.MFARek
 	})
 }
 
+// ReplaceRekeyTarget re-seals one credential under a compare-and-swap on its
+// key identity and reports whether it applied.
 func (s SQLMFAStore) ReplaceRekeyTarget(ctx context.Context, input *store.MFARekeyReplacement) (bool, error) {
 	if input == nil || !input.JobID.IsValid() || !input.CredentialID.IsValid() ||
 		!validMFAKeyID(input.ExpectedKeyID) || !validMFAKeyID(input.PrimaryKeyID) ||
@@ -252,6 +261,8 @@ func (s SQLMFAStore) ReplaceRekeyTarget(ctx context.Context, input *store.MFARek
 		})
 }
 
+// ProveRekey counts the live credentials still sealed with a non-primary key
+// and with the retiring key, for the Job holding the fence.
 func (s SQLMFAStore) ProveRekey(ctx context.Context, request *store.MFARekeyProofRequest) (*store.MFARekeyProof, error) {
 	if request == nil || !request.JobID.IsValid() || !validMFAKeyID(request.PrimaryKeyID) ||
 		!validMFAKeyID(request.RetiringKeyID) || request.PrimaryKeyID == request.RetiringKeyID {

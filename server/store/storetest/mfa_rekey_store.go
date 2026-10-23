@@ -67,6 +67,7 @@ func testMFARekeyStore(t *testing.T, ss store.Store) {
 	require.False(t, page.More)
 	require.Equal(t, []store.MFARekeyTarget{{CredentialID: retiring.ID, UserID: retiring.UserID, KeyID: mfaRekeyFixtureRetiring,
 		EncryptedSecret: retiring.EncryptedSecret}}, page.Targets, "only the secret sealed with another key is a target")
+	// #nosec G101 -- A synthetic envelope placeholder, not a credential.
 	replacement := &store.MFARekeyReplacement{JobID: first.Job.ID, CredentialID: retiring.ID,
 		ExpectedKeyID: mfaRekeyFixtureRetiring, PrimaryKeyID: mfaRekeyFixturePrimary, EncryptedSecret: "resealed-with-primary"}
 	applied, err := ss.MFA().ReplaceRekeyTarget(ctx, replacement)
