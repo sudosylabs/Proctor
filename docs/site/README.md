@@ -7,9 +7,11 @@ remain authoritative for internal behavior.
 
 The current local build provides task-oriented navigation, public content
 validation, contextual guide navigation, and a deterministic
-generated API reference. Publication, the production hostname, content
-licensing, versioning, analytics, and hosting remain explicit decisions to
-settle before deployment.
+generated API reference. A GitHub Pages deployment workflow exists but stays
+inert until maintainers activate it as described in
+[the documentation workspace guide](../README.md#publishing). The production
+hostname, content licensing, versioning, and analytics remain explicit
+decisions to settle before activation.
 
 The search dialog uses a generated local index covering authored public and API
 guides, canonical glossary terms, OpenAPI product areas, and every operation.

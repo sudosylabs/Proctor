@@ -14,3 +14,34 @@ workspace.
   Proctor's canonical domain terms
 - [Documentation site](./site/) — local preview, validation, static build, and
   generated-reference workflow
+
+## Publishing
+
+The `Publish documentation` workflow builds the site on every push to `main`
+that changes documentation, the OpenAPI artifact, or the workflow, and on manual
+dispatch. It deploys to GitHub Pages only after maintainers opt in; until then
+each run is a build check that publishes nothing. The site URL otherwise stays
+the `https://docs.proctor.invalid` placeholder.
+
+To activate publication:
+
+1. Decide that the documentation may be public. A GitHub Pages site is
+   readable by anyone even when the repository is private, unless the
+   organization's plan provides access-controlled Pages.
+2. In the repository's Pages settings, select **GitHub Actions** as the source.
+   Restrict the `github-pages` environment to the `main` branch, and add
+   required reviewers if each deployment should be approved.
+3. Choose the public origin. For a custom domain, configure it in the Pages
+   settings and its DNS first.
+4. Set repository variable `DOCS_SITE_URL` to that HTTPS origin with no path
+   or trailing slash, such as `https://docs.example.org`. When the site is
+   served from a path, as a project page on `github.io` is, also set
+   `DOCS_BASE_URL` to that path with a trailing slash, such as `/Proctor/`;
+   it defaults to `/`.
+5. Set repository variable `DOCS_PUBLISH_ENABLED` to `true` and run the
+   workflow manually once to confirm the deployment.
+
+Removing either variable, or setting `DOCS_PUBLISH_ENABLED` to anything else,
+stops deployment without affecting the build. The workflow refuses to publish
+an origin that is not HTTPS or still ends in `.invalid`. "Edit this page" links
+always point at `main` in the `sudosylabs/Proctor` repository.
