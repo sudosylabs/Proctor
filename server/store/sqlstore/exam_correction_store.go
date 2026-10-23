@@ -465,55 +465,135 @@ func validateExamCorrectionApplication(input *store.ExamCorrectionApplication, c
 }
 
 func applyExamCorrection(ctx context.Context, tx *sqlxTxWrapper, input *store.ExamCorrectionApplication) (*store.ExamCorrectionResult, error) {
-	if err := guardExamSittingManagerExam(ctx, tx, input.ExamID, input.ActorUserID, input.ManagerOverride, false); err != nil {
+	academicUnitID, sitting, databaseNow, err := lockExamCorrectionSitting(ctx, tx, input)
+	if err != nil {
 		return nil, err
+	}
+	base, err := lockExamCorrectionBase(ctx, tx, input)
+	if err != nil {
+		return nil, err
+	}
+	stageIDs, stages, err := lockExamCorrectionStages(ctx, tx, input, databaseNow)
+	if err != nil {
+		return nil, err
+	}
+	resources, err := examCorrectionResources(base, input, stages)
+	if err != nil {
+		return nil, err
+	}
+	instructions := base.InstructionsMarkdown
+	if input.InstructionsMarkdown != nil {
+		instructions = *input.InstructionsMarkdown
+	}
+	browserPolicy := base.BrowserPolicy.Clone()
+	if input.BrowserPolicy != nil {
+		browserPolicy = input.BrowserPolicy.Clone()
+	}
+	if err = browserPolicy.ValidateInstitutionOrigin(input.InstitutionOrigin); err != nil {
+		return nil, store.NewErrInvalidInput("exam_correction", "browser_policy", nil).Wrap(err)
+	}
+	changedAreas, err := model.CandidateCorrectionChangedAreas(base, instructions, resources, browserPolicy)
+	if err != nil {
+		return nil, store.NewErrInvalidInput("exam_correction", "snapshot", err)
+	}
+	if len(changedAreas) == 0 {
+		return nil, store.NewErrConflict("exam_correction", "exam_correction_no_changes", nil)
+	}
+	var number int64
+	if err = tx.Get(ctx, &number, `SELECT COALESCE(MAX(number),0)+1 FROM exam_revisions WHERE exam_id=?`, input.ExamID.String()); err != nil {
+		return nil, err
+	}
+	revision, err := model.NewLiveCorrectionExamRevision(base, model.LiveCorrectionExamRevisionSpecification{ID: input.RevisionID,
+		Number: number, InstructionsMarkdown: instructions, Resources: resources, BrowserPolicy: &browserPolicy,
+		CandidateSummary: input.CandidateSummary, AcknowledgementRequired: input.AcknowledgementRequired, AffectedCapabilities: input.AffectedCapabilities,
+		PublishedByUserID: input.ActorUserID, PublishedAt: databaseNow})
+	if err != nil {
+		return nil, store.NewErrInvalidInput("exam_correction", "snapshot", nil).Wrap(err)
+	}
+	if err = insertExamRevision(ctx, tx, revision); err != nil {
+		return nil, err
+	}
+	if err = consumeExamCorrectionStages(ctx, tx, stageIDs, stages, databaseNow); err != nil {
+		return nil, err
+	}
+	previousRevisionID, err := retargetExamCorrectionSitting(ctx, tx, input, sitting, revision, browserPolicy.Enabled, databaseNow)
+	if err != nil {
+		return nil, err
+	}
+	value := &store.ExamCorrectionResult{Revision: examCorrectionRevisionSummary(revision),
+		Sitting:            &store.ExamSittingSnapshot{Sitting: sitting, AcademicUnitID: academicUnitID},
+		PreviousRevisionID: previousRevisionID, EffectiveAt: databaseNow}
+	data, err := encodeExamCorrectionAudit(value, false, "")
+	if err != nil {
+		return nil, err
+	}
+	if _, err = completeAuditEvent(ctx, tx, input.AuditEventID, model.AuditStatusSuccess, "", data, input.AuditAt); err != nil {
+		return nil, err
+	}
+	return value, nil
+}
+
+// lockExamCorrectionSitting authorizes the manager, locks the open or paused
+// Sitting on the expected revision, and reads the database instant before
+// its deadline.
+func lockExamCorrectionSitting(ctx context.Context, tx *sqlxTxWrapper, input *store.ExamCorrectionApplication) (model.AcademicUnitID, *model.ExamSitting, time.Time, error) {
+	var databaseNow time.Time
+	if err := guardExamSittingManagerExam(ctx, tx, input.ExamID, input.ActorUserID, input.ManagerOverride, false); err != nil {
+		return "", nil, databaseNow, err
 	}
 	var academicUnitIDRaw string
 	if err := tx.Get(ctx, &academicUnitIDRaw, `SELECT academic_unit_id FROM exams WHERE id=?`, input.ExamID.String()); err != nil {
-		return nil, translateError("exam", input.ExamID.String(), err)
+		return "", nil, databaseNow, translateError("exam", input.ExamID.String(), err)
 	}
 	academicUnitID, err := model.ParseAcademicUnitID(academicUnitIDRaw)
 	if err != nil {
-		return nil, invalidPersistedState("exam", "academic_unit_id", err)
+		return "", nil, databaseNow, invalidPersistedState("exam", "academic_unit_id", err)
 	}
 	sitting, err := lockExamSitting(ctx, tx, input.ExamID, input.SittingID)
 	if err != nil {
-		return nil, err
+		return "", nil, databaseNow, err
 	}
 	if sitting.Revision != input.ExpectedSittingRevision {
-		return nil, store.NewErrConflict("exam_sitting", "exam_sitting_revision", nil)
+		return "", nil, databaseNow, store.NewErrConflict("exam_sitting", "exam_sitting_revision", nil)
 	}
 	if sitting.State != model.ExamSittingOpen && sitting.State != model.ExamSittingPaused {
-		return nil, store.NewErrConflict("exam_sitting", "exam_sitting_state", nil)
+		return "", nil, databaseNow, store.NewErrConflict("exam_sitting", "exam_sitting_state", nil)
 	}
 	if sitting.ExamRevisionID != input.CurrentRevisionID {
-		return nil, store.NewErrConflict("exam_sitting", "exam_sitting_revision_selection", nil)
+		return "", nil, databaseNow, store.NewErrConflict("exam_sitting", "exam_sitting_revision_selection", nil)
 	}
-	var databaseNow time.Time
 	if err = tx.Get(ctx, &databaseNow, `SELECT statement_timestamp()`); err != nil {
-		return nil, err
+		return "", nil, databaseNow, err
 	}
 	databaseNow = model.TimeUTC(databaseNow)
 	if !databaseNow.Before(sitting.ScheduledEndAt) {
-		return nil, store.NewErrConflict("exam_sitting", "exam_sitting_deadline_reached", nil)
+		return "", nil, databaseNow, store.NewErrConflict("exam_sitting", "exam_sitting_deadline_reached", nil)
 	}
+	return academicUnitID, sitting, databaseNow, nil
+}
+
+// lockExamCorrectionBase enforces the live-correction limit, key-share locks
+// the sealed base revision, and reads its snapshot.
+func lockExamCorrectionBase(ctx context.Context, tx *sqlxTxWrapper, input *store.ExamCorrectionApplication) (*model.ExamRevision, error) {
 	var correctionCount int
-	if err = tx.Get(ctx, &correctionCount, `SELECT COUNT(*) FROM exam_sitting_live_corrections WHERE exam_sitting_id=?`, input.SittingID.String()); err != nil {
+	if err := tx.Get(ctx, &correctionCount, `SELECT COUNT(*) FROM exam_sitting_live_corrections WHERE exam_sitting_id=?`, input.SittingID.String()); err != nil {
 		return nil, err
 	}
 	if correctionCount >= model.ExamSittingMaximumLiveCorrections {
 		return nil, store.NewErrConflict("exam_correction", "exam_correction_limit", nil)
 	}
 	var lockedBaseID string
-	if err = tx.Get(ctx, &lockedBaseID, `SELECT id FROM exam_revisions WHERE exam_id=? AND id=? AND sealed=true FOR KEY SHARE`, input.ExamID.String(), input.CurrentRevisionID.String()); errors.Is(err, sql.ErrNoRows) {
+	if err := tx.Get(ctx, &lockedBaseID, `SELECT id FROM exam_revisions WHERE exam_id=? AND id=? AND sealed=true FOR KEY SHARE`, input.ExamID.String(), input.CurrentRevisionID.String()); errors.Is(err, sql.ErrNoRows) {
 		return nil, store.NewErrConflict("exam_correction", "exam_correction_base_revision", nil)
 	} else if err != nil {
 		return nil, err
 	}
-	base, err := getExamRevisionSnapshot(ctx, tx, input.ExamID, input.CurrentRevisionID)
-	if err != nil {
-		return nil, err
-	}
+	return getExamRevisionSnapshot(ctx, tx, input.ExamID, input.CurrentRevisionID)
+}
+
+// lockExamCorrectionStages locks the referenced ready Resource stages in
+// identifier order and checks that each belongs to this correction.
+func lockExamCorrectionStages(ctx context.Context, tx *sqlxTxWrapper, input *store.ExamCorrectionApplication, databaseNow time.Time) ([]model.ExamCorrectionResourceStageID, map[model.ExamCorrectionResourceStageID]*store.ExamCorrectionResourceStage, error) {
 	stageIDs := make([]model.ExamCorrectionResourceStageID, 0, len(input.Resources))
 	for _, item := range input.Resources {
 		if !item.StageID.IsZero() {
@@ -528,17 +608,23 @@ func applyExamCorrection(ctx context.Context, tx *sqlxTxWrapper, input *store.Ex
 		stage, stageErr := getExamCorrectionStage(ctx, tx, stageID, true)
 		if stageErr != nil {
 			if store.IsNotFound(stageErr) {
-				return nil, store.NewErrConflict("exam_correction", "exam_correction_resource_stage", nil)
+				return nil, nil, store.NewErrConflict("exam_correction", "exam_correction_resource_stage", nil)
 			}
-			return nil, stageErr
+			return nil, nil, stageErr
 		}
 		if stage.ExamID != input.ExamID || stage.SittingID != input.SittingID || stage.BaseRevisionID != input.CurrentRevisionID ||
 			stage.CreatedByUserID != input.ActorUserID ||
 			stage.State != store.ExamCorrectionResourceStageReady || stage.Rendition == nil || !databaseNow.Before(stage.ExpiresAt) {
-			return nil, store.NewErrConflict("exam_correction", "exam_correction_resource_stage", nil)
+			return nil, nil, store.NewErrConflict("exam_correction", "exam_correction_resource_stage", nil)
 		}
 		stages[stageID] = stage
 	}
+	return stageIDs, stages, nil
+}
+
+// examCorrectionResources builds the corrected Resource manifest from the
+// base revision's Resources and the staged additions and replacements.
+func examCorrectionResources(base *model.ExamRevision, input *store.ExamCorrectionApplication, stages map[model.ExamCorrectionResourceStageID]*store.ExamCorrectionResourceStage) ([]model.ExamRevisionResource, error) {
 	baseResources := make(map[model.ExamResourceID]model.ExamRevisionResource, len(base.Resources))
 	for _, resource := range base.Resources {
 		baseResources[resource.ResourceID] = resource
@@ -567,99 +653,70 @@ func applyExamCorrection(ctx context.Context, tx *sqlxTxWrapper, input *store.Ex
 	if examRevisionCapacityExceeded(base.Capacity, resources, nil) {
 		return nil, store.NewErrConflict("exam_correction", "exam_correction_resource_limit", nil)
 	}
-	instructions := base.InstructionsMarkdown
-	if input.InstructionsMarkdown != nil {
-		instructions = *input.InstructionsMarkdown
-	}
-	browserPolicy := base.BrowserPolicy.Clone()
-	if input.BrowserPolicy != nil {
-		browserPolicy = input.BrowserPolicy.Clone()
-	}
-	if err := browserPolicy.ValidateInstitutionOrigin(input.InstitutionOrigin); err != nil {
-		return nil, store.NewErrInvalidInput("exam_correction", "browser_policy", nil).Wrap(err)
-	}
-	changedAreas, err := model.CandidateCorrectionChangedAreas(base, instructions, resources, browserPolicy)
-	if err != nil {
-		return nil, store.NewErrInvalidInput("exam_correction", "snapshot", err)
-	}
-	if len(changedAreas) == 0 {
-		return nil, store.NewErrConflict("exam_correction", "exam_correction_no_changes", nil)
-	}
-	var number int64
-	if err = tx.Get(ctx, &number, `SELECT COALESCE(MAX(number),0)+1 FROM exam_revisions WHERE exam_id=?`, input.ExamID.String()); err != nil {
-		return nil, err
-	}
-	revision, err := model.NewLiveCorrectionExamRevision(base, model.LiveCorrectionExamRevisionSpecification{ID: input.RevisionID,
-		Number: number, InstructionsMarkdown: instructions, Resources: resources, BrowserPolicy: &browserPolicy,
-		CandidateSummary: input.CandidateSummary, AcknowledgementRequired: input.AcknowledgementRequired, AffectedCapabilities: input.AffectedCapabilities,
-		PublishedByUserID: input.ActorUserID, PublishedAt: databaseNow})
-	if err != nil {
-		return nil, store.NewErrInvalidInput("exam_correction", "snapshot", nil).Wrap(err)
-	}
-	if err = insertExamRevision(ctx, tx, revision); err != nil {
-		return nil, err
-	}
+	return resources, nil
+}
+
+// consumeExamCorrectionStages makes each staged file revision available,
+// consumes its upload lease, makes it current, and marks the stage consumed.
+func consumeExamCorrectionStages(ctx context.Context, tx *sqlxTxWrapper, stageIDs []model.ExamCorrectionResourceStageID, stages map[model.ExamCorrectionResourceStageID]*store.ExamCorrectionResourceStage, databaseNow time.Time) error {
 	for _, stageID := range stageIDs {
 		stage := stages[stageID]
-		result, execErr := tx.Exec(ctx, `UPDATE file_revisions SET availability='available' WHERE id=? AND file_entry_id=? AND availability='pending' AND purge_claim_id IS NULL`, stage.FileRevisionID.String(), stage.FileEntryID.String())
-		if execErr != nil {
-			return nil, execErr
+		result, err := tx.Exec(ctx, `UPDATE file_revisions SET availability='available' WHERE id=? AND file_entry_id=? AND availability='pending' AND purge_claim_id IS NULL`, stage.FileRevisionID.String(), stage.FileEntryID.String())
+		if err != nil {
+			return err
 		}
 		if err = requireExamResourceAffected(result, 1, "exam_correction_resource_stage"); err != nil {
-			return nil, err
+			return err
 		}
 		result, err = tx.Exec(ctx, `UPDATE upload_leases SET consumed_at=GREATEST(created_at,?),updated_at=GREATEST(updated_at,?),revision=revision+1,bytes_received=? WHERE id=? AND consumed_at IS NULL`, databaseNow, databaseNow, stage.Rendition.Size, stage.UploadLeaseID.String())
 		if err != nil {
-			return nil, err
+			return err
 		}
 		if err = requireExamResourceAffected(result, 1, "exam_correction_resource_stage"); err != nil {
-			return nil, err
+			return err
 		}
 		result, err = tx.Exec(ctx, `UPDATE file_entries SET current_revision_id=?,updated_at=GREATEST(updated_at,?),revision=revision+1 WHERE id=?`, stage.FileRevisionID.String(), databaseNow, stage.FileEntryID.String())
 		if err != nil {
-			return nil, err
+			return err
 		}
 		if err = requireExamResourceAffected(result, 1, "exam_correction_resource_stage"); err != nil {
-			return nil, err
+			return err
 		}
 		result, err = tx.Exec(ctx, `UPDATE exam_correction_resource_stages SET state='consumed',consumed_at=GREATEST(ready_at,?) WHERE id=? AND state='ready'`, databaseNow, stage.ID.String())
 		if err != nil {
-			return nil, err
+			return err
 		}
 		if err = requireExamResourceAffected(result, 1, "exam_correction_resource_stage"); err != nil {
-			return nil, err
+			return err
 		}
 	}
+	return nil
+}
+
+// retargetExamCorrectionSitting moves the Sitting to the correction revision,
+// closes browser sources the policy no longer allows, and records the
+// correction provenance, returning the revision it replaced.
+func retargetExamCorrectionSitting(ctx context.Context, tx *sqlxTxWrapper, input *store.ExamCorrectionApplication, sitting *model.ExamSitting, revision *model.ExamRevision, browserEnabled bool, databaseNow time.Time) (model.ExamRevisionID, error) {
 	previousRevisionID := sitting.ExamRevisionID
-	if err = sitting.RetargetRevision(revision.ID, databaseNow); err != nil {
-		return nil, store.NewErrConflict("exam_sitting", "exam_sitting_state", err)
+	if err := sitting.RetargetRevision(revision.ID, databaseNow); err != nil {
+		return previousRevisionID, store.NewErrConflict("exam_sitting", "exam_sitting_state", err)
 	}
 	result, err := tx.Exec(ctx, `UPDATE exam_sittings SET exam_revision_id=?,updated_at=?,revision=? WHERE exam_id=? AND id=? AND revision=? AND exam_revision_id=? AND state IN ('open','paused')`,
 		sitting.ExamRevisionID.String(), sitting.UpdatedAt, sitting.Revision, sitting.ExamID.String(), sitting.ID.String(), input.ExpectedSittingRevision, previousRevisionID.String())
 	if err != nil {
-		return nil, err
+		return previousRevisionID, err
 	}
 	if err = requireExamResourceAffected(result, 1, "exam_sitting_revision"); err != nil {
-		return nil, err
+		return previousRevisionID, err
 	}
-	if err := closeSittingBrowserSources(ctx, tx, input.SittingID, browserPolicy.Enabled, databaseNow); err != nil {
-		return nil, err
+	if err = closeSittingBrowserSources(ctx, tx, input.SittingID, browserEnabled, databaseNow); err != nil {
+		return previousRevisionID, err
 	}
 	if _, err = tx.Exec(ctx, `INSERT INTO exam_sitting_live_corrections (audit_event_id,exam_id,exam_sitting_id,previous_revision_id,correction_revision_id,actor_user_id,private_reason,effective_at,sitting_revision) VALUES (?,?,?,?,?,?,?,?,?)`,
 		input.AuditEventID, input.ExamID.String(), input.SittingID.String(), previousRevisionID.String(), revision.ID.String(), input.ActorUserID.String(), input.PrivateReason, databaseNow, sitting.Revision); err != nil {
-		return nil, fmt.Errorf("record live correction provenance: %w", err)
+		return previousRevisionID, fmt.Errorf("record live correction provenance: %w", err)
 	}
-	value := &store.ExamCorrectionResult{Revision: examCorrectionRevisionSummary(revision),
-		Sitting:            &store.ExamSittingSnapshot{Sitting: sitting, AcademicUnitID: academicUnitID},
-		PreviousRevisionID: previousRevisionID, EffectiveAt: databaseNow}
-	data, err := encodeExamCorrectionAudit(value, false, "")
-	if err != nil {
-		return nil, err
-	}
-	if _, err = completeAuditEvent(ctx, tx, input.AuditEventID, model.AuditStatusSuccess, "", data, input.AuditAt); err != nil {
-		return nil, err
-	}
-	return value, nil
+	return previousRevisionID, nil
 }
 
 func examCorrectionRevisionSummary(revision *model.ExamRevision) *store.ExamRevisionSummary {
