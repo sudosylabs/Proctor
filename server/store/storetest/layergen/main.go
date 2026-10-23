@@ -457,16 +457,28 @@ func renderMethod(output *bytes.Buffer, receiverType, receiver, layer, next, agg
 	if valueCount > 2 {
 		return fmt.Errorf("%s.%s returns %d values before error; add a handwritten timing helper", receiverType, method.name, valueCount)
 	}
+	// A method whose first parameter is its context hands the call the
+	// context the layer derived from it, so observations started by the layer
+	// enclose the forwarded call. A context-free method (Close) observes
+	// against the background context.
+	callerContext, callParameter := "context.Background()", "context.Context"
+	forwarded := method.params
+	if len(method.params) > 0 && method.params[0].typeName == "context.Context" {
+		callerContext, callParameter = method.params[0].name, "callCtx context.Context"
+		forwarded = append([]valueSpec{{name: "callCtx", typeName: "context.Context"}}, method.params[1:]...)
+	}
 	fmt.Fprintf(
 		output,
-		"\treturn timeStoreCall%d(%s, storeOperation(aggregate%s, method%s), func()%s {\n",
+		"\treturn timeStoreCall%d(%s, %s, storeOperation(aggregate%s, method%s), func(%s)%s {\n",
 		valueCount,
+		callerContext,
 		layer,
 		upperCamel(aggregate),
 		methodIdentifier(method.name),
+		callParameter,
 		results(method.results),
 	)
-	fmt.Fprintf(output, "\t\treturn %s.%s(%s)\n", next, method.name, arguments(method.params))
+	fmt.Fprintf(output, "\t\treturn %s.%s(%s)\n", next, method.name, arguments(forwarded))
 	output.WriteString("\t})\n}\n\n")
 	return nil
 }

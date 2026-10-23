@@ -89,7 +89,9 @@ sqlstore
 
 - `timerlayer` changes no semantics and measures total cache-miss latency,
   including safe retry; cache hits emit cache hit/miss metrics and bypass
-  database timing.
+  database timing. It also reports operations at or above
+  `Database.SlowOperationThreshold` to a slow-operation recorder that receives
+  only the operation name, duration, and caller context.
 - `retrylayer` stays nearest SQL for accurate transient-failure classification
   and retries only a handwritten allowlist of safe idempotent operations.
 - `localcachelayer` initially caches only `AcademicPeriodStore.Get`, keyed by academic-period ID, with a 30-second TTL, bounded process-local capacity, defensive serialization copies, generation-guarded fills, local plus best-effort peer invalidation after successful mutations, and authoritative fallback after misses, failures, corrupt entries, lost invalidations, or expiry.

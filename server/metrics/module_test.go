@@ -9,6 +9,7 @@ package metrics
 
 import (
 	"context"
+	"database/sql"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -142,6 +143,31 @@ func TestModuleServesProfilesOnlyWhenEnabledAndAuthenticated(t *testing.T) {
 	t.Run("scrape endpoint is unchanged", func(t *testing.T) {
 		require.Equal(t, http.StatusOK, serve(http.MethodGet, "/metrics", settings.BearerToken).Code)
 	})
+}
+
+func TestModuleExportsDatabasePoolSaturation(t *testing.T) {
+	t.Parallel()
+
+	module, err := New(config.Default().Metrics, BuildInfo{}, Sources{Database: func() sql.DBStats {
+		return sql.DBStats{
+			MaxOpenConnections: 50, OpenConnections: 12, InUse: 9, Idle: 3,
+			WaitCount: 4, WaitDuration: 1500 * time.Millisecond,
+		}
+	}})
+	require.NoError(t, err)
+	response := httptest.NewRecorder()
+	module.handler.ServeHTTP(response, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/metrics", nil))
+	require.Equal(t, http.StatusOK, response.Code)
+	for _, sample := range []string{
+		"proctor_database_in_use_connections 9",
+		"proctor_database_idle_connections 3",
+		"proctor_database_open_connections 12",
+		"proctor_database_max_open_connections 50",
+		"proctor_database_waits_total 4",
+		"proctor_database_wait_duration_seconds_total 1.5",
+	} {
+		require.Contains(t, response.Body.String(), sample+"\n")
+	}
 }
 
 func TestDisabledModuleOwnsNoListener(t *testing.T) {

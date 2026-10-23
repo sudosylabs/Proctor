@@ -51,6 +51,34 @@ When binding beyond loopback, configuration requires static TLS and a random
 32–512-byte bearer token. Keep the token in protected secret input. Do not put
 it in scrape URLs or logs.
 
+### Database Pool Saturation
+
+Each node exports its PostgreSQL connection pool:
+
+| Family | Meaning |
+| --- | --- |
+| `proctor_database_in_use_connections` | connections currently executing work |
+| `proctor_database_idle_connections` | connections open and waiting in the pool |
+| `proctor_database_open_connections`, `proctor_database_max_open_connections` | current and configured pool size |
+| `proctor_database_waits_total` | requests that waited because every connection was in use |
+| `proctor_database_wait_duration_seconds_total` | cumulative time spent waiting for a connection |
+
+A rising `rate(proctor_database_waits_total[5m])` with in-use connections at
+`Database.MaxOpenConnections` means the pool, not PostgreSQL, is the
+bottleneck. Divide the wait-duration rate by the wait-count rate for the mean
+wait. Compare the pool size multiplied by node count with PostgreSQL's own
+connection limit before raising it.
+
+### Slow Store Operations
+
+Set `Database.SlowOperationThreshold` (for example `500ms`) to log one
+`slow store operation` warning for every store operation that takes at least
+that long. Each record names only the closed operation, such as
+`user.get_by_email`, and `duration_ms`; it never includes SQL, arguments, rows,
+or error text. The duration covers the whole named operation, including store
+retries and every statement of a transaction. The default `0s` disables
+the log; `proctor_store_operation_duration_seconds` remains the aggregate view.
+
 ## Profiling
 
 Set `Metrics.ProfilingEnabled` to serve Go runtime profiles from the same

@@ -855,2822 +855,2822 @@ func (l *Layer) CommandOutcome() store.CommandOutcomeStore {
 }
 
 func (l *Layer) Ping(arg0 context.Context) error {
-	return timeStoreCall0(l, storeOperation(aggregateStore, methodPing), func() error {
-		return l.next.Ping(arg0)
+	return timeStoreCall0(arg0, l, storeOperation(aggregateStore, methodPing), func(callCtx context.Context) error {
+		return l.next.Ping(callCtx)
 	})
 }
 
 func (l *Layer) GetDBSchemaVersion(arg0 context.Context) (int, error) {
-	return timeStoreCall1(l, storeOperation(aggregateStore, methodGetDBSchemaVersion), func() (int, error) {
-		return l.next.GetDBSchemaVersion(arg0)
+	return timeStoreCall1(arg0, l, storeOperation(aggregateStore, methodGetDBSchemaVersion), func(callCtx context.Context) (int, error) {
+		return l.next.GetDBSchemaVersion(callCtx)
 	})
 }
 
 func (l *Layer) GetLocalSchemaVersion() (int, error) {
-	return timeStoreCall1(l, storeOperation(aggregateStore, methodGetLocalSchemaVersion), func() (int, error) {
+	return timeStoreCall1(context.Background(), l, storeOperation(aggregateStore, methodGetLocalSchemaVersion), func(context.Context) (int, error) {
 		return l.next.GetLocalSchemaVersion()
 	})
 }
 
 func (l *Layer) ValidateSchema(arg0 context.Context) error {
-	return timeStoreCall0(l, storeOperation(aggregateStore, methodValidateSchema), func() error {
-		return l.next.ValidateSchema(arg0)
+	return timeStoreCall0(arg0, l, storeOperation(aggregateStore, methodValidateSchema), func(callCtx context.Context) error {
+		return l.next.ValidateSchema(callCtx)
 	})
 }
 
 func (l *Layer) Close() error {
-	return timeStoreCall0(l, storeOperation(aggregateStore, methodClose), func() error {
+	return timeStoreCall0(context.Background(), l, storeOperation(aggregateStore, methodClose), func(context.Context) error {
 		return l.next.Close()
 	})
 }
 
 func (s *timedInstitutionStore) Save(arg0 context.Context, arg1 *model.Institution) (*model.Institution, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateInstitution, methodSave), func() (*model.Institution, error) {
-		return s.next.Save(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateInstitution, methodSave), func(callCtx context.Context) (*model.Institution, error) {
+		return s.next.Save(callCtx, arg1)
 	})
 }
 
 func (s *timedInstitutionStore) Get(arg0 context.Context, arg1 model.InstitutionID) (*model.Institution, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateInstitution, methodGet), func() (*model.Institution, error) {
-		return s.next.Get(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateInstitution, methodGet), func(callCtx context.Context) (*model.Institution, error) {
+		return s.next.Get(callCtx, arg1)
 	})
 }
 
 func (s *timedInstitutionStore) GetSingleton(arg0 context.Context) (*model.Institution, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateInstitution, methodGetSingleton), func() (*model.Institution, error) {
-		return s.next.GetSingleton(arg0)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateInstitution, methodGetSingleton), func(callCtx context.Context) (*model.Institution, error) {
+		return s.next.GetSingleton(callCtx)
 	})
 }
 
 func (s *timedInstitutionStore) Update(arg0 context.Context, arg1 *store.InstitutionUpdate) (*model.Institution, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateInstitution, methodUpdate), func() (*model.Institution, error) {
-		return s.next.Update(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateInstitution, methodUpdate), func(callCtx context.Context) (*model.Institution, error) {
+		return s.next.Update(callCtx, arg1)
 	})
 }
 
 func (s *timedInstitutionStore) Archive(arg0 context.Context, arg1 *store.InstitutionArchive) error {
-	return timeStoreCall0(s.layer, storeOperation(aggregateInstitution, methodArchive), func() error {
-		return s.next.Archive(arg0, arg1)
+	return timeStoreCall0(arg0, s.layer, storeOperation(aggregateInstitution, methodArchive), func(callCtx context.Context) error {
+		return s.next.Archive(callCtx, arg1)
 	})
 }
 
 func (s *timedAcademicUnitStore) Create(arg0 context.Context, arg1 *store.AcademicUnitCreation) (*model.AcademicUnit, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateAcademicUnit, methodCreate), func() (*model.AcademicUnit, error) {
-		return s.next.Create(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateAcademicUnit, methodCreate), func(callCtx context.Context) (*model.AcademicUnit, error) {
+		return s.next.Create(callCtx, arg1)
 	})
 }
 
 func (s *timedAcademicUnitStore) CreateIdempotently(arg0 context.Context, arg1 *store.AcademicUnitCreation, arg2 *store.CommandIdempotency) (*store.AcademicUnitCommandResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateAcademicUnit, methodCreateIdempotently), func() (*store.AcademicUnitCommandResult, error) {
-		return s.next.CreateIdempotently(arg0, arg1, arg2)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateAcademicUnit, methodCreateIdempotently), func(callCtx context.Context) (*store.AcademicUnitCommandResult, error) {
+		return s.next.CreateIdempotently(callCtx, arg1, arg2)
 	})
 }
 
 func (s *timedAcademicUnitStore) Update(arg0 context.Context, arg1 *store.AcademicUnitUpdate) (*model.AcademicUnit, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateAcademicUnit, methodUpdate), func() (*model.AcademicUnit, error) {
-		return s.next.Update(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateAcademicUnit, methodUpdate), func(callCtx context.Context) (*model.AcademicUnit, error) {
+		return s.next.Update(callCtx, arg1)
 	})
 }
 
 func (s *timedAcademicUnitStore) Archive(arg0 context.Context, arg1 *store.AcademicUnitArchive) (*model.AcademicUnit, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateAcademicUnit, methodArchive), func() (*model.AcademicUnit, error) {
-		return s.next.Archive(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateAcademicUnit, methodArchive), func(callCtx context.Context) (*model.AcademicUnit, error) {
+		return s.next.Archive(callCtx, arg1)
 	})
 }
 
 func (s *timedAcademicUnitStore) Get(arg0 context.Context, arg1 model.AcademicUnitID) (*model.AcademicUnit, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateAcademicUnit, methodGet), func() (*model.AcademicUnit, error) {
-		return s.next.Get(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateAcademicUnit, methodGet), func(callCtx context.Context) (*model.AcademicUnit, error) {
+		return s.next.Get(callCtx, arg1)
 	})
 }
 
 func (s *timedAcademicUnitStore) GetByName(arg0 context.Context, arg1 model.InstitutionID, arg2 string) (*model.AcademicUnit, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateAcademicUnit, methodGetByName), func() (*model.AcademicUnit, error) {
-		return s.next.GetByName(arg0, arg1, arg2)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateAcademicUnit, methodGetByName), func(callCtx context.Context) (*model.AcademicUnit, error) {
+		return s.next.GetByName(callCtx, arg1, arg2)
 	})
 }
 
 func (s *timedAcademicUnitStore) ListChildren(arg0 context.Context, arg1 model.InstitutionID, arg2 model.AcademicUnitID, arg3 store.AcademicNameListOptions) ([]*model.AcademicUnit, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateAcademicUnit, methodListChildren), func() ([]*model.AcademicUnit, error) {
-		return s.next.ListChildren(arg0, arg1, arg2, arg3)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateAcademicUnit, methodListChildren), func(callCtx context.Context) ([]*model.AcademicUnit, error) {
+		return s.next.ListChildren(callCtx, arg1, arg2, arg3)
 	})
 }
 
 func (s *timedAcademicUnitStore) ListAncestors(arg0 context.Context, arg1 model.AcademicUnitID) ([]*model.AcademicUnit, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateAcademicUnit, methodListAncestors), func() ([]*model.AcademicUnit, error) {
-		return s.next.ListAncestors(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateAcademicUnit, methodListAncestors), func(callCtx context.Context) ([]*model.AcademicUnit, error) {
+		return s.next.ListAncestors(callCtx, arg1)
 	})
 }
 
 func (s *timedAcademicUnitStore) Search(arg0 context.Context, arg1 model.InstitutionID, arg2 store.AcademicNameListOptions) ([]*model.AcademicUnit, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateAcademicUnit, methodSearch), func() ([]*model.AcademicUnit, error) {
-		return s.next.Search(arg0, arg1, arg2)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateAcademicUnit, methodSearch), func(callCtx context.Context) ([]*model.AcademicUnit, error) {
+		return s.next.Search(callCtx, arg1, arg2)
 	})
 }
 
 func (s *timedProgrammeStore) Create(arg0 context.Context, arg1 *store.ProgrammeCreation) (*model.Programme, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateProgramme, methodCreate), func() (*model.Programme, error) {
-		return s.next.Create(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateProgramme, methodCreate), func(callCtx context.Context) (*model.Programme, error) {
+		return s.next.Create(callCtx, arg1)
 	})
 }
 
 func (s *timedProgrammeStore) Update(arg0 context.Context, arg1 *store.ProgrammeUpdate) (*model.Programme, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateProgramme, methodUpdate), func() (*model.Programme, error) {
-		return s.next.Update(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateProgramme, methodUpdate), func(callCtx context.Context) (*model.Programme, error) {
+		return s.next.Update(callCtx, arg1)
 	})
 }
 
 func (s *timedProgrammeStore) Archive(arg0 context.Context, arg1 *store.ProgrammeArchive) (*model.Programme, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateProgramme, methodArchive), func() (*model.Programme, error) {
-		return s.next.Archive(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateProgramme, methodArchive), func(callCtx context.Context) (*model.Programme, error) {
+		return s.next.Archive(callCtx, arg1)
 	})
 }
 
 func (s *timedProgrammeStore) Get(arg0 context.Context, arg1 model.ProgrammeID) (*model.Programme, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateProgramme, methodGet), func() (*model.Programme, error) {
-		return s.next.Get(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateProgramme, methodGet), func(callCtx context.Context) (*model.Programme, error) {
+		return s.next.Get(callCtx, arg1)
 	})
 }
 
 func (s *timedProgrammeStore) GetByName(arg0 context.Context, arg1 model.AcademicUnitID, arg2 string) (*model.Programme, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateProgramme, methodGetByName), func() (*model.Programme, error) {
-		return s.next.GetByName(arg0, arg1, arg2)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateProgramme, methodGetByName), func(callCtx context.Context) (*model.Programme, error) {
+		return s.next.GetByName(callCtx, arg1, arg2)
 	})
 }
 
 func (s *timedProgrammeStore) ListByAcademicUnit(arg0 context.Context, arg1 model.AcademicUnitID) ([]*model.Programme, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateProgramme, methodListByAcademicUnit), func() ([]*model.Programme, error) {
-		return s.next.ListByAcademicUnit(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateProgramme, methodListByAcademicUnit), func(callCtx context.Context) ([]*model.Programme, error) {
+		return s.next.ListByAcademicUnit(callCtx, arg1)
 	})
 }
 
 func (s *timedProgrammeStore) SearchByAcademicUnit(arg0 context.Context, arg1 model.AcademicUnitID, arg2 store.AcademicNameListOptions) ([]*model.Programme, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateProgramme, methodSearchByAcademicUnit), func() ([]*model.Programme, error) {
-		return s.next.SearchByAcademicUnit(arg0, arg1, arg2)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateProgramme, methodSearchByAcademicUnit), func(callCtx context.Context) ([]*model.Programme, error) {
+		return s.next.SearchByAcademicUnit(callCtx, arg1, arg2)
 	})
 }
 
 func (s *timedProgrammeStore) SeedUpdate(arg0 context.Context, arg1 *model.Programme) (*model.Programme, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateProgramme, methodSeedUpdate), func() (*model.Programme, error) {
-		return s.next.SeedUpdate(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateProgramme, methodSeedUpdate), func(callCtx context.Context) (*model.Programme, error) {
+		return s.next.SeedUpdate(callCtx, arg1)
 	})
 }
 
 func (s *timedProgrammeLevelStore) Create(arg0 context.Context, arg1 *store.ProgrammeLevelCreation) (*model.ProgrammeLevel, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateProgrammeLevel, methodCreate), func() (*model.ProgrammeLevel, error) {
-		return s.next.Create(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateProgrammeLevel, methodCreate), func(callCtx context.Context) (*model.ProgrammeLevel, error) {
+		return s.next.Create(callCtx, arg1)
 	})
 }
 
 func (s *timedProgrammeLevelStore) Update(arg0 context.Context, arg1 *store.ProgrammeLevelUpdate) (*model.ProgrammeLevel, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateProgrammeLevel, methodUpdate), func() (*model.ProgrammeLevel, error) {
-		return s.next.Update(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateProgrammeLevel, methodUpdate), func(callCtx context.Context) (*model.ProgrammeLevel, error) {
+		return s.next.Update(callCtx, arg1)
 	})
 }
 
 func (s *timedProgrammeLevelStore) Archive(arg0 context.Context, arg1 *store.ProgrammeLevelArchive) (*model.ProgrammeLevel, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateProgrammeLevel, methodArchive), func() (*model.ProgrammeLevel, error) {
-		return s.next.Archive(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateProgrammeLevel, methodArchive), func(callCtx context.Context) (*model.ProgrammeLevel, error) {
+		return s.next.Archive(callCtx, arg1)
 	})
 }
 
 func (s *timedProgrammeLevelStore) Get(arg0 context.Context, arg1 model.ProgrammeLevelID) (*model.ProgrammeLevel, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateProgrammeLevel, methodGet), func() (*model.ProgrammeLevel, error) {
-		return s.next.Get(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateProgrammeLevel, methodGet), func(callCtx context.Context) (*model.ProgrammeLevel, error) {
+		return s.next.Get(callCtx, arg1)
 	})
 }
 
 func (s *timedProgrammeLevelStore) GetByName(arg0 context.Context, arg1 model.ProgrammeID, arg2 string) (*model.ProgrammeLevel, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateProgrammeLevel, methodGetByName), func() (*model.ProgrammeLevel, error) {
-		return s.next.GetByName(arg0, arg1, arg2)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateProgrammeLevel, methodGetByName), func(callCtx context.Context) (*model.ProgrammeLevel, error) {
+		return s.next.GetByName(callCtx, arg1, arg2)
 	})
 }
 
 func (s *timedProgrammeLevelStore) ListByProgramme(arg0 context.Context, arg1 model.ProgrammeID) ([]*model.ProgrammeLevel, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateProgrammeLevel, methodListByProgramme), func() ([]*model.ProgrammeLevel, error) {
-		return s.next.ListByProgramme(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateProgrammeLevel, methodListByProgramme), func(callCtx context.Context) ([]*model.ProgrammeLevel, error) {
+		return s.next.ListByProgramme(callCtx, arg1)
 	})
 }
 
 func (s *timedProgrammeLevelStore) SearchByProgramme(arg0 context.Context, arg1 model.ProgrammeID, arg2 store.AcademicNameListOptions) ([]*model.ProgrammeLevel, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateProgrammeLevel, methodSearchByProgramme), func() ([]*model.ProgrammeLevel, error) {
-		return s.next.SearchByProgramme(arg0, arg1, arg2)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateProgrammeLevel, methodSearchByProgramme), func(callCtx context.Context) ([]*model.ProgrammeLevel, error) {
+		return s.next.SearchByProgramme(callCtx, arg1, arg2)
 	})
 }
 
 func (s *timedProgrammeLevelStore) SeedUpdate(arg0 context.Context, arg1 *model.ProgrammeLevel) (*model.ProgrammeLevel, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateProgrammeLevel, methodSeedUpdate), func() (*model.ProgrammeLevel, error) {
-		return s.next.SeedUpdate(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateProgrammeLevel, methodSeedUpdate), func(callCtx context.Context) (*model.ProgrammeLevel, error) {
+		return s.next.SeedUpdate(callCtx, arg1)
 	})
 }
 
 func (s *timedAcademicPeriodStore) Create(arg0 context.Context, arg1 *store.AcademicPeriodCreation) (*model.AcademicPeriod, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateAcademicPeriod, methodCreate), func() (*model.AcademicPeriod, error) {
-		return s.next.Create(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateAcademicPeriod, methodCreate), func(callCtx context.Context) (*model.AcademicPeriod, error) {
+		return s.next.Create(callCtx, arg1)
 	})
 }
 
 func (s *timedAcademicPeriodStore) CreateIdempotently(arg0 context.Context, arg1 *store.AcademicPeriodCreation, arg2 *store.CommandIdempotency) (*store.AcademicPeriodCommandResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateAcademicPeriod, methodCreateIdempotently), func() (*store.AcademicPeriodCommandResult, error) {
-		return s.next.CreateIdempotently(arg0, arg1, arg2)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateAcademicPeriod, methodCreateIdempotently), func(callCtx context.Context) (*store.AcademicPeriodCommandResult, error) {
+		return s.next.CreateIdempotently(callCtx, arg1, arg2)
 	})
 }
 
 func (s *timedAcademicPeriodStore) Update(arg0 context.Context, arg1 *store.AcademicPeriodUpdate) (*model.AcademicPeriod, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateAcademicPeriod, methodUpdate), func() (*model.AcademicPeriod, error) {
-		return s.next.Update(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateAcademicPeriod, methodUpdate), func(callCtx context.Context) (*model.AcademicPeriod, error) {
+		return s.next.Update(callCtx, arg1)
 	})
 }
 
 func (s *timedAcademicPeriodStore) Archive(arg0 context.Context, arg1 *store.AcademicPeriodArchive) (*model.AcademicPeriod, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateAcademicPeriod, methodArchive), func() (*model.AcademicPeriod, error) {
-		return s.next.Archive(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateAcademicPeriod, methodArchive), func(callCtx context.Context) (*model.AcademicPeriod, error) {
+		return s.next.Archive(callCtx, arg1)
 	})
 }
 
 func (s *timedAcademicPeriodStore) Get(arg0 context.Context, arg1 model.AcademicPeriodID) (*model.AcademicPeriod, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateAcademicPeriod, methodGet), func() (*model.AcademicPeriod, error) {
-		return s.next.Get(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateAcademicPeriod, methodGet), func(callCtx context.Context) (*model.AcademicPeriod, error) {
+		return s.next.Get(callCtx, arg1)
 	})
 }
 
 func (s *timedAcademicPeriodStore) GetByOwnerName(arg0 context.Context, arg1 model.Resource, arg2 string) (*model.AcademicPeriod, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateAcademicPeriod, methodGetByOwnerName), func() (*model.AcademicPeriod, error) {
-		return s.next.GetByOwnerName(arg0, arg1, arg2)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateAcademicPeriod, methodGetByOwnerName), func(callCtx context.Context) (*model.AcademicPeriod, error) {
+		return s.next.GetByOwnerName(callCtx, arg1, arg2)
 	})
 }
 
 func (s *timedAcademicPeriodStore) ListVisible(arg0 context.Context, arg1 store.AcademicPeriodVisibilityScope, arg2 store.AcademicPeriodListOptions) ([]*model.AcademicPeriod, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateAcademicPeriod, methodListVisible), func() ([]*model.AcademicPeriod, error) {
-		return s.next.ListVisible(arg0, arg1, arg2)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateAcademicPeriod, methodListVisible), func(callCtx context.Context) ([]*model.AcademicPeriod, error) {
+		return s.next.ListVisible(callCtx, arg1, arg2)
 	})
 }
 
 func (s *timedExamAuthoringStore) Create(arg0 context.Context, arg1 *store.ExamAuthoringCreation, arg2 *store.CommandIdempotency) (*store.ExamAuthoringCommandResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamAuthoring, methodCreate), func() (*store.ExamAuthoringCommandResult, error) {
-		return s.next.Create(arg0, arg1, arg2)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamAuthoring, methodCreate), func(callCtx context.Context) (*store.ExamAuthoringCommandResult, error) {
+		return s.next.Create(callCtx, arg1, arg2)
 	})
 }
 
 func (s *timedExamAuthoringStore) UpdateDraftText(arg0 context.Context, arg1 *store.ExamDraftTextUpdate, arg2 *store.CommandIdempotency) (*store.ExamAuthoringCommandResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamAuthoring, methodUpdateDraftText), func() (*store.ExamAuthoringCommandResult, error) {
-		return s.next.UpdateDraftText(arg0, arg1, arg2)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamAuthoring, methodUpdateDraftText), func(callCtx context.Context) (*store.ExamAuthoringCommandResult, error) {
+		return s.next.UpdateDraftText(callCtx, arg1, arg2)
 	})
 }
 
 func (s *timedExamAuthoringStore) UpdateDraftFocusLoss(arg0 context.Context, arg1 *store.ExamDraftFocusLossUpdate, arg2 *store.CommandIdempotency) (*store.ExamAuthoringCommandResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamAuthoring, methodUpdateDraftFocusLoss), func() (*store.ExamAuthoringCommandResult, error) {
-		return s.next.UpdateDraftFocusLoss(arg0, arg1, arg2)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamAuthoring, methodUpdateDraftFocusLoss), func(callCtx context.Context) (*store.ExamAuthoringCommandResult, error) {
+		return s.next.UpdateDraftFocusLoss(callCtx, arg1, arg2)
 	})
 }
 
 func (s *timedExamAuthoringStore) UpdateDraftNativePolicy(arg0 context.Context, arg1 *store.ExamDraftNativePolicyUpdate, arg2 *store.CommandIdempotency) (*store.ExamAuthoringCommandResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamAuthoring, methodUpdateDraftNativePolicy), func() (*store.ExamAuthoringCommandResult, error) {
-		return s.next.UpdateDraftNativePolicy(arg0, arg1, arg2)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamAuthoring, methodUpdateDraftNativePolicy), func(callCtx context.Context) (*store.ExamAuthoringCommandResult, error) {
+		return s.next.UpdateDraftNativePolicy(callCtx, arg1, arg2)
 	})
 }
 
 func (s *timedExamAuthoringStore) UpdateDraftBrowserPolicy(arg0 context.Context, arg1 *store.ExamDraftBrowserPolicyUpdate, arg2 *store.CommandIdempotency) (*store.ExamAuthoringCommandResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamAuthoring, methodUpdateDraftBrowserPolicy), func() (*store.ExamAuthoringCommandResult, error) {
-		return s.next.UpdateDraftBrowserPolicy(arg0, arg1, arg2)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamAuthoring, methodUpdateDraftBrowserPolicy), func(callCtx context.Context) (*store.ExamAuthoringCommandResult, error) {
+		return s.next.UpdateDraftBrowserPolicy(callCtx, arg1, arg2)
 	})
 }
 
 func (s *timedExamAuthoringStore) List(arg0 context.Context, arg1 store.ExamListOptions) ([]store.ExamSummary, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamAuthoring, methodList), func() ([]store.ExamSummary, error) {
-		return s.next.List(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamAuthoring, methodList), func(callCtx context.Context) ([]store.ExamSummary, error) {
+		return s.next.List(callCtx, arg1)
 	})
 }
 
 func (s *timedExamAuthoringStore) Archive(arg0 context.Context, arg1 *store.ExamArchive, arg2 *store.CommandIdempotency) (*store.ExamArchiveCommandResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamAuthoring, methodArchive), func() (*store.ExamArchiveCommandResult, error) {
-		return s.next.Archive(arg0, arg1, arg2)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamAuthoring, methodArchive), func(callCtx context.Context) (*store.ExamArchiveCommandResult, error) {
+		return s.next.Archive(callCtx, arg1, arg2)
 	})
 }
 
 func (s *timedExamAuthoringStore) ListManagers(arg0 context.Context, arg1 store.ExamManagerListOptions) ([]store.ExamManagerSummary, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamAuthoring, methodListManagers), func() ([]store.ExamManagerSummary, error) {
-		return s.next.ListManagers(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamAuthoring, methodListManagers), func(callCtx context.Context) ([]store.ExamManagerSummary, error) {
+		return s.next.ListManagers(callCtx, arg1)
 	})
 }
 
 func (s *timedExamAuthoringStore) AddManager(arg0 context.Context, arg1 *store.ExamManagerMutation, arg2 *store.CommandIdempotency) (*store.ExamManagerCommandResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamAuthoring, methodAddManager), func() (*store.ExamManagerCommandResult, error) {
-		return s.next.AddManager(arg0, arg1, arg2)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamAuthoring, methodAddManager), func(callCtx context.Context) (*store.ExamManagerCommandResult, error) {
+		return s.next.AddManager(callCtx, arg1, arg2)
 	})
 }
 
 func (s *timedExamAuthoringStore) RemoveManager(arg0 context.Context, arg1 *store.ExamManagerMutation, arg2 *store.CommandIdempotency) (*store.ExamManagerCommandResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamAuthoring, methodRemoveManager), func() (*store.ExamManagerCommandResult, error) {
-		return s.next.RemoveManager(arg0, arg1, arg2)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamAuthoring, methodRemoveManager), func(callCtx context.Context) (*store.ExamManagerCommandResult, error) {
+		return s.next.RemoveManager(callCtx, arg1, arg2)
 	})
 }
 
 func (s *timedExamAuthoringStore) TransferOwner(arg0 context.Context, arg1 *store.ExamManagerMutation, arg2 *store.CommandIdempotency) (*store.ExamManagerCommandResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamAuthoring, methodTransferOwner), func() (*store.ExamManagerCommandResult, error) {
-		return s.next.TransferOwner(arg0, arg1, arg2)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamAuthoring, methodTransferOwner), func(callCtx context.Context) (*store.ExamManagerCommandResult, error) {
+		return s.next.TransferOwner(callCtx, arg1, arg2)
 	})
 }
 
 func (s *timedExamAuthoringStore) Access(arg0 context.Context, arg1 model.ExamID, arg2 model.UserID) (*store.ExamAccessSnapshot, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamAuthoring, methodAccess), func() (*store.ExamAccessSnapshot, error) {
-		return s.next.Access(arg0, arg1, arg2)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamAuthoring, methodAccess), func(callCtx context.Context) (*store.ExamAccessSnapshot, error) {
+		return s.next.Access(callCtx, arg1, arg2)
 	})
 }
 
 func (s *timedExamAuthoringStore) Get(arg0 context.Context, arg1 model.ExamID, arg2 model.UserID) (*store.ExamAuthoringSnapshot, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamAuthoring, methodGet), func() (*store.ExamAuthoringSnapshot, error) {
-		return s.next.Get(arg0, arg1, arg2)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamAuthoring, methodGet), func(callCtx context.Context) (*store.ExamAuthoringSnapshot, error) {
+		return s.next.Get(callCtx, arg1, arg2)
 	})
 }
 
 func (s *timedExamAuthoringStore) Resolve(arg0 context.Context, arg1 model.ExamID) (*model.Exam, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamAuthoring, methodResolve), func() (*model.Exam, error) {
-		return s.next.Resolve(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamAuthoring, methodResolve), func(callCtx context.Context) (*model.Exam, error) {
+		return s.next.Resolve(callCtx, arg1)
 	})
 }
 
 func (s *timedExamRevisionStore) Publish(arg0 context.Context, arg1 *store.ExamRevisionPublication, arg2 *store.CommandIdempotency) (*store.ExamRevisionPublicationResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamRevision, methodPublish), func() (*store.ExamRevisionPublicationResult, error) {
-		return s.next.Publish(arg0, arg1, arg2)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamRevision, methodPublish), func(callCtx context.Context) (*store.ExamRevisionPublicationResult, error) {
+		return s.next.Publish(callCtx, arg1, arg2)
 	})
 }
 
 func (s *timedExamRevisionStore) GetSummary(arg0 context.Context, arg1 model.ExamID, arg2 model.ExamRevisionID) (*store.ExamRevisionSummary, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamRevision, methodGetSummary), func() (*store.ExamRevisionSummary, error) {
-		return s.next.GetSummary(arg0, arg1, arg2)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamRevision, methodGetSummary), func(callCtx context.Context) (*store.ExamRevisionSummary, error) {
+		return s.next.GetSummary(callCtx, arg1, arg2)
 	})
 }
 
 func (s *timedExamRevisionStore) List(arg0 context.Context, arg1 store.ExamRevisionListOptions) ([]store.ExamRevisionSummary, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamRevision, methodList), func() ([]store.ExamRevisionSummary, error) {
-		return s.next.List(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamRevision, methodList), func(callCtx context.Context) ([]store.ExamRevisionSummary, error) {
+		return s.next.List(callCtx, arg1)
 	})
 }
 
 func (s *timedExamRevisionStore) GetSnapshot(arg0 context.Context, arg1 model.ExamID, arg2 model.ExamRevisionID) (*model.ExamRevision, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamRevision, methodGetSnapshot), func() (*model.ExamRevision, error) {
-		return s.next.GetSnapshot(arg0, arg1, arg2)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamRevision, methodGetSnapshot), func(callCtx context.Context) (*model.ExamRevision, error) {
+		return s.next.GetSnapshot(callCtx, arg1, arg2)
 	})
 }
 
 func (s *timedExamSittingStore) Resolve(arg0 context.Context, arg1 model.ExamSittingID) (*store.ExamSittingSnapshot, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamSitting, methodResolve), func() (*store.ExamSittingSnapshot, error) {
-		return s.next.Resolve(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamSitting, methodResolve), func(callCtx context.Context) (*store.ExamSittingSnapshot, error) {
+		return s.next.Resolve(callCtx, arg1)
 	})
 }
 
 func (s *timedExamSittingStore) Get(arg0 context.Context, arg1 model.ExamID, arg2 model.ExamSittingID) (*store.ExamSittingSnapshot, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamSitting, methodGet), func() (*store.ExamSittingSnapshot, error) {
-		return s.next.Get(arg0, arg1, arg2)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamSitting, methodGet), func(callCtx context.Context) (*store.ExamSittingSnapshot, error) {
+		return s.next.Get(callCtx, arg1, arg2)
 	})
 }
 
 func (s *timedExamSittingStore) List(arg0 context.Context, arg1 store.ExamSittingListOptions) ([]store.ExamSittingSnapshot, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamSitting, methodList), func() ([]store.ExamSittingSnapshot, error) {
-		return s.next.List(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamSitting, methodList), func(callCtx context.Context) ([]store.ExamSittingSnapshot, error) {
+		return s.next.List(callCtx, arg1)
 	})
 }
 
 func (s *timedExamSittingStore) ListInvalidationTargetsByClass(arg0 context.Context, arg1 model.ClassID, arg2 model.ExamSittingID, arg3 int) ([]store.ExamSittingInvalidationTarget, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamSitting, methodListInvalidationTargetsByClass), func() ([]store.ExamSittingInvalidationTarget, error) {
-		return s.next.ListInvalidationTargetsByClass(arg0, arg1, arg2, arg3)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamSitting, methodListInvalidationTargetsByClass), func(callCtx context.Context) ([]store.ExamSittingInvalidationTarget, error) {
+		return s.next.ListInvalidationTargetsByClass(callCtx, arg1, arg2, arg3)
 	})
 }
 
 func (s *timedExamSittingStore) ListInvalidationTargetsByExam(arg0 context.Context, arg1 model.ExamID, arg2 model.ExamSittingID, arg3 int) ([]store.ExamSittingInvalidationTarget, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamSitting, methodListInvalidationTargetsByExam), func() ([]store.ExamSittingInvalidationTarget, error) {
-		return s.next.ListInvalidationTargetsByExam(arg0, arg1, arg2, arg3)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamSitting, methodListInvalidationTargetsByExam), func(callCtx context.Context) ([]store.ExamSittingInvalidationTarget, error) {
+		return s.next.ListInvalidationTargetsByExam(callCtx, arg1, arg2, arg3)
 	})
 }
 
 func (s *timedExamSittingStore) ListCandidateInvalidationTargetsBySitting(arg0 context.Context, arg1 model.ExamSittingID, arg2 model.UserID, arg3 int) ([]model.UserID, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamSitting, methodListCandidateInvalidationTargetsBySitting), func() ([]model.UserID, error) {
-		return s.next.ListCandidateInvalidationTargetsBySitting(arg0, arg1, arg2, arg3)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamSitting, methodListCandidateInvalidationTargetsBySitting), func(callCtx context.Context) ([]model.UserID, error) {
+		return s.next.ListCandidateInvalidationTargetsBySitting(callCtx, arg1, arg2, arg3)
 	})
 }
 
 func (s *timedExamSittingStore) ListLifecycleDue(arg0 context.Context, arg1 store.ExamSittingLifecycleDueOptions) ([]store.ExamSittingLifecycleDue, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamSitting, methodListLifecycleDue), func() ([]store.ExamSittingLifecycleDue, error) {
-		return s.next.ListLifecycleDue(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamSitting, methodListLifecycleDue), func(callCtx context.Context) ([]store.ExamSittingLifecycleDue, error) {
+		return s.next.ListLifecycleDue(callCtx, arg1)
 	})
 }
 
 func (s *timedExamSittingStore) Schedule(arg0 context.Context, arg1 *store.ExamSittingSchedule, arg2 *store.CommandIdempotency) (*store.ExamSittingCommandResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamSitting, methodSchedule), func() (*store.ExamSittingCommandResult, error) {
-		return s.next.Schedule(arg0, arg1, arg2)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamSitting, methodSchedule), func(callCtx context.Context) (*store.ExamSittingCommandResult, error) {
+		return s.next.Schedule(callCtx, arg1, arg2)
 	})
 }
 
 func (s *timedExamSittingStore) UpdateSchedule(arg0 context.Context, arg1 *store.ExamSittingScheduleUpdate, arg2 *store.CommandIdempotency) (*store.ExamSittingCommandResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamSitting, methodUpdateSchedule), func() (*store.ExamSittingCommandResult, error) {
-		return s.next.UpdateSchedule(arg0, arg1, arg2)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamSitting, methodUpdateSchedule), func(callCtx context.Context) (*store.ExamSittingCommandResult, error) {
+		return s.next.UpdateSchedule(callCtx, arg1, arg2)
 	})
 }
 
 func (s *timedExamSittingStore) Cancel(arg0 context.Context, arg1 *store.ExamSittingCancellation, arg2 *store.CommandIdempotency) (*store.ExamSittingCommandResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamSitting, methodCancel), func() (*store.ExamSittingCommandResult, error) {
-		return s.next.Cancel(arg0, arg1, arg2)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamSitting, methodCancel), func(callCtx context.Context) (*store.ExamSittingCommandResult, error) {
+		return s.next.Cancel(callCtx, arg1, arg2)
 	})
 }
 
 func (s *timedExamSittingStore) Pause(arg0 context.Context, arg1 *store.ExamSittingManagerTransition, arg2 *store.CommandIdempotency) (*store.ExamSittingLifecycleResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamSitting, methodPause), func() (*store.ExamSittingLifecycleResult, error) {
-		return s.next.Pause(arg0, arg1, arg2)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamSitting, methodPause), func(callCtx context.Context) (*store.ExamSittingLifecycleResult, error) {
+		return s.next.Pause(callCtx, arg1, arg2)
 	})
 }
 
 func (s *timedExamSittingStore) Resume(arg0 context.Context, arg1 *store.ExamSittingManagerTransition, arg2 *store.CommandIdempotency) (*store.ExamSittingLifecycleResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamSitting, methodResume), func() (*store.ExamSittingLifecycleResult, error) {
-		return s.next.Resume(arg0, arg1, arg2)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamSitting, methodResume), func(callCtx context.Context) (*store.ExamSittingLifecycleResult, error) {
+		return s.next.Resume(callCtx, arg1, arg2)
 	})
 }
 
 func (s *timedExamSittingStore) Extend(arg0 context.Context, arg1 *store.ExamSittingExtension, arg2 *store.CommandIdempotency) (*store.ExamSittingLifecycleResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamSitting, methodExtend), func() (*store.ExamSittingLifecycleResult, error) {
-		return s.next.Extend(arg0, arg1, arg2)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamSitting, methodExtend), func(callCtx context.Context) (*store.ExamSittingLifecycleResult, error) {
+		return s.next.Extend(callCtx, arg1, arg2)
 	})
 }
 
 func (s *timedExamSittingStore) EarlyClose(arg0 context.Context, arg1 *store.ExamSittingManagerTransition, arg2 *store.CommandIdempotency) (*store.ExamSittingLifecycleResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamSitting, methodEarlyClose), func() (*store.ExamSittingLifecycleResult, error) {
-		return s.next.EarlyClose(arg0, arg1, arg2)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamSitting, methodEarlyClose), func(callCtx context.Context) (*store.ExamSittingLifecycleResult, error) {
+		return s.next.EarlyClose(callCtx, arg1, arg2)
 	})
 }
 
 func (s *timedExamSittingStore) AdvanceDue(arg0 context.Context, arg1 *store.ExamSittingDueAdvance) (*store.ExamSittingLifecycleResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamSitting, methodAdvanceDue), func() (*store.ExamSittingLifecycleResult, error) {
-		return s.next.AdvanceDue(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamSitting, methodAdvanceDue), func(callCtx context.Context) (*store.ExamSittingLifecycleResult, error) {
+		return s.next.AdvanceDue(callCtx, arg1)
 	})
 }
 
 func (s *timedExamSittingStore) FinishSealing(arg0 context.Context, arg1 *store.ExamSittingFinishSealing) (*store.ExamSittingLifecycleResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamSitting, methodFinishSealing), func() (*store.ExamSittingLifecycleResult, error) {
-		return s.next.FinishSealing(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamSitting, methodFinishSealing), func(callCtx context.Context) (*store.ExamSittingLifecycleResult, error) {
+		return s.next.FinishSealing(callCtx, arg1)
 	})
 }
 
 func (s *timedExamSittingStore) ListNoShows(arg0 context.Context, arg1 store.ExamSittingNoShowListOptions) ([]store.ExamSittingNoShow, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamSitting, methodListNoShows), func() ([]store.ExamSittingNoShow, error) {
-		return s.next.ListNoShows(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamSitting, methodListNoShows), func(callCtx context.Context) ([]store.ExamSittingNoShow, error) {
+		return s.next.ListNoShows(callCtx, arg1)
 	})
 }
 
 func (s *timedExamSittingStore) GetMailFanout(arg0 context.Context, arg1 model.MailOccurrenceID) (*store.ExamSittingMailFanoutSnapshot, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamSitting, methodGetMailFanout), func() (*store.ExamSittingMailFanoutSnapshot, error) {
-		return s.next.GetMailFanout(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamSitting, methodGetMailFanout), func(callCtx context.Context) (*store.ExamSittingMailFanoutSnapshot, error) {
+		return s.next.GetMailFanout(callCtx, arg1)
 	})
 }
 
 func (s *timedExamSittingStore) ListMailRecipients(arg0 context.Context, arg1 store.ExamSittingMailRecipientPageRequest) (*store.ExamSittingMailRecipientPage, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamSitting, methodListMailRecipients), func() (*store.ExamSittingMailRecipientPage, error) {
-		return s.next.ListMailRecipients(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamSitting, methodListMailRecipients), func(callCtx context.Context) (*store.ExamSittingMailRecipientPage, error) {
+		return s.next.ListMailRecipients(callCtx, arg1)
 	})
 }
 
 func (s *timedExamSittingStore) CommitMailRecipient(arg0 context.Context, arg1 *store.ExamSittingMailRecipientCommit) (*store.ExamSittingMailRecipientResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamSitting, methodCommitMailRecipient), func() (*store.ExamSittingMailRecipientResult, error) {
-		return s.next.CommitMailRecipient(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamSitting, methodCommitMailRecipient), func(callCtx context.Context) (*store.ExamSittingMailRecipientResult, error) {
+		return s.next.CommitMailRecipient(callCtx, arg1)
 	})
 }
 
 func (s *timedExamSittingStore) CompleteMailExpansion(arg0 context.Context, arg1 *store.ExamSittingMailExpansionCompletion) (*store.ExamSittingMailFanoutSnapshot, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamSitting, methodCompleteMailExpansion), func() (*store.ExamSittingMailFanoutSnapshot, error) {
-		return s.next.CompleteMailExpansion(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamSitting, methodCompleteMailExpansion), func(callCtx context.Context) (*store.ExamSittingMailFanoutSnapshot, error) {
+		return s.next.CompleteMailExpansion(callCtx, arg1)
 	})
 }
 
 func (s *timedExamSittingStore) MaintainMailExpansions(arg0 context.Context, arg1 int) (*store.ExamSittingMailMaintenanceResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamSitting, methodMaintainMailExpansions), func() (*store.ExamSittingMailMaintenanceResult, error) {
-		return s.next.MaintainMailExpansions(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamSitting, methodMaintainMailExpansions), func(callCtx context.Context) (*store.ExamSittingMailMaintenanceResult, error) {
+		return s.next.MaintainMailExpansions(callCtx, arg1)
 	})
 }
 
 func (s *timedExamSittingStore) ListMailReconciliationDue(arg0 context.Context, arg1 store.ExamSittingMailReconciliationOptions) ([]store.ExamSittingMailReconciliationCandidate, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamSitting, methodListMailReconciliationDue), func() ([]store.ExamSittingMailReconciliationCandidate, error) {
-		return s.next.ListMailReconciliationDue(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamSitting, methodListMailReconciliationDue), func(callCtx context.Context) ([]store.ExamSittingMailReconciliationCandidate, error) {
+		return s.next.ListMailReconciliationDue(callCtx, arg1)
 	})
 }
 
 func (s *timedExamSittingStore) ReconcileMail(arg0 context.Context, arg1 *store.ExamSittingMailReconciliation) (*store.ExamSittingMailFanoutSnapshot, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamSitting, methodReconcileMail), func() (*store.ExamSittingMailFanoutSnapshot, error) {
-		return s.next.ReconcileMail(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamSitting, methodReconcileMail), func(callCtx context.Context) (*store.ExamSittingMailFanoutSnapshot, error) {
+		return s.next.ReconcileMail(callCtx, arg1)
 	})
 }
 
 func (s *timedExamAttemptStore) AppendNativeDelivery(arg0 context.Context, arg1 *store.NativeDeliveryAppend, arg2 *store.CommandIdempotency) (*model.NativeSecurityAcknowledgement, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamAttempt, methodAppendNativeDelivery), func() (*model.NativeSecurityAcknowledgement, error) {
-		return s.next.AppendNativeDelivery(arg0, arg1, arg2)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamAttempt, methodAppendNativeDelivery), func(callCtx context.Context) (*model.NativeSecurityAcknowledgement, error) {
+		return s.next.AppendNativeDelivery(callCtx, arg1, arg2)
 	})
 }
 
 func (s *timedExamAttemptStore) ResolveNativeDeliveryTarget(arg0 context.Context, arg1 store.NativeDeliveryAccess) (*store.NativeDeliveryTarget, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamAttempt, methodResolveNativeDeliveryTarget), func() (*store.NativeDeliveryTarget, error) {
-		return s.next.ResolveNativeDeliveryTarget(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamAttempt, methodResolveNativeDeliveryTarget), func(callCtx context.Context) (*store.NativeDeliveryTarget, error) {
+		return s.next.ResolveNativeDeliveryTarget(callCtx, arg1)
 	})
 }
 
 func (s *timedExamAttemptStore) NativeDeliveryStatus(arg0 context.Context, arg1 store.NativeDeliveryAccess) (*model.NativeSecurityStreamStatus, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamAttempt, methodNativeDeliveryStatus), func() (*model.NativeSecurityStreamStatus, error) {
-		return s.next.NativeDeliveryStatus(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamAttempt, methodNativeDeliveryStatus), func(callCtx context.Context) (*model.NativeSecurityStreamStatus, error) {
+		return s.next.NativeDeliveryStatus(callCtx, arg1)
 	})
 }
 
 func (s *timedExamAttemptStore) NativeDeliveryReceipt(arg0 context.Context, arg1 store.NativeDeliveryAccess, arg2 int64) (*model.NativeBatchReceipt, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamAttempt, methodNativeDeliveryReceipt), func() (*model.NativeBatchReceipt, error) {
-		return s.next.NativeDeliveryReceipt(arg0, arg1, arg2)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamAttempt, methodNativeDeliveryReceipt), func(callCtx context.Context) (*model.NativeBatchReceipt, error) {
+		return s.next.NativeDeliveryReceipt(callCtx, arg1, arg2)
 	})
 }
 
 func (s *timedExamAttemptStore) DeclareNativeDeliveryGaps(arg0 context.Context, arg1 *store.NativeDeliveryGapDeclaration, arg2 *store.CommandIdempotency) (*model.DeliveryGapReceipt, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamAttempt, methodDeclareNativeDeliveryGaps), func() (*model.DeliveryGapReceipt, error) {
-		return s.next.DeclareNativeDeliveryGaps(arg0, arg1, arg2)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamAttempt, methodDeclareNativeDeliveryGaps), func(callCtx context.Context) (*model.DeliveryGapReceipt, error) {
+		return s.next.DeclareNativeDeliveryGaps(callCtx, arg1, arg2)
 	})
 }
 
 func (s *timedExamAttemptStore) SealNativeDelivery(arg0 context.Context, arg1 *store.NativeDeliveryFinalDeclaration, arg2 *store.CommandIdempotency) (*model.NativeSecurityStreamStatus, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamAttempt, methodSealNativeDelivery), func() (*model.NativeSecurityStreamStatus, error) {
-		return s.next.SealNativeDelivery(arg0, arg1, arg2)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamAttempt, methodSealNativeDelivery), func(callCtx context.Context) (*model.NativeSecurityStreamStatus, error) {
+		return s.next.SealNativeDelivery(callCtx, arg1, arg2)
 	})
 }
 
 func (s *timedExamAttemptStore) UpdateNativeDeliverySummary(arg0 context.Context, arg1 *store.NativeDeliverySummaryUpdate, arg2 *store.CommandIdempotency) (*model.NativeSecurityStreamStatus, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamAttempt, methodUpdateNativeDeliverySummary), func() (*model.NativeSecurityStreamStatus, error) {
-		return s.next.UpdateNativeDeliverySummary(arg0, arg1, arg2)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamAttempt, methodUpdateNativeDeliverySummary), func(callCtx context.Context) (*model.NativeSecurityStreamStatus, error) {
+		return s.next.UpdateNativeDeliverySummary(callCtx, arg1, arg2)
 	})
 }
 
 func (s *timedExamAttemptStore) ResolveSecurityPreflightSitting(arg0 context.Context, arg1 string, arg2 model.UserID, arg3 model.SessionID) (model.ExamSittingID, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamAttempt, methodResolveSecurityPreflightSitting), func() (model.ExamSittingID, error) {
-		return s.next.ResolveSecurityPreflightSitting(arg0, arg1, arg2, arg3)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamAttempt, methodResolveSecurityPreflightSitting), func(callCtx context.Context) (model.ExamSittingID, error) {
+		return s.next.ResolveSecurityPreflightSitting(callCtx, arg1, arg2, arg3)
 	})
 }
 
 func (s *timedExamAttemptStore) RecoverSecurityPolicy(arg0 context.Context, arg1 store.SecurityPreflightAccess, arg2 model.ExamAttemptID) (*store.SecurityPolicyRecovery, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamAttempt, methodRecoverSecurityPolicy), func() (*store.SecurityPolicyRecovery, error) {
-		return s.next.RecoverSecurityPolicy(arg0, arg1, arg2)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamAttempt, methodRecoverSecurityPolicy), func(callCtx context.Context) (*store.SecurityPolicyRecovery, error) {
+		return s.next.RecoverSecurityPolicy(callCtx, arg1, arg2)
 	})
 }
 
 func (s *timedExamAttemptStore) PrepareSecurityPreflight(arg0 context.Context, arg1 *store.SecurityPreflightPrepare, arg2 *store.CommandIdempotency) (*store.SecurityPreflightPrepared, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamAttempt, methodPrepareSecurityPreflight), func() (*store.SecurityPreflightPrepared, error) {
-		return s.next.PrepareSecurityPreflight(arg0, arg1, arg2)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamAttempt, methodPrepareSecurityPreflight), func(callCtx context.Context) (*store.SecurityPreflightPrepared, error) {
+		return s.next.PrepareSecurityPreflight(callCtx, arg1, arg2)
 	})
 }
 
 func (s *timedExamAttemptStore) ReportSecurityPreflight(arg0 context.Context, arg1 *store.SecurityPreflightReport, arg2 *store.CommandIdempotency) (*model.SecurityPreflightResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamAttempt, methodReportSecurityPreflight), func() (*model.SecurityPreflightResult, error) {
-		return s.next.ReportSecurityPreflight(arg0, arg1, arg2)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamAttempt, methodReportSecurityPreflight), func(callCtx context.Context) (*model.SecurityPreflightResult, error) {
+		return s.next.ReportSecurityPreflight(callCtx, arg1, arg2)
 	})
 }
 
 func (s *timedExamAttemptStore) Connect(arg0 context.Context, arg1 *store.ExamAttemptConnect, arg2 *store.CommandIdempotency) (*store.ExamAttemptConnectResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamAttempt, methodConnect), func() (*store.ExamAttemptConnectResult, error) {
-		return s.next.Connect(arg0, arg1, arg2)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamAttempt, methodConnect), func(callCtx context.Context) (*store.ExamAttemptConnectResult, error) {
+		return s.next.Connect(callCtx, arg1, arg2)
 	})
 }
 
 func (s *timedExamAttemptStore) ListSessionRevocationInvalidationTargets(arg0 context.Context, arg1 model.UserID, arg2 []model.SessionID) ([]store.ExamAttemptInvalidationTarget, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamAttempt, methodListSessionRevocationInvalidationTargets), func() ([]store.ExamAttemptInvalidationTarget, error) {
-		return s.next.ListSessionRevocationInvalidationTargets(arg0, arg1, arg2)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamAttempt, methodListSessionRevocationInvalidationTargets), func(callCtx context.Context) ([]store.ExamAttemptInvalidationTarget, error) {
+		return s.next.ListSessionRevocationInvalidationTargets(callCtx, arg1, arg2)
 	})
 }
 
 func (s *timedExamAttemptStore) RenewParticipation(arg0 context.Context, arg1 *store.ExamAttemptParticipationRenewal) (*store.ExamAttemptParticipationRenewalResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamAttempt, methodRenewParticipation), func() (*store.ExamAttemptParticipationRenewalResult, error) {
-		return s.next.RenewParticipation(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamAttempt, methodRenewParticipation), func(callCtx context.Context) (*store.ExamAttemptParticipationRenewalResult, error) {
+		return s.next.RenewParticipation(callCtx, arg1)
 	})
 }
 
 func (s *timedExamAttemptStore) UpdateSecurityCoverage(arg0 context.Context, arg1 *store.ExamAttemptSecurityCoverageUpdate) (model.SecurityCoverageResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamAttempt, methodUpdateSecurityCoverage), func() (model.SecurityCoverageResult, error) {
-		return s.next.UpdateSecurityCoverage(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamAttempt, methodUpdateSecurityCoverage), func(callCtx context.Context) (model.SecurityCoverageResult, error) {
+		return s.next.UpdateSecurityCoverage(callCtx, arg1)
 	})
 }
 
 func (s *timedExamAttemptStore) ResolveFocusLossTarget(arg0 context.Context, arg1 store.ExamAttemptFocusLossAccess) (*store.ExamAttemptFocusLossTarget, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamAttempt, methodResolveFocusLossTarget), func() (*store.ExamAttemptFocusLossTarget, error) {
-		return s.next.ResolveFocusLossTarget(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamAttempt, methodResolveFocusLossTarget), func(callCtx context.Context) (*store.ExamAttemptFocusLossTarget, error) {
+		return s.next.ResolveFocusLossTarget(callCtx, arg1)
 	})
 }
 
 func (s *timedExamAttemptStore) RecordFocusLoss(arg0 context.Context, arg1 *store.ExamAttemptFocusLossSignal) (*store.ExamAttemptFocusLossResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamAttempt, methodRecordFocusLoss), func() (*store.ExamAttemptFocusLossResult, error) {
-		return s.next.RecordFocusLoss(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamAttempt, methodRecordFocusLoss), func(callCtx context.Context) (*store.ExamAttemptFocusLossResult, error) {
+		return s.next.RecordFocusLoss(callCtx, arg1)
 	})
 }
 
 func (s *timedExamAttemptStore) ResolveEndedFocusLossTarget(arg0 context.Context, arg1 store.ExamAttemptFocusLossAccess) (*store.ExamAttemptFocusLossDiscrepancyTarget, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamAttempt, methodResolveEndedFocusLossTarget), func() (*store.ExamAttemptFocusLossDiscrepancyTarget, error) {
-		return s.next.ResolveEndedFocusLossTarget(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamAttempt, methodResolveEndedFocusLossTarget), func(callCtx context.Context) (*store.ExamAttemptFocusLossDiscrepancyTarget, error) {
+		return s.next.ResolveEndedFocusLossTarget(callCtx, arg1)
 	})
 }
 
 func (s *timedExamAttemptStore) RecordEndedFocusLoss(arg0 context.Context, arg1 *store.ExamAttemptFocusLossDiscrepancy) (*store.ExamAttemptFocusLossDiscrepancyResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamAttempt, methodRecordEndedFocusLoss), func() (*store.ExamAttemptFocusLossDiscrepancyResult, error) {
-		return s.next.RecordEndedFocusLoss(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamAttempt, methodRecordEndedFocusLoss), func(callCtx context.Context) (*store.ExamAttemptFocusLossDiscrepancyResult, error) {
+		return s.next.RecordEndedFocusLoss(callCtx, arg1)
 	})
 }
 
 func (s *timedExamAttemptStore) ResolveParticipationExpiry(arg0 context.Context, arg1 model.ExamAttemptID, arg2 model.AttemptParticipationID, arg3 int64) (*store.ExamAttemptParticipationExpiryDue, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamAttempt, methodResolveParticipationExpiry), func() (*store.ExamAttemptParticipationExpiryDue, error) {
-		return s.next.ResolveParticipationExpiry(arg0, arg1, arg2, arg3)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamAttempt, methodResolveParticipationExpiry), func(callCtx context.Context) (*store.ExamAttemptParticipationExpiryDue, error) {
+		return s.next.ResolveParticipationExpiry(callCtx, arg1, arg2, arg3)
 	})
 }
 
 func (s *timedExamAttemptStore) DeliveryBudget(arg0 context.Context, arg1 store.DeliveryBudgetAccess) (*model.DeliveryBudgetSnapshot, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamAttempt, methodDeliveryBudget), func() (*model.DeliveryBudgetSnapshot, error) {
-		return s.next.DeliveryBudget(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamAttempt, methodDeliveryBudget), func(callCtx context.Context) (*model.DeliveryBudgetSnapshot, error) {
+		return s.next.DeliveryBudget(callCtx, arg1)
 	})
 }
 
 func (s *timedExamAttemptStore) StopDeliveryDetails(arg0 context.Context, arg1 *store.DeliveryDetailsStop, arg2 *store.CommandIdempotency) (*model.StopDeliveryDetailsResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamAttempt, methodStopDeliveryDetails), func() (*model.StopDeliveryDetailsResult, error) {
-		return s.next.StopDeliveryDetails(arg0, arg1, arg2)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamAttempt, methodStopDeliveryDetails), func(callCtx context.Context) (*model.StopDeliveryDetailsResult, error) {
+		return s.next.StopDeliveryDetails(callCtx, arg1, arg2)
 	})
 }
 
 func (s *timedExamAttemptStore) ListExpiredDeliveries(arg0 context.Context, arg1 int) ([]store.DeliveryExpiryDue, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamAttempt, methodListExpiredDeliveries), func() ([]store.DeliveryExpiryDue, error) {
-		return s.next.ListExpiredDeliveries(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamAttempt, methodListExpiredDeliveries), func(callCtx context.Context) ([]store.DeliveryExpiryDue, error) {
+		return s.next.ListExpiredDeliveries(callCtx, arg1)
 	})
 }
 
 func (s *timedExamAttemptStore) ExpireDelivery(arg0 context.Context, arg1 *store.DeliveryExpiry) (bool, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamAttempt, methodExpireDelivery), func() (bool, error) {
-		return s.next.ExpireDelivery(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamAttempt, methodExpireDelivery), func(callCtx context.Context) (bool, error) {
+		return s.next.ExpireDelivery(callCtx, arg1)
 	})
 }
 
 func (s *timedExamAttemptStore) ListExpiredParticipations(arg0 context.Context, arg1 int) ([]store.ExamAttemptParticipationExpiryDue, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamAttempt, methodListExpiredParticipations), func() ([]store.ExamAttemptParticipationExpiryDue, error) {
-		return s.next.ListExpiredParticipations(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamAttempt, methodListExpiredParticipations), func(callCtx context.Context) ([]store.ExamAttemptParticipationExpiryDue, error) {
+		return s.next.ListExpiredParticipations(callCtx, arg1)
 	})
 }
 
 func (s *timedExamAttemptStore) ExpireParticipation(arg0 context.Context, arg1 *store.ExamAttemptParticipationExpiry) (*store.ExamAttemptParticipationExpiryResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamAttempt, methodExpireParticipation), func() (*store.ExamAttemptParticipationExpiryResult, error) {
-		return s.next.ExpireParticipation(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamAttempt, methodExpireParticipation), func(callCtx context.Context) (*store.ExamAttemptParticipationExpiryResult, error) {
+		return s.next.ExpireParticipation(callCtx, arg1)
 	})
 }
 
 func (s *timedExamAttemptStore) ReallowAttempt(arg0 context.Context, arg1 *store.ExamAttemptReallow, arg2 *store.CommandIdempotency) (*store.ExamAttemptReallowResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamAttempt, methodReallowAttempt), func() (*store.ExamAttemptReallowResult, error) {
-		return s.next.ReallowAttempt(arg0, arg1, arg2)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamAttempt, methodReallowAttempt), func(callCtx context.Context) (*store.ExamAttemptReallowResult, error) {
+		return s.next.ReallowAttempt(callCtx, arg1, arg2)
 	})
 }
 
 func (s *timedExamAttemptStore) SuspendAttempt(arg0 context.Context, arg1 *store.ExamAttemptManualSuspension, arg2 *store.CommandIdempotency) (*store.ExamAttemptManualSuspensionResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamAttempt, methodSuspendAttempt), func() (*store.ExamAttemptManualSuspensionResult, error) {
-		return s.next.SuspendAttempt(arg0, arg1, arg2)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamAttempt, methodSuspendAttempt), func(callCtx context.Context) (*store.ExamAttemptManualSuspensionResult, error) {
+		return s.next.SuspendAttempt(callCtx, arg1, arg2)
 	})
 }
 
 func (s *timedExamAttemptStore) CloseConnection(arg0 context.Context, arg1 *store.ExamAttemptConnectionClose) (*store.ExamAttemptConnectionCloseResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamAttempt, methodCloseConnection), func() (*store.ExamAttemptConnectionCloseResult, error) {
-		return s.next.CloseConnection(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamAttempt, methodCloseConnection), func(callCtx context.Context) (*store.ExamAttemptConnectionCloseResult, error) {
+		return s.next.CloseConnection(callCtx, arg1)
 	})
 }
 
 func (s *timedExamAttemptStore) Get(arg0 context.Context, arg1 model.ExamID, arg2 model.ExamAttemptID) (*store.ExamAttemptManagerSnapshot, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamAttempt, methodGet), func() (*store.ExamAttemptManagerSnapshot, error) {
-		return s.next.Get(arg0, arg1, arg2)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamAttempt, methodGet), func(callCtx context.Context) (*store.ExamAttemptManagerSnapshot, error) {
+		return s.next.Get(callCtx, arg1, arg2)
 	})
 }
 
 func (s *timedExamAttemptStore) List(arg0 context.Context, arg1 store.ExamAttemptManagerListOptions) ([]store.ExamAttemptManagerSnapshot, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamAttempt, methodList), func() ([]store.ExamAttemptManagerSnapshot, error) {
-		return s.next.List(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamAttempt, methodList), func(callCtx context.Context) ([]store.ExamAttemptManagerSnapshot, error) {
+		return s.next.List(callCtx, arg1)
 	})
 }
 
 func (s *timedExamAttemptStore) ListCandidateActivity(arg0 context.Context, arg1 store.CandidateExamActivityListOptions) (*store.CandidateExamActivityPage, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamAttempt, methodListCandidateActivity), func() (*store.CandidateExamActivityPage, error) {
-		return s.next.ListCandidateActivity(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamAttempt, methodListCandidateActivity), func(callCtx context.Context) (*store.CandidateExamActivityPage, error) {
+		return s.next.ListCandidateActivity(callCtx, arg1)
 	})
 }
 
 func (s *timedExamAttemptStore) ListSittingCandidateStatuses(arg0 context.Context, arg1 store.SittingCandidateStatusListOptions) (*store.SittingCandidateStatusPage, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamAttempt, methodListSittingCandidateStatuses), func() (*store.SittingCandidateStatusPage, error) {
-		return s.next.ListSittingCandidateStatuses(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamAttempt, methodListSittingCandidateStatuses), func(callCtx context.Context) (*store.SittingCandidateStatusPage, error) {
+		return s.next.ListSittingCandidateStatuses(callCtx, arg1)
 	})
 }
 
 func (s *timedExamAttemptStore) GetCandidatePresentation(arg0 context.Context, arg1 store.CandidateAttemptAccess) (*store.CandidateExamPresentation, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamAttempt, methodGetCandidatePresentation), func() (*store.CandidateExamPresentation, error) {
-		return s.next.GetCandidatePresentation(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamAttempt, methodGetCandidatePresentation), func(callCtx context.Context) (*store.CandidateExamPresentation, error) {
+		return s.next.GetCandidatePresentation(callCtx, arg1)
 	})
 }
 
 func (s *timedExamAttemptStore) ResolveLiveDeliveryTarget(arg0 context.Context, arg1 store.CandidateAttemptAccess) (*store.DeliveryOwnerTarget, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamAttempt, methodResolveLiveDeliveryTarget), func() (*store.DeliveryOwnerTarget, error) {
-		return s.next.ResolveLiveDeliveryTarget(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamAttempt, methodResolveLiveDeliveryTarget), func(callCtx context.Context) (*store.DeliveryOwnerTarget, error) {
+		return s.next.ResolveLiveDeliveryTarget(callCtx, arg1)
 	})
 }
 
 func (s *timedExamAttemptStore) AppendHistoricalBrowserDelivery(arg0 context.Context, arg1 *store.BrowserActivityAppend, arg2 *store.CommandIdempotency) (*model.BrowserActivityAcknowledgement, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamAttempt, methodAppendHistoricalBrowserDelivery), func() (*model.BrowserActivityAcknowledgement, error) {
-		return s.next.AppendHistoricalBrowserDelivery(arg0, arg1, arg2)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamAttempt, methodAppendHistoricalBrowserDelivery), func(callCtx context.Context) (*model.BrowserActivityAcknowledgement, error) {
+		return s.next.AppendHistoricalBrowserDelivery(callCtx, arg1, arg2)
 	})
 }
 
 func (s *timedExamAttemptStore) ResolveBrowserDeliveryTarget(arg0 context.Context, arg1 store.BrowserDeliveryAccess) (*store.DeliveryOwnerTarget, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamAttempt, methodResolveBrowserDeliveryTarget), func() (*store.DeliveryOwnerTarget, error) {
-		return s.next.ResolveBrowserDeliveryTarget(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamAttempt, methodResolveBrowserDeliveryTarget), func(callCtx context.Context) (*store.DeliveryOwnerTarget, error) {
+		return s.next.ResolveBrowserDeliveryTarget(callCtx, arg1)
 	})
 }
 
 func (s *timedExamAttemptStore) BrowserDeliveryReceipts(arg0 context.Context, arg1 store.BrowserDeliveryAccess, arg2 int64, arg3 int) (*model.BrowserReceiptPage, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamAttempt, methodBrowserDeliveryReceipts), func() (*model.BrowserReceiptPage, error) {
-		return s.next.BrowserDeliveryReceipts(arg0, arg1, arg2, arg3)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamAttempt, methodBrowserDeliveryReceipts), func(callCtx context.Context) (*model.BrowserReceiptPage, error) {
+		return s.next.BrowserDeliveryReceipts(callCtx, arg1, arg2, arg3)
 	})
 }
 
 func (s *timedExamAttemptStore) DeclareBrowserDeliveryGaps(arg0 context.Context, arg1 *store.BrowserDeliveryGapDeclaration, arg2 *store.CommandIdempotency) (*model.BrowserDeliveryGapResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamAttempt, methodDeclareBrowserDeliveryGaps), func() (*model.BrowserDeliveryGapResult, error) {
-		return s.next.DeclareBrowserDeliveryGaps(arg0, arg1, arg2)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamAttempt, methodDeclareBrowserDeliveryGaps), func(callCtx context.Context) (*model.BrowserDeliveryGapResult, error) {
+		return s.next.DeclareBrowserDeliveryGaps(callCtx, arg1, arg2)
 	})
 }
 
 func (s *timedExamAttemptStore) SealBrowserDelivery(arg0 context.Context, arg1 *store.BrowserDeliveryFinalDeclaration, arg2 *store.CommandIdempotency) (*model.BrowserSourceStatus, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamAttempt, methodSealBrowserDelivery), func() (*model.BrowserSourceStatus, error) {
-		return s.next.SealBrowserDelivery(arg0, arg1, arg2)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamAttempt, methodSealBrowserDelivery), func(callCtx context.Context) (*model.BrowserSourceStatus, error) {
+		return s.next.SealBrowserDelivery(callCtx, arg1, arg2)
 	})
 }
 
 func (s *timedExamAttemptStore) UpdateBrowserDeliverySummary(arg0 context.Context, arg1 *store.BrowserDeliverySummaryUpdate, arg2 *store.CommandIdempotency) (*model.BrowserDeliverySummaryResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamAttempt, methodUpdateBrowserDeliverySummary), func() (*model.BrowserDeliverySummaryResult, error) {
-		return s.next.UpdateBrowserDeliverySummary(arg0, arg1, arg2)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamAttempt, methodUpdateBrowserDeliverySummary), func(callCtx context.Context) (*model.BrowserDeliverySummaryResult, error) {
+		return s.next.UpdateBrowserDeliverySummary(callCtx, arg1, arg2)
 	})
 }
 
 func (s *timedExamAttemptStore) BrowserSourceStatus(arg0 context.Context, arg1 store.BrowserDeliveryAccess) (*model.BrowserSourceStatus, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamAttempt, methodBrowserSourceStatus), func() (*model.BrowserSourceStatus, error) {
-		return s.next.BrowserSourceStatus(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamAttempt, methodBrowserSourceStatus), func(callCtx context.Context) (*model.BrowserSourceStatus, error) {
+		return s.next.BrowserSourceStatus(callCtx, arg1)
 	})
 }
 
 func (s *timedExamAttemptStore) BrowserSourceList(arg0 context.Context, arg1 store.BrowserDeliveryAccess) ([]model.BrowserSourceStatus, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamAttempt, methodBrowserSourceList), func() ([]model.BrowserSourceStatus, error) {
-		return s.next.BrowserSourceList(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamAttempt, methodBrowserSourceList), func(callCtx context.Context) ([]model.BrowserSourceStatus, error) {
+		return s.next.BrowserSourceList(callCtx, arg1)
 	})
 }
 
 func (s *timedExamAttemptStore) StartBrowserActivity(arg0 context.Context, arg1 *store.BrowserActivitySourceStart) (*model.BrowserSourceStatus, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamAttempt, methodStartBrowserActivity), func() (*model.BrowserSourceStatus, error) {
-		return s.next.StartBrowserActivity(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamAttempt, methodStartBrowserActivity), func(callCtx context.Context) (*model.BrowserSourceStatus, error) {
+		return s.next.StartBrowserActivity(callCtx, arg1)
 	})
 }
 
 func (s *timedExamAttemptStore) AppendBrowserActivity(arg0 context.Context, arg1 *store.BrowserActivityAppend) (*model.BrowserActivityAcknowledgement, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamAttempt, methodAppendBrowserActivity), func() (*model.BrowserActivityAcknowledgement, error) {
-		return s.next.AppendBrowserActivity(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamAttempt, methodAppendBrowserActivity), func(callCtx context.Context) (*model.BrowserActivityAcknowledgement, error) {
+		return s.next.AppendBrowserActivity(callCtx, arg1)
 	})
 }
 
 func (s *timedExamAttemptStore) ResolveCorrectionAcknowledgementTarget(arg0 context.Context, arg1 store.ExamAttemptCorrectionAcknowledgement) (*store.ExamAttemptCorrectionAcknowledgementTarget, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamAttempt, methodResolveCorrectionAcknowledgementTarget), func() (*store.ExamAttemptCorrectionAcknowledgementTarget, error) {
-		return s.next.ResolveCorrectionAcknowledgementTarget(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamAttempt, methodResolveCorrectionAcknowledgementTarget), func(callCtx context.Context) (*store.ExamAttemptCorrectionAcknowledgementTarget, error) {
+		return s.next.ResolveCorrectionAcknowledgementTarget(callCtx, arg1)
 	})
 }
 
 func (s *timedExamAttemptStore) AcknowledgeCorrection(arg0 context.Context, arg1 *store.ExamAttemptCorrectionAcknowledgement, arg2 *store.CommandIdempotency) (*store.ExamAttemptCorrectionAcknowledgementResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamAttempt, methodAcknowledgeCorrection), func() (*store.ExamAttemptCorrectionAcknowledgementResult, error) {
-		return s.next.AcknowledgeCorrection(arg0, arg1, arg2)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamAttempt, methodAcknowledgeCorrection), func(callCtx context.Context) (*store.ExamAttemptCorrectionAcknowledgementResult, error) {
+		return s.next.AcknowledgeCorrection(callCtx, arg1, arg2)
 	})
 }
 
 func (s *timedExamAttemptStore) ListBrowserActivity(arg0 context.Context, arg1 store.BrowserActivityListOptions) ([]store.BrowserActivityRecord, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamAttempt, methodListBrowserActivity), func() ([]store.BrowserActivityRecord, error) {
-		return s.next.ListBrowserActivity(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamAttempt, methodListBrowserActivity), func(callCtx context.Context) ([]store.BrowserActivityRecord, error) {
+		return s.next.ListBrowserActivity(callCtx, arg1)
 	})
 }
 
 func (s *timedExamAttemptStore) ResolveCandidateResource(arg0 context.Context, arg1 store.CandidateAttemptAccess, arg2 model.ExamResourceID) (*store.CandidateResourceContent, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamAttempt, methodResolveCandidateResource), func() (*store.CandidateResourceContent, error) {
-		return s.next.ResolveCandidateResource(arg0, arg1, arg2)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamAttempt, methodResolveCandidateResource), func(callCtx context.Context) (*store.CandidateResourceContent, error) {
+		return s.next.ResolveCandidateResource(callCtx, arg1, arg2)
 	})
 }
 
 func (s *timedExamAttemptWorkspaceStore) List(arg0 context.Context, arg1 store.CandidateWorkspaceListOptions) (*store.CandidateAttemptWorkspacePage, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamAttemptWorkspace, methodList), func() (*store.CandidateAttemptWorkspacePage, error) {
-		return s.next.List(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamAttemptWorkspace, methodList), func(callCtx context.Context) (*store.CandidateAttemptWorkspacePage, error) {
+		return s.next.List(callCtx, arg1)
 	})
 }
 
 func (s *timedExamAttemptWorkspaceStore) ResolveFile(arg0 context.Context, arg1 store.CandidateAttemptAccess, arg2 model.AttemptWorkspaceEntryID) (*store.CandidateWorkspaceContent, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamAttemptWorkspace, methodResolveFile), func() (*store.CandidateWorkspaceContent, error) {
-		return s.next.ResolveFile(arg0, arg1, arg2)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamAttemptWorkspace, methodResolveFile), func(callCtx context.Context) (*store.CandidateWorkspaceContent, error) {
+		return s.next.ResolveFile(callCtx, arg1, arg2)
 	})
 }
 
 func (s *timedExamAttemptWorkspaceStore) ListJournal(arg0 context.Context, arg1 store.CandidateWorkspaceJournalOptions) (*store.CandidateWorkspaceJournalPage, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamAttemptWorkspace, methodListJournal), func() (*store.CandidateWorkspaceJournalPage, error) {
-		return s.next.ListJournal(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamAttemptWorkspace, methodListJournal), func(callCtx context.Context) (*store.CandidateWorkspaceJournalPage, error) {
+		return s.next.ListJournal(callCtx, arg1)
 	})
 }
 
 func (s *timedExamAttemptWorkspaceStore) ResolveMutationTarget(arg0 context.Context, arg1 store.ExamAttemptWorkspaceMutationAccess) (*store.ExamAttemptWorkspaceMutationTarget, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamAttemptWorkspace, methodResolveMutationTarget), func() (*store.ExamAttemptWorkspaceMutationTarget, error) {
-		return s.next.ResolveMutationTarget(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamAttemptWorkspace, methodResolveMutationTarget), func(callCtx context.Context) (*store.ExamAttemptWorkspaceMutationTarget, error) {
+		return s.next.ResolveMutationTarget(callCtx, arg1)
 	})
 }
 
 func (s *timedExamAttemptWorkspaceStore) ReserveObject(arg0 context.Context, arg1 *store.ExamAttemptWorkspaceObjectReservation) (*model.AttemptWorkspaceObject, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamAttemptWorkspace, methodReserveObject), func() (*model.AttemptWorkspaceObject, error) {
-		return s.next.ReserveObject(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamAttemptWorkspace, methodReserveObject), func(callCtx context.Context) (*model.AttemptWorkspaceObject, error) {
+		return s.next.ReserveObject(callCtx, arg1)
 	})
 }
 
 func (s *timedExamAttemptWorkspaceStore) MarkObjectReady(arg0 context.Context, arg1 *store.ExamAttemptWorkspaceObjectReady) (*model.AttemptWorkspaceObject, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamAttemptWorkspace, methodMarkObjectReady), func() (*model.AttemptWorkspaceObject, error) {
-		return s.next.MarkObjectReady(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamAttemptWorkspace, methodMarkObjectReady), func(callCtx context.Context) (*model.AttemptWorkspaceObject, error) {
+		return s.next.MarkObjectReady(callCtx, arg1)
 	})
 }
 
 func (s *timedExamAttemptWorkspaceStore) ApplyMutation(arg0 context.Context, arg1 *store.ExamAttemptWorkspaceMutation, arg2 *store.CommandIdempotency) (*store.ExamAttemptWorkspaceMutationResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamAttemptWorkspace, methodApplyMutation), func() (*store.ExamAttemptWorkspaceMutationResult, error) {
-		return s.next.ApplyMutation(arg0, arg1, arg2)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamAttemptWorkspace, methodApplyMutation), func(callCtx context.Context) (*store.ExamAttemptWorkspaceMutationResult, error) {
+		return s.next.ApplyMutation(callCtx, arg1, arg2)
 	})
 }
 
 func (s *timedExamAttemptWorkspaceStore) MarkObjectReclaimable(arg0 context.Context, arg1 model.AttemptWorkspaceObjectID) error {
-	return timeStoreCall0(s.layer, storeOperation(aggregateExamAttemptWorkspace, methodMarkObjectReclaimable), func() error {
-		return s.next.MarkObjectReclaimable(arg0, arg1)
+	return timeStoreCall0(arg0, s.layer, storeOperation(aggregateExamAttemptWorkspace, methodMarkObjectReclaimable), func(callCtx context.Context) error {
+		return s.next.MarkObjectReclaimable(callCtx, arg1)
 	})
 }
 
 func (s *timedExamAttemptWorkspaceStore) ClaimObjectsForCleanup(arg0 context.Context, arg1 *store.AttemptWorkspaceCleanupClaim) ([]model.AttemptWorkspaceObject, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamAttemptWorkspace, methodClaimObjectsForCleanup), func() ([]model.AttemptWorkspaceObject, error) {
-		return s.next.ClaimObjectsForCleanup(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamAttemptWorkspace, methodClaimObjectsForCleanup), func(callCtx context.Context) ([]model.AttemptWorkspaceObject, error) {
+		return s.next.ClaimObjectsForCleanup(callCtx, arg1)
 	})
 }
 
 func (s *timedExamAttemptWorkspaceStore) CompleteObjectCleanup(arg0 context.Context, arg1 *store.AttemptWorkspaceCleanupCompletion) error {
-	return timeStoreCall0(s.layer, storeOperation(aggregateExamAttemptWorkspace, methodCompleteObjectCleanup), func() error {
-		return s.next.CompleteObjectCleanup(arg0, arg1)
+	return timeStoreCall0(arg0, s.layer, storeOperation(aggregateExamAttemptWorkspace, methodCompleteObjectCleanup), func(callCtx context.Context) error {
+		return s.next.CompleteObjectCleanup(callCtx, arg1)
 	})
 }
 
 func (s *timedExamAttemptWorkspaceStore) ReleaseObjectCleanup(arg0 context.Context, arg1 *store.AttemptWorkspaceCleanupRelease) error {
-	return timeStoreCall0(s.layer, storeOperation(aggregateExamAttemptWorkspace, methodReleaseObjectCleanup), func() error {
-		return s.next.ReleaseObjectCleanup(arg0, arg1)
+	return timeStoreCall0(arg0, s.layer, storeOperation(aggregateExamAttemptWorkspace, methodReleaseObjectCleanup), func(callCtx context.Context) error {
+		return s.next.ReleaseObjectCleanup(callCtx, arg1)
 	})
 }
 
 func (s *timedExamSubmissionStore) ResolveSealTarget(arg0 context.Context, arg1 store.ExamSubmissionSealAccess) (*store.ExamSubmissionSealTarget, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamSubmission, methodResolveSealTarget), func() (*store.ExamSubmissionSealTarget, error) {
-		return s.next.ResolveSealTarget(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamSubmission, methodResolveSealTarget), func(callCtx context.Context) (*store.ExamSubmissionSealTarget, error) {
+		return s.next.ResolveSealTarget(callCtx, arg1)
 	})
 }
 
 func (s *timedExamSubmissionStore) Seal(arg0 context.Context, arg1 *store.ExamSubmissionSeal, arg2 *store.CommandIdempotency) (*store.ExamSubmissionSealResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamSubmission, methodSeal), func() (*store.ExamSubmissionSealResult, error) {
-		return s.next.Seal(arg0, arg1, arg2)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamSubmission, methodSeal), func(callCtx context.Context) (*store.ExamSubmissionSealResult, error) {
+		return s.next.Seal(callCtx, arg1, arg2)
 	})
 }
 
 func (s *timedExamSubmissionStore) PrepareManagerEnd(arg0 context.Context, arg1 store.ExamSubmissionManagerEndRequest) (*store.ExamSubmissionManagerEndPreparation, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamSubmission, methodPrepareManagerEnd), func() (*store.ExamSubmissionManagerEndPreparation, error) {
-		return s.next.PrepareManagerEnd(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamSubmission, methodPrepareManagerEnd), func(callCtx context.Context) (*store.ExamSubmissionManagerEndPreparation, error) {
+		return s.next.PrepareManagerEnd(callCtx, arg1)
 	})
 }
 
 func (s *timedExamSubmissionStore) EndByManager(arg0 context.Context, arg1 *store.ExamSubmissionManagerEnd, arg2 *store.CommandIdempotency) (*store.ExamSubmissionManagerEndResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamSubmission, methodEndByManager), func() (*store.ExamSubmissionManagerEndResult, error) {
-		return s.next.EndByManager(arg0, arg1, arg2)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamSubmission, methodEndByManager), func(callCtx context.Context) (*store.ExamSubmissionManagerEndResult, error) {
+		return s.next.EndByManager(callCtx, arg1, arg2)
 	})
 }
 
 func (s *timedExamSubmissionStore) ListAutomaticSealTargets(arg0 context.Context, arg1 store.ExamSubmissionAutomaticSealListOptions) ([]store.ExamSubmissionAutomaticSealTarget, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamSubmission, methodListAutomaticSealTargets), func() ([]store.ExamSubmissionAutomaticSealTarget, error) {
-		return s.next.ListAutomaticSealTargets(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamSubmission, methodListAutomaticSealTargets), func(callCtx context.Context) ([]store.ExamSubmissionAutomaticSealTarget, error) {
+		return s.next.ListAutomaticSealTargets(callCtx, arg1)
 	})
 }
 
 func (s *timedExamSubmissionStore) PrepareAutomaticSeal(arg0 context.Context, arg1 store.ExamSubmissionAutomaticSealTarget) (*store.ExamSubmissionAutomaticSealPreparation, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamSubmission, methodPrepareAutomaticSeal), func() (*store.ExamSubmissionAutomaticSealPreparation, error) {
-		return s.next.PrepareAutomaticSeal(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamSubmission, methodPrepareAutomaticSeal), func(callCtx context.Context) (*store.ExamSubmissionAutomaticSealPreparation, error) {
+		return s.next.PrepareAutomaticSeal(callCtx, arg1)
 	})
 }
 
 func (s *timedExamSubmissionStore) SealForSittingClose(arg0 context.Context, arg1 *store.ExamSubmissionAutomaticSeal) (*store.ExamSubmissionAutomaticSealResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamSubmission, methodSealForSittingClose), func() (*store.ExamSubmissionAutomaticSealResult, error) {
-		return s.next.SealForSittingClose(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamSubmission, methodSealForSittingClose), func(callCtx context.Context) (*store.ExamSubmissionAutomaticSealResult, error) {
+		return s.next.SealForSittingClose(callCtx, arg1)
 	})
 }
 
 func (s *timedExamSubmissionStore) Resolve(arg0 context.Context, arg1 model.SubmissionID) (*store.ExamSubmissionAuthorization, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamSubmission, methodResolve), func() (*store.ExamSubmissionAuthorization, error) {
-		return s.next.Resolve(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamSubmission, methodResolve), func(callCtx context.Context) (*store.ExamSubmissionAuthorization, error) {
+		return s.next.Resolve(callCtx, arg1)
 	})
 }
 
 func (s *timedExamSubmissionStore) Get(arg0 context.Context, arg1 model.SubmissionID) (*model.ExamSubmission, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamSubmission, methodGet), func() (*model.ExamSubmission, error) {
-		return s.next.Get(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamSubmission, methodGet), func(callCtx context.Context) (*model.ExamSubmission, error) {
+		return s.next.Get(callCtx, arg1)
 	})
 }
 
 func (s *timedExamSubmissionStore) ListManifest(arg0 context.Context, arg1 store.ExamSubmissionManifestListOptions) (*store.ExamSubmissionManifestPage, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamSubmission, methodListManifest), func() (*store.ExamSubmissionManifestPage, error) {
-		return s.next.ListManifest(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamSubmission, methodListManifest), func(callCtx context.Context) (*store.ExamSubmissionManifestPage, error) {
+		return s.next.ListManifest(callCtx, arg1)
 	})
 }
 
 func (s *timedExamSubmissionStore) ResolveFile(arg0 context.Context, arg1 model.SubmissionID, arg2 model.AttemptWorkspaceEntryID) (*store.ExamSubmissionFileSelector, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamSubmission, methodResolveFile), func() (*store.ExamSubmissionFileSelector, error) {
-		return s.next.ResolveFile(arg0, arg1, arg2)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamSubmission, methodResolveFile), func(callCtx context.Context) (*store.ExamSubmissionFileSelector, error) {
+		return s.next.ResolveFile(callCtx, arg1, arg2)
 	})
 }
 
 func (s *timedExamIntegrityReviewStore) ListNativeConditions(arg0 context.Context, arg1 store.NativeConditionListOptions) (*store.NativeConditionPage, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamIntegrityReview, methodListNativeConditions), func() (*store.NativeConditionPage, error) {
-		return s.next.ListNativeConditions(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamIntegrityReview, methodListNativeConditions), func(callCtx context.Context) (*store.NativeConditionPage, error) {
+		return s.next.ListNativeConditions(callCtx, arg1)
 	})
 }
 
 func (s *timedExamIntegrityReviewStore) Resolve(arg0 context.Context, arg1 model.SubmissionID) (*store.ExamIntegrityReviewAuthorization, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamIntegrityReview, methodResolve), func() (*store.ExamIntegrityReviewAuthorization, error) {
-		return s.next.Resolve(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamIntegrityReview, methodResolve), func(callCtx context.Context) (*store.ExamIntegrityReviewAuthorization, error) {
+		return s.next.Resolve(callCtx, arg1)
 	})
 }
 
 func (s *timedExamIntegrityReviewStore) Get(arg0 context.Context, arg1 model.SubmissionID) (*store.ExamSubmissionReviewSnapshot, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamIntegrityReview, methodGet), func() (*store.ExamSubmissionReviewSnapshot, error) {
-		return s.next.Get(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamIntegrityReview, methodGet), func(callCtx context.Context) (*store.ExamSubmissionReviewSnapshot, error) {
+		return s.next.Get(callCtx, arg1)
 	})
 }
 
 func (s *timedExamIntegrityReviewStore) ListFlags(arg0 context.Context, arg1 store.ExamIntegrityFlagListOptions) (*store.ExamIntegrityFlagPage, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamIntegrityReview, methodListFlags), func() (*store.ExamIntegrityFlagPage, error) {
-		return s.next.ListFlags(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamIntegrityReview, methodListFlags), func(callCtx context.Context) (*store.ExamIntegrityFlagPage, error) {
+		return s.next.ListFlags(callCtx, arg1)
 	})
 }
 
 func (s *timedExamIntegrityReviewStore) ListEvidence(arg0 context.Context, arg1 store.ExamIntegrityEvidenceListOptions) (*store.ExamIntegrityEvidencePage, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamIntegrityReview, methodListEvidence), func() (*store.ExamIntegrityEvidencePage, error) {
-		return s.next.ListEvidence(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamIntegrityReview, methodListEvidence), func(callCtx context.Context) (*store.ExamIntegrityEvidencePage, error) {
+		return s.next.ListEvidence(callCtx, arg1)
 	})
 }
 
 func (s *timedExamIntegrityReviewStore) ListDiscrepancies(arg0 context.Context, arg1 store.ExamIntegrityDiscrepancyListOptions) (*store.ExamIntegrityDiscrepancyPage, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamIntegrityReview, methodListDiscrepancies), func() (*store.ExamIntegrityDiscrepancyPage, error) {
-		return s.next.ListDiscrepancies(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamIntegrityReview, methodListDiscrepancies), func(callCtx context.Context) (*store.ExamIntegrityDiscrepancyPage, error) {
+		return s.next.ListDiscrepancies(callCtx, arg1)
 	})
 }
 
 func (s *timedExamIntegrityReviewStore) SaveDecision(arg0 context.Context, arg1 *store.ExamIntegrityReviewDecisionMutation, arg2 *store.CommandIdempotency) (*store.ExamIntegrityReviewMutationResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamIntegrityReview, methodSaveDecision), func() (*store.ExamIntegrityReviewMutationResult, error) {
-		return s.next.SaveDecision(arg0, arg1, arg2)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamIntegrityReview, methodSaveDecision), func(callCtx context.Context) (*store.ExamIntegrityReviewMutationResult, error) {
+		return s.next.SaveDecision(callCtx, arg1, arg2)
 	})
 }
 
 func (s *timedExamIntegrityReviewStore) UpdateDraft(arg0 context.Context, arg1 *store.ExamIntegrityReviewDraftMutation, arg2 *store.CommandIdempotency) (*store.ExamIntegrityReviewMutationResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamIntegrityReview, methodUpdateDraft), func() (*store.ExamIntegrityReviewMutationResult, error) {
-		return s.next.UpdateDraft(arg0, arg1, arg2)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamIntegrityReview, methodUpdateDraft), func(callCtx context.Context) (*store.ExamIntegrityReviewMutationResult, error) {
+		return s.next.UpdateDraft(callCtx, arg1, arg2)
 	})
 }
 
 func (s *timedExamIntegrityReviewStore) Finalize(arg0 context.Context, arg1 *store.ExamIntegrityReviewFinalize, arg2 *store.CommandIdempotency) (*store.ExamIntegrityReviewMutationResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamIntegrityReview, methodFinalize), func() (*store.ExamIntegrityReviewMutationResult, error) {
-		return s.next.Finalize(arg0, arg1, arg2)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamIntegrityReview, methodFinalize), func(callCtx context.Context) (*store.ExamIntegrityReviewMutationResult, error) {
+		return s.next.Finalize(callCtx, arg1, arg2)
 	})
 }
 
 func (s *timedExamIntegrityReviewStore) PrepareRelease(arg0 context.Context, arg1 *store.ExamIntegrityReviewReleasePrepare) (*store.ExamIntegrityReviewReleasePreparation, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamIntegrityReview, methodPrepareRelease), func() (*store.ExamIntegrityReviewReleasePreparation, error) {
-		return s.next.PrepareRelease(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamIntegrityReview, methodPrepareRelease), func(callCtx context.Context) (*store.ExamIntegrityReviewReleasePreparation, error) {
+		return s.next.PrepareRelease(callCtx, arg1)
 	})
 }
 
 func (s *timedExamIntegrityReviewStore) Release(arg0 context.Context, arg1 *store.ExamIntegrityReviewRelease, arg2 *store.CommandIdempotency) (*store.ExamIntegrityReviewMutationResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamIntegrityReview, methodRelease), func() (*store.ExamIntegrityReviewMutationResult, error) {
-		return s.next.Release(arg0, arg1, arg2)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamIntegrityReview, methodRelease), func(callCtx context.Context) (*store.ExamIntegrityReviewMutationResult, error) {
+		return s.next.Release(callCtx, arg1, arg2)
 	})
 }
 
 func (s *timedExamIntegrityReviewStore) GetReleasedStudentResult(arg0 context.Context, arg1 model.ExamAttemptID, arg2 model.UserID) (*model.StudentResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamIntegrityReview, methodGetReleasedStudentResult), func() (*model.StudentResult, error) {
-		return s.next.GetReleasedStudentResult(arg0, arg1, arg2)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamIntegrityReview, methodGetReleasedStudentResult), func(callCtx context.Context) (*model.StudentResult, error) {
+		return s.next.GetReleasedStudentResult(callCtx, arg1, arg2)
 	})
 }
 
 func (s *timedExamRecordsStore) Resolve(arg0 context.Context, arg1 model.RetentionHoldScope) (*store.ExamRecordsScope, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamRecords, methodResolve), func() (*store.ExamRecordsScope, error) {
-		return s.next.Resolve(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamRecords, methodResolve), func(callCtx context.Context) (*store.ExamRecordsScope, error) {
+		return s.next.Resolve(callCtx, arg1)
 	})
 }
 
 func (s *timedExamRecordsStore) GetCompletion(arg0 context.Context, arg1 model.ExamID, arg2 model.ExamSittingID) (*store.ExamRecordsCompletionSnapshot, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamRecords, methodGetCompletion), func() (*store.ExamRecordsCompletionSnapshot, error) {
-		return s.next.GetCompletion(arg0, arg1, arg2)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamRecords, methodGetCompletion), func(callCtx context.Context) (*store.ExamRecordsCompletionSnapshot, error) {
+		return s.next.GetCompletion(callCtx, arg1, arg2)
 	})
 }
 
 func (s *timedExamRecordsStore) FindReviewWaiver(arg0 context.Context, arg1 model.RetentionHoldScope) (*model.SubmissionReviewWaiver, bool, error) {
-	return timeStoreCall2(s.layer, storeOperation(aggregateExamRecords, methodFindReviewWaiver), func() (*model.SubmissionReviewWaiver, bool, error) {
-		return s.next.FindReviewWaiver(arg0, arg1)
+	return timeStoreCall2(arg0, s.layer, storeOperation(aggregateExamRecords, methodFindReviewWaiver), func(callCtx context.Context) (*model.SubmissionReviewWaiver, bool, error) {
+		return s.next.FindReviewWaiver(callCtx, arg1)
 	})
 }
 
 func (s *timedExamRecordsStore) CompleteRecords(arg0 context.Context, arg1 *store.ExamRecordsCompletion, arg2 *store.CommandIdempotency) (*store.ExamRecordsCompletionResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamRecords, methodCompleteRecords), func() (*store.ExamRecordsCompletionResult, error) {
-		return s.next.CompleteRecords(arg0, arg1, arg2)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamRecords, methodCompleteRecords), func(callCtx context.Context) (*store.ExamRecordsCompletionResult, error) {
+		return s.next.CompleteRecords(callCtx, arg1, arg2)
 	})
 }
 
 func (s *timedExamRecordsStore) WaiveReview(arg0 context.Context, arg1 *store.ExamRecordsReviewWaiver, arg2 *store.CommandIdempotency) (*store.ExamRecordsWaiverResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamRecords, methodWaiveReview), func() (*store.ExamRecordsWaiverResult, error) {
-		return s.next.WaiveReview(arg0, arg1, arg2)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamRecords, methodWaiveReview), func(callCtx context.Context) (*store.ExamRecordsWaiverResult, error) {
+		return s.next.WaiveReview(callCtx, arg1, arg2)
 	})
 }
 
 func (s *timedExamRecordsStore) ListHolds(arg0 context.Context, arg1 store.ExamRecordsHoldListOptions) (*store.ExamRecordsHoldPage, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamRecords, methodListHolds), func() (*store.ExamRecordsHoldPage, error) {
-		return s.next.ListHolds(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamRecords, methodListHolds), func(callCtx context.Context) (*store.ExamRecordsHoldPage, error) {
+		return s.next.ListHolds(callCtx, arg1)
 	})
 }
 
 func (s *timedExamRecordsStore) CreateHold(arg0 context.Context, arg1 *store.ExamRecordsHoldCreation, arg2 *store.CommandIdempotency) (*store.ExamRecordsHoldResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamRecords, methodCreateHold), func() (*store.ExamRecordsHoldResult, error) {
-		return s.next.CreateHold(arg0, arg1, arg2)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamRecords, methodCreateHold), func(callCtx context.Context) (*store.ExamRecordsHoldResult, error) {
+		return s.next.CreateHold(callCtx, arg1, arg2)
 	})
 }
 
 func (s *timedExamRecordsStore) ReleaseHold(arg0 context.Context, arg1 *store.ExamRecordsHoldRelease, arg2 *store.CommandIdempotency) (*store.ExamRecordsHoldResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamRecords, methodReleaseHold), func() (*store.ExamRecordsHoldResult, error) {
-		return s.next.ReleaseHold(arg0, arg1, arg2)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamRecords, methodReleaseHold), func(callCtx context.Context) (*store.ExamRecordsHoldResult, error) {
+		return s.next.ReleaseHold(callCtx, arg1, arg2)
 	})
 }
 
 func (s *timedExamExportStore) ListScope(arg0 context.Context, arg1 model.RetentionHoldScope) ([]store.ExamSubmissionAuthorization, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamExport, methodListScope), func() ([]store.ExamSubmissionAuthorization, error) {
-		return s.next.ListScope(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamExport, methodListScope), func(callCtx context.Context) ([]store.ExamSubmissionAuthorization, error) {
+		return s.next.ListScope(callCtx, arg1)
 	})
 }
 
 func (s *timedExamExportStore) ListCreationScope(arg0 context.Context, arg1 model.RetentionHoldScope, arg2 *store.CommandIdempotency) ([]store.ExamSubmissionAuthorization, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamExport, methodListCreationScope), func() ([]store.ExamSubmissionAuthorization, error) {
-		return s.next.ListCreationScope(arg0, arg1, arg2)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamExport, methodListCreationScope), func(callCtx context.Context) ([]store.ExamSubmissionAuthorization, error) {
+		return s.next.ListCreationScope(callCtx, arg1, arg2)
 	})
 }
 
 func (s *timedExamExportStore) Create(arg0 context.Context, arg1 *store.ExamExportCreation, arg2 *store.CommandIdempotency) (*model.ExamExport, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamExport, methodCreate), func() (*model.ExamExport, error) {
-		return s.next.Create(arg0, arg1, arg2)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamExport, methodCreate), func(callCtx context.Context) (*model.ExamExport, error) {
+		return s.next.Create(callCtx, arg1, arg2)
 	})
 }
 
 func (s *timedExamExportStore) Get(arg0 context.Context, arg1 *store.ExamExportAccess) (*store.ExamExportDownload, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamExport, methodGet), func() (*store.ExamExportDownload, error) {
-		return s.next.Get(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamExport, methodGet), func(callCtx context.Context) (*store.ExamExportDownload, error) {
+		return s.next.Get(callCtx, arg1)
 	})
 }
 
 func (s *timedExamExportStore) BeginBuild(arg0 context.Context, arg1 *store.ExamExportBuild) (*store.ExamExportSnapshot, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamExport, methodBeginBuild), func() (*store.ExamExportSnapshot, error) {
-		return s.next.BeginBuild(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamExport, methodBeginBuild), func(callCtx context.Context) (*store.ExamExportSnapshot, error) {
+		return s.next.BeginBuild(callCtx, arg1)
 	})
 }
 
 func (s *timedExamExportStore) Publish(arg0 context.Context, arg1 *store.ExamExportPublication) error {
-	return timeStoreCall0(s.layer, storeOperation(aggregateExamExport, methodPublish), func() error {
-		return s.next.Publish(arg0, arg1)
+	return timeStoreCall0(arg0, s.layer, storeOperation(aggregateExamExport, methodPublish), func(callCtx context.Context) error {
+		return s.next.Publish(callCtx, arg1)
 	})
 }
 
 func (s *timedExamExportStore) FinishWriter(arg0 context.Context, arg1 store.ExamExportArtifact) error {
-	return timeStoreCall0(s.layer, storeOperation(aggregateExamExport, methodFinishWriter), func() error {
-		return s.next.FinishWriter(arg0, arg1)
+	return timeStoreCall0(arg0, s.layer, storeOperation(aggregateExamExport, methodFinishWriter), func(callCtx context.Context) error {
+		return s.next.FinishWriter(callCtx, arg1)
 	})
 }
 
 func (s *timedExamExportStore) Reconcile(arg0 context.Context, arg1 int) (int, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamExport, methodReconcile), func() (int, error) {
-		return s.next.Reconcile(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamExport, methodReconcile), func(callCtx context.Context) (int, error) {
+		return s.next.Reconcile(callCtx, arg1)
 	})
 }
 
 func (s *timedExamExportStore) BeginPurgeBatch(arg0 context.Context, arg1 int) ([]store.ExamExportArtifact, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamExport, methodBeginPurgeBatch), func() ([]store.ExamExportArtifact, error) {
-		return s.next.BeginPurgeBatch(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamExport, methodBeginPurgeBatch), func(callCtx context.Context) ([]store.ExamExportArtifact, error) {
+		return s.next.BeginPurgeBatch(callCtx, arg1)
 	})
 }
 
 func (s *timedExamExportStore) CompletePurge(arg0 context.Context, arg1 store.ExamExportArtifact) error {
-	return timeStoreCall0(s.layer, storeOperation(aggregateExamExport, methodCompletePurge), func() error {
-		return s.next.CompletePurge(arg0, arg1)
+	return timeStoreCall0(arg0, s.layer, storeOperation(aggregateExamExport, methodCompletePurge), func(callCtx context.Context) error {
+		return s.next.CompletePurge(callCtx, arg1)
 	})
 }
 
 func (s *timedExamResourceStore) ReserveUpload(arg0 context.Context, arg1 *store.ExamResourceUploadReservation) (*store.FileUpload, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamResource, methodReserveUpload), func() (*store.FileUpload, error) {
-		return s.next.ReserveUpload(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamResource, methodReserveUpload), func(callCtx context.Context) (*store.FileUpload, error) {
+		return s.next.ReserveUpload(callCtx, arg1)
 	})
 }
 
 func (s *timedExamResourceStore) FinalizeUpload(arg0 context.Context, arg1 *store.ExamResourceUploadFinalization, arg2 *store.CommandIdempotency) (*store.ExamResourceCommandResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamResource, methodFinalizeUpload), func() (*store.ExamResourceCommandResult, error) {
-		return s.next.FinalizeUpload(arg0, arg1, arg2)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamResource, methodFinalizeUpload), func(callCtx context.Context) (*store.ExamResourceCommandResult, error) {
+		return s.next.FinalizeUpload(callCtx, arg1, arg2)
 	})
 }
 
 func (s *timedExamResourceStore) List(arg0 context.Context, arg1 model.ExamID) ([]store.ExamResourceRecord, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamResource, methodList), func() ([]store.ExamResourceRecord, error) {
-		return s.next.List(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamResource, methodList), func(callCtx context.Context) ([]store.ExamResourceRecord, error) {
+		return s.next.List(callCtx, arg1)
 	})
 }
 
 func (s *timedExamResourceStore) Get(arg0 context.Context, arg1 model.ExamID, arg2 model.ExamResourceID) (*store.ExamResourceRecord, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamResource, methodGet), func() (*store.ExamResourceRecord, error) {
-		return s.next.Get(arg0, arg1, arg2)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamResource, methodGet), func(callCtx context.Context) (*store.ExamResourceRecord, error) {
+		return s.next.Get(callCtx, arg1, arg2)
 	})
 }
 
 func (s *timedExamResourceStore) UpdateMetadata(arg0 context.Context, arg1 *store.ExamResourceMetadataUpdate, arg2 *store.CommandIdempotency) (*store.ExamResourceCommandResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamResource, methodUpdateMetadata), func() (*store.ExamResourceCommandResult, error) {
-		return s.next.UpdateMetadata(arg0, arg1, arg2)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamResource, methodUpdateMetadata), func(callCtx context.Context) (*store.ExamResourceCommandResult, error) {
+		return s.next.UpdateMetadata(callCtx, arg1, arg2)
 	})
 }
 
 func (s *timedExamResourceStore) Reorder(arg0 context.Context, arg1 *store.ExamResourceReorder, arg2 *store.CommandIdempotency) (*store.ExamResourceCommandResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamResource, methodReorder), func() (*store.ExamResourceCommandResult, error) {
-		return s.next.Reorder(arg0, arg1, arg2)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamResource, methodReorder), func(callCtx context.Context) (*store.ExamResourceCommandResult, error) {
+		return s.next.Reorder(callCtx, arg1, arg2)
 	})
 }
 
 func (s *timedExamResourceStore) Remove(arg0 context.Context, arg1 *store.ExamResourceRemoval, arg2 *store.CommandIdempotency) (*store.ExamResourceCommandResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamResource, methodRemove), func() (*store.ExamResourceCommandResult, error) {
-		return s.next.Remove(arg0, arg1, arg2)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamResource, methodRemove), func(callCtx context.Context) (*store.ExamResourceCommandResult, error) {
+		return s.next.Remove(callCtx, arg1, arg2)
 	})
 }
 
 func (s *timedExamCorrectionStore) ReserveResourceStage(arg0 context.Context, arg1 *store.ExamCorrectionResourceStageReservation, arg2 *store.CommandIdempotency) (*store.ExamCorrectionResourceStage, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamCorrection, methodReserveResourceStage), func() (*store.ExamCorrectionResourceStage, error) {
-		return s.next.ReserveResourceStage(arg0, arg1, arg2)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamCorrection, methodReserveResourceStage), func(callCtx context.Context) (*store.ExamCorrectionResourceStage, error) {
+		return s.next.ReserveResourceStage(callCtx, arg1, arg2)
 	})
 }
 
 func (s *timedExamCorrectionStore) MarkResourceStageReady(arg0 context.Context, arg1 *store.ExamCorrectionResourceStageReadiness) (*store.ExamCorrectionResourceStage, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamCorrection, methodMarkResourceStageReady), func() (*store.ExamCorrectionResourceStage, error) {
-		return s.next.MarkResourceStageReady(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamCorrection, methodMarkResourceStageReady), func(callCtx context.Context) (*store.ExamCorrectionResourceStage, error) {
+		return s.next.MarkResourceStageReady(callCtx, arg1)
 	})
 }
 
 func (s *timedExamCorrectionStore) Apply(arg0 context.Context, arg1 *store.ExamCorrectionApplication, arg2 *store.CommandIdempotency) (*store.ExamCorrectionResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamCorrection, methodApply), func() (*store.ExamCorrectionResult, error) {
-		return s.next.Apply(arg0, arg1, arg2)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamCorrection, methodApply), func(callCtx context.Context) (*store.ExamCorrectionResult, error) {
+		return s.next.Apply(callCtx, arg1, arg2)
 	})
 }
 
 func (s *timedExamStarterWorkspaceStore) List(arg0 context.Context, arg1 model.ExamID) ([]store.ExamStarterWorkspaceItem, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamStarterWorkspace, methodList), func() ([]store.ExamStarterWorkspaceItem, error) {
-		return s.next.List(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamStarterWorkspace, methodList), func(callCtx context.Context) ([]store.ExamStarterWorkspaceItem, error) {
+		return s.next.List(callCtx, arg1)
 	})
 }
 
 func (s *timedExamStarterWorkspaceStore) GetFile(arg0 context.Context, arg1 model.ExamID, arg2 model.StarterWorkspaceEntryID) (*store.ExamStarterWorkspaceItem, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamStarterWorkspace, methodGetFile), func() (*store.ExamStarterWorkspaceItem, error) {
-		return s.next.GetFile(arg0, arg1, arg2)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamStarterWorkspace, methodGetFile), func(callCtx context.Context) (*store.ExamStarterWorkspaceItem, error) {
+		return s.next.GetFile(callCtx, arg1, arg2)
 	})
 }
 
 func (s *timedExamStarterWorkspaceStore) ReserveObject(arg0 context.Context, arg1 *store.ExamStarterWorkspaceReservation) (*model.StarterWorkspaceObject, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamStarterWorkspace, methodReserveObject), func() (*model.StarterWorkspaceObject, error) {
-		return s.next.ReserveObject(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamStarterWorkspace, methodReserveObject), func(callCtx context.Context) (*model.StarterWorkspaceObject, error) {
+		return s.next.ReserveObject(callCtx, arg1)
 	})
 }
 
 func (s *timedExamStarterWorkspaceStore) CreateDirectory(arg0 context.Context, arg1 *store.ExamStarterWorkspaceMutation, arg2 *store.CommandIdempotency) (*store.ExamStarterWorkspaceMutationResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamStarterWorkspace, methodCreateDirectory), func() (*store.ExamStarterWorkspaceMutationResult, error) {
-		return s.next.CreateDirectory(arg0, arg1, arg2)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamStarterWorkspace, methodCreateDirectory), func(callCtx context.Context) (*store.ExamStarterWorkspaceMutationResult, error) {
+		return s.next.CreateDirectory(callCtx, arg1, arg2)
 	})
 }
 
 func (s *timedExamStarterWorkspaceStore) CreateFile(arg0 context.Context, arg1 *store.ExamStarterWorkspaceMutation, arg2 *store.CommandIdempotency) (*store.ExamStarterWorkspaceMutationResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamStarterWorkspace, methodCreateFile), func() (*store.ExamStarterWorkspaceMutationResult, error) {
-		return s.next.CreateFile(arg0, arg1, arg2)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamStarterWorkspace, methodCreateFile), func(callCtx context.Context) (*store.ExamStarterWorkspaceMutationResult, error) {
+		return s.next.CreateFile(callCtx, arg1, arg2)
 	})
 }
 
 func (s *timedExamStarterWorkspaceStore) MoveEntry(arg0 context.Context, arg1 *store.ExamStarterWorkspaceMutation, arg2 *store.CommandIdempotency) (*store.ExamStarterWorkspaceMutationResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamStarterWorkspace, methodMoveEntry), func() (*store.ExamStarterWorkspaceMutationResult, error) {
-		return s.next.MoveEntry(arg0, arg1, arg2)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamStarterWorkspace, methodMoveEntry), func(callCtx context.Context) (*store.ExamStarterWorkspaceMutationResult, error) {
+		return s.next.MoveEntry(callCtx, arg1, arg2)
 	})
 }
 
 func (s *timedExamStarterWorkspaceStore) ReplaceFile(arg0 context.Context, arg1 *store.ExamStarterWorkspaceMutation, arg2 *store.CommandIdempotency) (*store.ExamStarterWorkspaceMutationResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamStarterWorkspace, methodReplaceFile), func() (*store.ExamStarterWorkspaceMutationResult, error) {
-		return s.next.ReplaceFile(arg0, arg1, arg2)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamStarterWorkspace, methodReplaceFile), func(callCtx context.Context) (*store.ExamStarterWorkspaceMutationResult, error) {
+		return s.next.ReplaceFile(callCtx, arg1, arg2)
 	})
 }
 
 func (s *timedExamStarterWorkspaceStore) RemoveEntry(arg0 context.Context, arg1 *store.ExamStarterWorkspaceMutation, arg2 *store.CommandIdempotency) (*store.ExamStarterWorkspaceMutationResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamStarterWorkspace, methodRemoveEntry), func() (*store.ExamStarterWorkspaceMutationResult, error) {
-		return s.next.RemoveEntry(arg0, arg1, arg2)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamStarterWorkspace, methodRemoveEntry), func(callCtx context.Context) (*store.ExamStarterWorkspaceMutationResult, error) {
+		return s.next.RemoveEntry(callCtx, arg1, arg2)
 	})
 }
 
 func (s *timedExamStarterWorkspaceStore) MarkObjectReclaimable(arg0 context.Context, arg1 *store.StarterWorkspaceObjectReclaim) error {
-	return timeStoreCall0(s.layer, storeOperation(aggregateExamStarterWorkspace, methodMarkObjectReclaimable), func() error {
-		return s.next.MarkObjectReclaimable(arg0, arg1)
+	return timeStoreCall0(arg0, s.layer, storeOperation(aggregateExamStarterWorkspace, methodMarkObjectReclaimable), func(callCtx context.Context) error {
+		return s.next.MarkObjectReclaimable(callCtx, arg1)
 	})
 }
 
 func (s *timedExamStarterWorkspaceStore) ClaimObjectsForCleanup(arg0 context.Context, arg1 *store.StarterWorkspaceCleanupClaim) ([]model.StarterWorkspaceObject, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamStarterWorkspace, methodClaimObjectsForCleanup), func() ([]model.StarterWorkspaceObject, error) {
-		return s.next.ClaimObjectsForCleanup(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExamStarterWorkspace, methodClaimObjectsForCleanup), func(callCtx context.Context) ([]model.StarterWorkspaceObject, error) {
+		return s.next.ClaimObjectsForCleanup(callCtx, arg1)
 	})
 }
 
 func (s *timedExamStarterWorkspaceStore) CompleteObjectCleanup(arg0 context.Context, arg1 *store.StarterWorkspaceCleanupCompletion) error {
-	return timeStoreCall0(s.layer, storeOperation(aggregateExamStarterWorkspace, methodCompleteObjectCleanup), func() error {
-		return s.next.CompleteObjectCleanup(arg0, arg1)
+	return timeStoreCall0(arg0, s.layer, storeOperation(aggregateExamStarterWorkspace, methodCompleteObjectCleanup), func(callCtx context.Context) error {
+		return s.next.CompleteObjectCleanup(callCtx, arg1)
 	})
 }
 
 func (s *timedExamStarterWorkspaceStore) ReleaseObjectCleanup(arg0 context.Context, arg1 *store.StarterWorkspaceCleanupRelease) error {
-	return timeStoreCall0(s.layer, storeOperation(aggregateExamStarterWorkspace, methodReleaseObjectCleanup), func() error {
-		return s.next.ReleaseObjectCleanup(arg0, arg1)
+	return timeStoreCall0(arg0, s.layer, storeOperation(aggregateExamStarterWorkspace, methodReleaseObjectCleanup), func(callCtx context.Context) error {
+		return s.next.ReleaseObjectCleanup(callCtx, arg1)
 	})
 }
 
 func (s *timedClassStore) Create(arg0 context.Context, arg1 *store.ClassCreation) (*model.Class, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateClass, methodCreate), func() (*model.Class, error) {
-		return s.next.Create(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateClass, methodCreate), func(callCtx context.Context) (*model.Class, error) {
+		return s.next.Create(callCtx, arg1)
 	})
 }
 
 func (s *timedClassStore) Update(arg0 context.Context, arg1 *store.ClassUpdate) (*model.Class, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateClass, methodUpdate), func() (*model.Class, error) {
-		return s.next.Update(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateClass, methodUpdate), func(callCtx context.Context) (*model.Class, error) {
+		return s.next.Update(callCtx, arg1)
 	})
 }
 
 func (s *timedClassStore) Archive(arg0 context.Context, arg1 *store.ClassArchive) (*model.Class, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateClass, methodArchive), func() (*model.Class, error) {
-		return s.next.Archive(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateClass, methodArchive), func(callCtx context.Context) (*model.Class, error) {
+		return s.next.Archive(callCtx, arg1)
 	})
 }
 
 func (s *timedClassStore) Get(arg0 context.Context, arg1 model.ClassID) (*model.Class, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateClass, methodGet), func() (*model.Class, error) {
-		return s.next.Get(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateClass, methodGet), func(callCtx context.Context) (*model.Class, error) {
+		return s.next.Get(callCtx, arg1)
 	})
 }
 
 func (s *timedClassStore) GetByName(arg0 context.Context, arg1 model.ProgrammeLevelID, arg2 model.AcademicPeriodID, arg3 string) (*model.Class, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateClass, methodGetByName), func() (*model.Class, error) {
-		return s.next.GetByName(arg0, arg1, arg2, arg3)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateClass, methodGetByName), func(callCtx context.Context) (*model.Class, error) {
+		return s.next.GetByName(callCtx, arg1, arg2, arg3)
 	})
 }
 
 func (s *timedClassStore) ListByProgrammeLevel(arg0 context.Context, arg1 model.ProgrammeLevelID, arg2 store.AcademicNameListOptions) ([]*model.Class, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateClass, methodListByProgrammeLevel), func() ([]*model.Class, error) {
-		return s.next.ListByProgrammeLevel(arg0, arg1, arg2)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateClass, methodListByProgrammeLevel), func(callCtx context.Context) ([]*model.Class, error) {
+		return s.next.ListByProgrammeLevel(callCtx, arg1, arg2)
 	})
 }
 
 func (s *timedClassStore) ListByAcademicPeriod(arg0 context.Context, arg1 model.AcademicPeriodID) ([]*model.Class, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateClass, methodListByAcademicPeriod), func() ([]*model.Class, error) {
-		return s.next.ListByAcademicPeriod(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateClass, methodListByAcademicPeriod), func(callCtx context.Context) ([]*model.Class, error) {
+		return s.next.ListByAcademicPeriod(callCtx, arg1)
 	})
 }
 
 func (s *timedClassStore) SearchByAcademicUnit(arg0 context.Context, arg1 model.AcademicUnitID, arg2 store.AcademicNameListOptions) ([]*model.Class, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateClass, methodSearchByAcademicUnit), func() ([]*model.Class, error) {
-		return s.next.SearchByAcademicUnit(arg0, arg1, arg2)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateClass, methodSearchByAcademicUnit), func(callCtx context.Context) ([]*model.Class, error) {
+		return s.next.SearchByAcademicUnit(callCtx, arg1, arg2)
 	})
 }
 
 func (s *timedClassStore) GetAcademicUnitID(arg0 context.Context, arg1 model.ClassID) (model.AcademicUnitID, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateClass, methodGetAcademicUnitID), func() (model.AcademicUnitID, error) {
-		return s.next.GetAcademicUnitID(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateClass, methodGetAcademicUnitID), func(callCtx context.Context) (model.AcademicUnitID, error) {
+		return s.next.GetAcademicUnitID(callCtx, arg1)
 	})
 }
 
 func (s *timedUserStore) Create(arg0 context.Context, arg1 *store.UserCreation) (*store.UserCreationResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateUser, methodCreate), func() (*store.UserCreationResult, error) {
-		return s.next.Create(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateUser, methodCreate), func(callCtx context.Context) (*store.UserCreationResult, error) {
+		return s.next.Create(callCtx, arg1)
 	})
 }
 
 func (s *timedUserStore) RegisterLocal(arg0 context.Context, arg1 *store.PublicLocalUserRegistration) (*store.PublicLocalUserRegistrationResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateUser, methodRegisterLocal), func() (*store.PublicLocalUserRegistrationResult, error) {
-		return s.next.RegisterLocal(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateUser, methodRegisterLocal), func(callCtx context.Context) (*store.PublicLocalUserRegistrationResult, error) {
+		return s.next.RegisterLocal(callCtx, arg1)
 	})
 }
 
 func (s *timedUserStore) Get(arg0 context.Context, arg1 model.UserID) (*model.User, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateUser, methodGet), func() (*model.User, error) {
-		return s.next.Get(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateUser, methodGet), func(callCtx context.Context) (*model.User, error) {
+		return s.next.Get(callCtx, arg1)
 	})
 }
 
 func (s *timedUserStore) GetByUsername(arg0 context.Context, arg1 string) (*model.User, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateUser, methodGetByUsername), func() (*model.User, error) {
-		return s.next.GetByUsername(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateUser, methodGetByUsername), func(callCtx context.Context) (*model.User, error) {
+		return s.next.GetByUsername(callCtx, arg1)
 	})
 }
 
 func (s *timedUserStore) GetByEmail(arg0 context.Context, arg1 string) (*model.User, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateUser, methodGetByEmail), func() (*model.User, error) {
-		return s.next.GetByEmail(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateUser, methodGetByEmail), func(callCtx context.Context) (*model.User, error) {
+		return s.next.GetByEmail(callCtx, arg1)
 	})
 }
 
 func (s *timedUserStore) List(arg0 context.Context, arg1 store.UserListOptions) ([]*model.User, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateUser, methodList), func() ([]*model.User, error) {
-		return s.next.List(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateUser, methodList), func(callCtx context.Context) ([]*model.User, error) {
+		return s.next.List(callCtx, arg1)
 	})
 }
 
 func (s *timedUserStore) GetCurrentContext(arg0 context.Context, arg1 model.UserID, arg2 int) (*store.CurrentUserContext, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateUser, methodGetCurrentContext), func() (*store.CurrentUserContext, error) {
-		return s.next.GetCurrentContext(arg0, arg1, arg2)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateUser, methodGetCurrentContext), func(callCtx context.Context) (*store.CurrentUserContext, error) {
+		return s.next.GetCurrentContext(callCtx, arg1, arg2)
 	})
 }
 
 func (s *timedUserStore) MatchVisibility(arg0 context.Context, arg1 model.UserID, arg2 store.UserVisibilityScope) (store.UserVisibilityMatch, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateUser, methodMatchVisibility), func() (store.UserVisibilityMatch, error) {
-		return s.next.MatchVisibility(arg0, arg1, arg2)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateUser, methodMatchVisibility), func(callCtx context.Context) (store.UserVisibilityMatch, error) {
+		return s.next.MatchVisibility(callCtx, arg1, arg2)
 	})
 }
 
 func (s *timedUserStore) UpdateProfile(arg0 context.Context, arg1 *store.UserProfileUpdate) (*model.User, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateUser, methodUpdateProfile), func() (*model.User, error) {
-		return s.next.UpdateProfile(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateUser, methodUpdateProfile), func(callCtx context.Context) (*model.User, error) {
+		return s.next.UpdateProfile(callCtx, arg1)
 	})
 }
 
 func (s *timedUserStore) SetDisabled(arg0 context.Context, arg1 *store.UserDisabledStateChange) (*store.UserDisabledStateResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateUser, methodSetDisabled), func() (*store.UserDisabledStateResult, error) {
-		return s.next.SetDisabled(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateUser, methodSetDisabled), func(callCtx context.Context) (*store.UserDisabledStateResult, error) {
+		return s.next.SetDisabled(callCtx, arg1)
 	})
 }
 
 func (s *timedUserStore) UpdateLastLogin(arg0 context.Context, arg1 *store.UserLastLoginUpdate) error {
-	return timeStoreCall0(s.layer, storeOperation(aggregateUser, methodUpdateLastLogin), func() error {
-		return s.next.UpdateLastLogin(arg0, arg1)
+	return timeStoreCall0(arg0, s.layer, storeOperation(aggregateUser, methodUpdateLastLogin), func(callCtx context.Context) error {
+		return s.next.UpdateLastLogin(callCtx, arg1)
 	})
 }
 
 func (s *timedUserSettingsStore) Get(arg0 context.Context, arg1 model.UserID) (*model.UserSettingsDocument, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateUserSettings, methodGet), func() (*model.UserSettingsDocument, error) {
-		return s.next.Get(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateUserSettings, methodGet), func(callCtx context.Context) (*model.UserSettingsDocument, error) {
+		return s.next.Get(callCtx, arg1)
 	})
 }
 
 func (s *timedUserSettingsStore) Replace(arg0 context.Context, arg1 *store.UserSettingsReplacement, arg2 *store.CommandIdempotency) (*store.UserSettingsReplacementResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateUserSettings, methodReplace), func() (*store.UserSettingsReplacementResult, error) {
-		return s.next.Replace(arg0, arg1, arg2)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateUserSettings, methodReplace), func(callCtx context.Context) (*store.UserSettingsReplacementResult, error) {
+		return s.next.Replace(callCtx, arg1, arg2)
 	})
 }
 
 func (s *timedFileStore) CreateUpload(arg0 context.Context, arg1 *store.FileUploadCreation) (*store.FileUpload, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateFile, methodCreateUpload), func() (*store.FileUpload, error) {
-		return s.next.CreateUpload(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateFile, methodCreateUpload), func(callCtx context.Context) (*store.FileUpload, error) {
+		return s.next.CreateUpload(callCtx, arg1)
 	})
 }
 
 func (s *timedFileStore) CreateRevisionUpload(arg0 context.Context, arg1 *store.FileRevisionUploadCreation) (*store.FileUpload, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateFile, methodCreateRevisionUpload), func() (*store.FileUpload, error) {
-		return s.next.CreateRevisionUpload(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateFile, methodCreateRevisionUpload), func(callCtx context.Context) (*store.FileUpload, error) {
+		return s.next.CreateRevisionUpload(callCtx, arg1)
 	})
 }
 
 func (s *timedFileStore) DiscardProfilePictureUpload(arg0 context.Context, arg1 *store.ProfilePictureUploadDiscard) error {
-	return timeStoreCall0(s.layer, storeOperation(aggregateFile, methodDiscardProfilePictureUpload), func() error {
-		return s.next.DiscardProfilePictureUpload(arg0, arg1)
+	return timeStoreCall0(arg0, s.layer, storeOperation(aggregateFile, methodDiscardProfilePictureUpload), func(callCtx context.Context) error {
+		return s.next.DiscardProfilePictureUpload(callCtx, arg1)
 	})
 }
 
 func (s *timedFileStore) RenewUploadLease(arg0 context.Context, arg1 *store.UploadLeaseRenewal) (*model.UploadLease, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateFile, methodRenewUploadLease), func() (*model.UploadLease, error) {
-		return s.next.RenewUploadLease(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateFile, methodRenewUploadLease), func(callCtx context.Context) (*model.UploadLease, error) {
+		return s.next.RenewUploadLease(callCtx, arg1)
 	})
 }
 
 func (s *timedFileStore) PublishProfilePicture(arg0 context.Context, arg1 *store.ProfilePicturePublication) (*store.ProfilePicturePublicationResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateFile, methodPublishProfilePicture), func() (*store.ProfilePicturePublicationResult, error) {
-		return s.next.PublishProfilePicture(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateFile, methodPublishProfilePicture), func(callCtx context.Context) (*store.ProfilePicturePublicationResult, error) {
+		return s.next.PublishProfilePicture(callCtx, arg1)
 	})
 }
 
 func (s *timedFileStore) PublishDefaultProfilePicture(arg0 context.Context, arg1 *store.DefaultProfilePicturePublication) (*store.ProfilePicturePublicationResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateFile, methodPublishDefaultProfilePicture), func() (*store.ProfilePicturePublicationResult, error) {
-		return s.next.PublishDefaultProfilePicture(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateFile, methodPublishDefaultProfilePicture), func(callCtx context.Context) (*store.ProfilePicturePublicationResult, error) {
+		return s.next.PublishDefaultProfilePicture(callCtx, arg1)
 	})
 }
 
 func (s *timedFileStore) GetProfilePictureState(arg0 context.Context, arg1 model.UserID) (*store.ProfilePictureState, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateFile, methodGetProfilePictureState), func() (*store.ProfilePictureState, error) {
-		return s.next.GetProfilePictureState(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateFile, methodGetProfilePictureState), func(callCtx context.Context) (*store.ProfilePictureState, error) {
+		return s.next.GetProfilePictureState(callCtx, arg1)
 	})
 }
 
 func (s *timedFileStore) GetProfilePictureRendition(arg0 context.Context, arg1 model.UserID, arg2 string) (*model.FileRendition, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateFile, methodGetProfilePictureRendition), func() (*model.FileRendition, error) {
-		return s.next.GetProfilePictureRendition(arg0, arg1, arg2)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateFile, methodGetProfilePictureRendition), func(callCtx context.Context) (*model.FileRendition, error) {
+		return s.next.GetProfilePictureRendition(callCtx, arg1, arg2)
 	})
 }
 
 func (s *timedFileStore) RemoveProfilePicture(arg0 context.Context, arg1 *store.ProfilePictureRemoval) (*model.User, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateFile, methodRemoveProfilePicture), func() (*model.User, error) {
-		return s.next.RemoveProfilePicture(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateFile, methodRemoveProfilePicture), func(callCtx context.Context) (*model.User, error) {
+		return s.next.RemoveProfilePicture(callCtx, arg1)
 	})
 }
 
 func (s *timedFileStore) ListPurgeCandidates(arg0 context.Context, arg1 *store.FilePurgeCandidateRequest) (*store.FilePurgeCandidatePage, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateFile, methodListPurgeCandidates), func() (*store.FilePurgeCandidatePage, error) {
-		return s.next.ListPurgeCandidates(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateFile, methodListPurgeCandidates), func(callCtx context.Context) (*store.FilePurgeCandidatePage, error) {
+		return s.next.ListPurgeCandidates(callCtx, arg1)
 	})
 }
 
 func (s *timedFileStore) ClaimPurgeCandidate(arg0 context.Context, arg1 *store.FilePurgeCandidate) (*store.FilePurgeClaim, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateFile, methodClaimPurgeCandidate), func() (*store.FilePurgeClaim, error) {
-		return s.next.ClaimPurgeCandidate(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateFile, methodClaimPurgeCandidate), func(callCtx context.Context) (*store.FilePurgeClaim, error) {
+		return s.next.ClaimPurgeCandidate(callCtx, arg1)
 	})
 }
 
 func (s *timedFileStore) CompletePurge(arg0 context.Context, arg1 *store.FilePurgeClaim) error {
-	return timeStoreCall0(s.layer, storeOperation(aggregateFile, methodCompletePurge), func() error {
-		return s.next.CompletePurge(arg0, arg1)
+	return timeStoreCall0(arg0, s.layer, storeOperation(aggregateFile, methodCompletePurge), func(callCtx context.Context) error {
+		return s.next.CompletePurge(callCtx, arg1)
 	})
 }
 
 func (s *timedJobStore) Enqueue(arg0 context.Context, arg1 *store.JobEnqueue) (*model.Job, bool, error) {
-	return timeStoreCall2(s.layer, storeOperation(aggregateJob, methodEnqueue), func() (*model.Job, bool, error) {
-		return s.next.Enqueue(arg0, arg1)
+	return timeStoreCall2(arg0, s.layer, storeOperation(aggregateJob, methodEnqueue), func(callCtx context.Context) (*model.Job, bool, error) {
+		return s.next.Enqueue(callCtx, arg1)
 	})
 }
 
 func (s *timedJobStore) ClaimNext(arg0 context.Context, arg1 *store.JobClaimRequest) (*store.JobClaim, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateJob, methodClaimNext), func() (*store.JobClaim, error) {
-		return s.next.ClaimNext(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateJob, methodClaimNext), func(callCtx context.Context) (*store.JobClaim, error) {
+		return s.next.ClaimNext(callCtx, arg1)
 	})
 }
 
 func (s *timedJobStore) Heartbeat(arg0 context.Context, arg1 *store.JobHeartbeat) (*model.JobAttempt, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateJob, methodHeartbeat), func() (*model.JobAttempt, error) {
-		return s.next.Heartbeat(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateJob, methodHeartbeat), func(callCtx context.Context) (*model.JobAttempt, error) {
+		return s.next.Heartbeat(callCtx, arg1)
 	})
 }
 
 func (s *timedJobStore) Checkpoint(arg0 context.Context, arg1 *store.JobCheckpoint) (*model.Job, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateJob, methodCheckpoint), func() (*model.Job, error) {
-		return s.next.Checkpoint(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateJob, methodCheckpoint), func(callCtx context.Context) (*model.Job, error) {
+		return s.next.Checkpoint(callCtx, arg1)
 	})
 }
 
 func (s *timedJobStore) ReserveWork(arg0 context.Context, arg1 *store.JobWorkReservation) (*store.JobWorkReservationResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateJob, methodReserveWork), func() (*store.JobWorkReservationResult, error) {
-		return s.next.ReserveWork(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateJob, methodReserveWork), func(callCtx context.Context) (*store.JobWorkReservationResult, error) {
+		return s.next.ReserveWork(callCtx, arg1)
 	})
 }
 
 func (s *timedJobStore) Complete(arg0 context.Context, arg1 *store.JobCompletion) (*model.Job, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateJob, methodComplete), func() (*model.Job, error) {
-		return s.next.Complete(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateJob, methodComplete), func(callCtx context.Context) (*model.Job, error) {
+		return s.next.Complete(callCtx, arg1)
 	})
 }
 
 func (s *timedJobStore) Get(arg0 context.Context, arg1 model.JobID) (*model.Job, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateJob, methodGet), func() (*model.Job, error) {
-		return s.next.Get(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateJob, methodGet), func(callCtx context.Context) (*model.Job, error) {
+		return s.next.Get(callCtx, arg1)
 	})
 }
 
 func (s *timedJobStore) ListAttempts(arg0 context.Context, arg1 model.JobID) ([]model.JobAttempt, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateJob, methodListAttempts), func() ([]model.JobAttempt, error) {
-		return s.next.ListAttempts(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateJob, methodListAttempts), func(callCtx context.Context) ([]model.JobAttempt, error) {
+		return s.next.ListAttempts(callCtx, arg1)
 	})
 }
 
 func (s *timedJobStore) List(arg0 context.Context, arg1 store.JobListOptions) ([]*model.Job, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateJob, methodList), func() ([]*model.Job, error) {
-		return s.next.List(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateJob, methodList), func(callCtx context.Context) ([]*model.Job, error) {
+		return s.next.List(callCtx, arg1)
 	})
 }
 
 func (s *timedJobStore) ListAttemptsPage(arg0 context.Context, arg1 store.JobAttemptListOptions) ([]model.JobAttempt, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateJob, methodListAttemptsPage), func() ([]model.JobAttempt, error) {
-		return s.next.ListAttemptsPage(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateJob, methodListAttemptsPage), func(callCtx context.Context) ([]model.JobAttempt, error) {
+		return s.next.ListAttemptsPage(callCtx, arg1)
 	})
 }
 
 func (s *timedJobStore) CancellationRequested(arg0 context.Context, arg1 model.JobAttemptID, arg2 model.JobClaimToken) (bool, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateJob, methodCancellationRequested), func() (bool, error) {
-		return s.next.CancellationRequested(arg0, arg1, arg2)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateJob, methodCancellationRequested), func(callCtx context.Context) (bool, error) {
+		return s.next.CancellationRequested(callCtx, arg1, arg2)
 	})
 }
 
 func (s *timedJobStore) Cancel(arg0 context.Context, arg1 *store.JobMutation) (*model.Job, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateJob, methodCancel), func() (*model.Job, error) {
-		return s.next.Cancel(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateJob, methodCancel), func(callCtx context.Context) (*model.Job, error) {
+		return s.next.Cancel(callCtx, arg1)
 	})
 }
 
 func (s *timedJobStore) Retry(arg0 context.Context, arg1 *store.JobMutation) (*model.Job, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateJob, methodRetry), func() (*model.Job, error) {
-		return s.next.Retry(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateJob, methodRetry), func(callCtx context.Context) (*model.Job, error) {
+		return s.next.Retry(callCtx, arg1)
 	})
 }
 
 func (s *timedJobStore) DeleteTerminalHistory(arg0 context.Context, arg1 *store.JobHistoryCleanup) (*store.JobHistoryCleanupResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateJob, methodDeleteTerminalHistory), func() (*store.JobHistoryCleanupResult, error) {
-		return s.next.DeleteTerminalHistory(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateJob, methodDeleteTerminalHistory), func(callCtx context.Context) (*store.JobHistoryCleanupResult, error) {
+		return s.next.DeleteTerminalHistory(callCtx, arg1)
 	})
 }
 
 func (s *timedMailStore) EnqueueTest(arg0 context.Context, arg1 *store.MailTestEnqueue) (*model.MailDelivery, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateMail, methodEnqueueTest), func() (*model.MailDelivery, error) {
-		return s.next.EnqueueTest(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateMail, methodEnqueueTest), func(callCtx context.Context) (*model.MailDelivery, error) {
+		return s.next.EnqueueTest(callCtx, arg1)
 	})
 }
 
 func (s *timedMailStore) GetDelivery(arg0 context.Context, arg1 model.MailDeliveryID) (*model.MailDelivery, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateMail, methodGetDelivery), func() (*model.MailDelivery, error) {
-		return s.next.GetDelivery(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateMail, methodGetDelivery), func(callCtx context.Context) (*model.MailDelivery, error) {
+		return s.next.GetDelivery(callCtx, arg1)
 	})
 }
 
 func (s *timedMailStore) ListDeliveries(arg0 context.Context, arg1 store.MailDeliveryListOptions) ([]*model.MailDelivery, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateMail, methodListDeliveries), func() ([]*model.MailDelivery, error) {
-		return s.next.ListDeliveries(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateMail, methodListDeliveries), func(callCtx context.Context) ([]*model.MailDelivery, error) {
+		return s.next.ListDeliveries(callCtx, arg1)
 	})
 }
 
 func (s *timedMailStore) StartDelivery(arg0 context.Context, arg1 *store.MailDeliveryStart) (*model.MailDelivery, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateMail, methodStartDelivery), func() (*model.MailDelivery, error) {
-		return s.next.StartDelivery(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateMail, methodStartDelivery), func(callCtx context.Context) (*model.MailDelivery, error) {
+		return s.next.StartDelivery(callCtx, arg1)
 	})
 }
 
 func (s *timedMailStore) CompleteDelivery(arg0 context.Context, arg1 *store.MailDeliveryCompletion) (*model.MailDelivery, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateMail, methodCompleteDelivery), func() (*model.MailDelivery, error) {
-		return s.next.CompleteDelivery(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateMail, methodCompleteDelivery), func(callCtx context.Context) (*model.MailDelivery, error) {
+		return s.next.CompleteDelivery(callCtx, arg1)
 	})
 }
 
 func (s *timedMailStore) CancelDelivery(arg0 context.Context, arg1 *store.MailDeliveryMutation) (*model.MailDelivery, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateMail, methodCancelDelivery), func() (*model.MailDelivery, error) {
-		return s.next.CancelDelivery(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateMail, methodCancelDelivery), func(callCtx context.Context) (*model.MailDelivery, error) {
+		return s.next.CancelDelivery(callCtx, arg1)
 	})
 }
 
 func (s *timedMailStore) RetryDelivery(arg0 context.Context, arg1 *store.MailDeliveryMutation) (*model.MailDelivery, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateMail, methodRetryDelivery), func() (*model.MailDelivery, error) {
-		return s.next.RetryDelivery(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateMail, methodRetryDelivery), func(callCtx context.Context) (*model.MailDelivery, error) {
+		return s.next.RetryDelivery(callCtx, arg1)
 	})
 }
 
 func (s *timedMailStore) AcquireSendPermit(arg0 context.Context, arg1 store.MailSendClass) (*store.MailSendPermit, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateMail, methodAcquireSendPermit), func() (*store.MailSendPermit, error) {
-		return s.next.AcquireSendPermit(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateMail, methodAcquireSendPermit), func(callCtx context.Context) (*store.MailSendPermit, error) {
+		return s.next.AcquireSendPermit(callCtx, arg1)
 	})
 }
 
 func (s *timedMailStore) SuppressOutstanding(arg0 context.Context, arg1 *store.MailOutstandingSuppression) (*store.MailMaintenanceResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateMail, methodSuppressOutstanding), func() (*store.MailMaintenanceResult, error) {
-		return s.next.SuppressOutstanding(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateMail, methodSuppressOutstanding), func(callCtx context.Context) (*store.MailMaintenanceResult, error) {
+		return s.next.SuppressOutstanding(callCtx, arg1)
 	})
 }
 
 func (s *timedMailStore) SuppressExpired(arg0 context.Context, arg1 int) (*store.MailMaintenanceResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateMail, methodSuppressExpired), func() (*store.MailMaintenanceResult, error) {
-		return s.next.SuppressExpired(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateMail, methodSuppressExpired), func(callCtx context.Context) (*store.MailMaintenanceResult, error) {
+		return s.next.SuppressExpired(callCtx, arg1)
 	})
 }
 
 func (s *timedMailStore) CleanupTerminal(arg0 context.Context, arg1 int) (*store.MailMaintenanceResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateMail, methodCleanupTerminal), func() (*store.MailMaintenanceResult, error) {
-		return s.next.CleanupTerminal(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateMail, methodCleanupTerminal), func(callCtx context.Context) (*store.MailMaintenanceResult, error) {
+		return s.next.CleanupTerminal(callCtx, arg1)
 	})
 }
 
 func (s *timedMailStore) QueueSnapshot(arg0 context.Context) (*store.MailQueueSnapshot, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateMail, methodQueueSnapshot), func() (*store.MailQueueSnapshot, error) {
-		return s.next.QueueSnapshot(arg0)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateMail, methodQueueSnapshot), func(callCtx context.Context) (*store.MailQueueSnapshot, error) {
+		return s.next.QueueSnapshot(callCtx)
 	})
 }
 
 func (s *timedMailStore) ActivePayloadKeyIDs(arg0 context.Context) ([]string, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateMail, methodActivePayloadKeyIDs), func() ([]string, error) {
-		return s.next.ActivePayloadKeyIDs(arg0)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateMail, methodActivePayloadKeyIDs), func(callCtx context.Context) ([]string, error) {
+		return s.next.ActivePayloadKeyIDs(callCtx)
 	})
 }
 
 func (s *timedMailStore) InspectKeyState(arg0 context.Context) (*store.MailKeyState, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateMail, methodInspectKeyState), func() (*store.MailKeyState, error) {
-		return s.next.InspectKeyState(arg0)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateMail, methodInspectKeyState), func(callCtx context.Context) (*store.MailKeyState, error) {
+		return s.next.InspectKeyState(callCtx)
 	})
 }
 
 func (s *timedMailStore) StartRekey(arg0 context.Context, arg1 *store.MailRekeyStart) (*store.MailRekeyOperation, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateMail, methodStartRekey), func() (*store.MailRekeyOperation, error) {
-		return s.next.StartRekey(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateMail, methodStartRekey), func(callCtx context.Context) (*store.MailRekeyOperation, error) {
+		return s.next.StartRekey(callCtx, arg1)
 	})
 }
 
 func (s *timedMailStore) ListRekeyTargets(arg0 context.Context, arg1 *store.MailRekeyTargetPageRequest) (*store.MailRekeyTargetPage, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateMail, methodListRekeyTargets), func() (*store.MailRekeyTargetPage, error) {
-		return s.next.ListRekeyTargets(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateMail, methodListRekeyTargets), func(callCtx context.Context) (*store.MailRekeyTargetPage, error) {
+		return s.next.ListRekeyTargets(callCtx, arg1)
 	})
 }
 
 func (s *timedMailStore) ReplaceRekeyTarget(arg0 context.Context, arg1 *store.MailRekeyReplacement) (bool, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateMail, methodReplaceRekeyTarget), func() (bool, error) {
-		return s.next.ReplaceRekeyTarget(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateMail, methodReplaceRekeyTarget), func(callCtx context.Context) (bool, error) {
+		return s.next.ReplaceRekeyTarget(callCtx, arg1)
 	})
 }
 
 func (s *timedMailStore) ProveRekey(arg0 context.Context, arg1 *store.MailRekeyProofRequest) (*store.MailRekeyProof, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateMail, methodProveRekey), func() (*store.MailRekeyProof, error) {
-		return s.next.ProveRekey(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateMail, methodProveRekey), func(callCtx context.Context) (*store.MailRekeyProof, error) {
+		return s.next.ProveRekey(callCtx, arg1)
 	})
 }
 
 func (s *timedExternalIdentityStore) Save(arg0 context.Context, arg1 *model.ExternalIdentity) (*model.ExternalIdentity, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExternalIdentity, methodSave), func() (*model.ExternalIdentity, error) {
-		return s.next.Save(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExternalIdentity, methodSave), func(callCtx context.Context) (*model.ExternalIdentity, error) {
+		return s.next.Save(callCtx, arg1)
 	})
 }
 
 func (s *timedExternalIdentityStore) Get(arg0 context.Context, arg1 model.ExternalIdentityID) (*model.ExternalIdentity, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExternalIdentity, methodGet), func() (*model.ExternalIdentity, error) {
-		return s.next.Get(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExternalIdentity, methodGet), func(callCtx context.Context) (*model.ExternalIdentity, error) {
+		return s.next.Get(callCtx, arg1)
 	})
 }
 
 func (s *timedExternalIdentityStore) GetByProviderSubject(arg0 context.Context, arg1 string, arg2 string) (*model.ExternalIdentity, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExternalIdentity, methodGetByProviderSubject), func() (*model.ExternalIdentity, error) {
-		return s.next.GetByProviderSubject(arg0, arg1, arg2)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExternalIdentity, methodGetByProviderSubject), func(callCtx context.Context) (*model.ExternalIdentity, error) {
+		return s.next.GetByProviderSubject(callCtx, arg1, arg2)
 	})
 }
 
 func (s *timedExternalIdentityStore) ListByUser(arg0 context.Context, arg1 model.UserID) ([]*model.ExternalIdentity, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExternalIdentity, methodListByUser), func() ([]*model.ExternalIdentity, error) {
-		return s.next.ListByUser(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExternalIdentity, methodListByUser), func(callCtx context.Context) ([]*model.ExternalIdentity, error) {
+		return s.next.ListByUser(callCtx, arg1)
 	})
 }
 
 func (s *timedExternalIdentityStore) ResolveOrProvision(arg0 context.Context, arg1 *store.ExternalIdentityResolutionRequest) (*store.ExternalIdentityResolution, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExternalIdentity, methodResolveOrProvision), func() (*store.ExternalIdentityResolution, error) {
-		return s.next.ResolveOrProvision(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExternalIdentity, methodResolveOrProvision), func(callCtx context.Context) (*store.ExternalIdentityResolution, error) {
+		return s.next.ResolveOrProvision(callCtx, arg1)
 	})
 }
 
 func (s *timedExternalIdentityStore) Link(arg0 context.Context, arg1 *store.ExternalIdentityLink) (*store.AuthenticationMethodMutationResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExternalIdentity, methodLink), func() (*store.AuthenticationMethodMutationResult, error) {
-		return s.next.Link(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExternalIdentity, methodLink), func(callCtx context.Context) (*store.AuthenticationMethodMutationResult, error) {
+		return s.next.Link(callCtx, arg1)
 	})
 }
 
 func (s *timedExternalIdentityStore) Unlink(arg0 context.Context, arg1 *store.ExternalIdentityUnlink) (*store.AuthenticationMethodMutationResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExternalIdentity, methodUnlink), func() (*store.AuthenticationMethodMutationResult, error) {
-		return s.next.Unlink(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExternalIdentity, methodUnlink), func(callCtx context.Context) (*store.AuthenticationMethodMutationResult, error) {
+		return s.next.Unlink(callCtx, arg1)
 	})
 }
 
 func (s *timedExternalLoginStateStore) Save(arg0 context.Context, arg1 *store.ExternalLoginStateCreation) (*model.ExternalLoginState, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExternalLoginState, methodSave), func() (*model.ExternalLoginState, error) {
-		return s.next.Save(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExternalLoginState, methodSave), func(callCtx context.Context) (*model.ExternalLoginState, error) {
+		return s.next.Save(callCtx, arg1)
 	})
 }
 
 func (s *timedExternalLoginStateStore) SaveInvitationAdmission(arg0 context.Context, arg1 *store.ExternalLoginStateInvitationAdmission) (*model.ExternalLoginState, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExternalLoginState, methodSaveInvitationAdmission), func() (*model.ExternalLoginState, error) {
-		return s.next.SaveInvitationAdmission(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExternalLoginState, methodSaveInvitationAdmission), func(callCtx context.Context) (*model.ExternalLoginState, error) {
+		return s.next.SaveInvitationAdmission(callCtx, arg1)
 	})
 }
 
 func (s *timedExternalLoginStateStore) GetByStateHash(arg0 context.Context, arg1 string) (*model.ExternalLoginState, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExternalLoginState, methodGetByStateHash), func() (*model.ExternalLoginState, error) {
-		return s.next.GetByStateHash(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExternalLoginState, methodGetByStateHash), func(callCtx context.Context) (*model.ExternalLoginState, error) {
+		return s.next.GetByStateHash(callCtx, arg1)
 	})
 }
 
 func (s *timedExternalLoginStateStore) Consume(arg0 context.Context, arg1 *store.ExternalLoginStateConsumption) (*model.ExternalLoginState, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExternalLoginState, methodConsume), func() (*model.ExternalLoginState, error) {
-		return s.next.Consume(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExternalLoginState, methodConsume), func(callCtx context.Context) (*model.ExternalLoginState, error) {
+		return s.next.Consume(callCtx, arg1)
 	})
 }
 
 func (s *timedExternalLoginStateStore) Maintain(arg0 context.Context, arg1 int) (*store.ExternalLoginStateMaintenanceResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExternalLoginState, methodMaintain), func() (*store.ExternalLoginStateMaintenanceResult, error) {
-		return s.next.Maintain(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateExternalLoginState, methodMaintain), func(callCtx context.Context) (*store.ExternalLoginStateMaintenanceResult, error) {
+		return s.next.Maintain(callCtx, arg1)
 	})
 }
 
 func (s *timedBrowserAuthenticationStore) CreateDesktopAuthorization(arg0 context.Context, arg1 *store.DesktopAuthorizationCreation) (*store.DesktopAuthorizationCreated, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateBrowserAuthentication, methodCreateDesktopAuthorization), func() (*store.DesktopAuthorizationCreated, error) {
-		return s.next.CreateDesktopAuthorization(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateBrowserAuthentication, methodCreateDesktopAuthorization), func(callCtx context.Context) (*store.DesktopAuthorizationCreated, error) {
+		return s.next.CreateDesktopAuthorization(callCtx, arg1)
 	})
 }
 
 func (s *timedBrowserAuthenticationStore) BindDesktopAuthorization(arg0 context.Context, arg1 *store.DesktopAuthorizationBinding) (*store.DesktopAuthorizationBound, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateBrowserAuthentication, methodBindDesktopAuthorization), func() (*store.DesktopAuthorizationBound, error) {
-		return s.next.BindDesktopAuthorization(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateBrowserAuthentication, methodBindDesktopAuthorization), func(callCtx context.Context) (*store.DesktopAuthorizationBound, error) {
+		return s.next.BindDesktopAuthorization(callCtx, arg1)
 	})
 }
 
 func (s *timedBrowserAuthenticationStore) GetDesktopAuthorizationContext(arg0 context.Context, arg1 string) (*store.DesktopAuthorizationContext, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateBrowserAuthentication, methodGetDesktopAuthorizationContext), func() (*store.DesktopAuthorizationContext, error) {
-		return s.next.GetDesktopAuthorizationContext(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateBrowserAuthentication, methodGetDesktopAuthorizationContext), func(callCtx context.Context) (*store.DesktopAuthorizationContext, error) {
+		return s.next.GetDesktopAuthorizationContext(callCtx, arg1)
 	})
 }
 
 func (s *timedBrowserAuthenticationStore) AuthenticateDesktopAuthorization(arg0 context.Context, arg1 *store.DesktopAuthorizationAuthentication) (*store.DesktopAuthorizationAuthenticationResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateBrowserAuthentication, methodAuthenticateDesktopAuthorization), func() (*store.DesktopAuthorizationAuthenticationResult, error) {
-		return s.next.AuthenticateDesktopAuthorization(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateBrowserAuthentication, methodAuthenticateDesktopAuthorization), func(callCtx context.Context) (*store.DesktopAuthorizationAuthenticationResult, error) {
+		return s.next.AuthenticateDesktopAuthorization(callCtx, arg1)
 	})
 }
 
 func (s *timedBrowserAuthenticationStore) ResetDesktopAuthorizationAccount(arg0 context.Context, arg1 *store.DesktopAuthorizationAccountReset) error {
-	return timeStoreCall0(s.layer, storeOperation(aggregateBrowserAuthentication, methodResetDesktopAuthorizationAccount), func() error {
-		return s.next.ResetDesktopAuthorizationAccount(arg0, arg1)
+	return timeStoreCall0(arg0, s.layer, storeOperation(aggregateBrowserAuthentication, methodResetDesktopAuthorizationAccount), func(callCtx context.Context) error {
+		return s.next.ResetDesktopAuthorizationAccount(callCtx, arg1)
 	})
 }
 
 func (s *timedBrowserAuthenticationStore) CreateInvitation(arg0 context.Context, arg1 *store.BrowserInvitationTransactionCreation) (*store.BrowserInvitationCreated, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateBrowserAuthentication, methodCreateInvitation), func() (*store.BrowserInvitationCreated, error) {
-		return s.next.CreateInvitation(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateBrowserAuthentication, methodCreateInvitation), func(callCtx context.Context) (*store.BrowserInvitationCreated, error) {
+		return s.next.CreateInvitation(callCtx, arg1)
 	})
 }
 
 func (s *timedBrowserAuthenticationStore) ResolveInvitation(arg0 context.Context, arg1 string, arg2 string) (*store.BrowserInvitationResolution, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateBrowserAuthentication, methodResolveInvitation), func() (*store.BrowserInvitationResolution, error) {
-		return s.next.ResolveInvitation(arg0, arg1, arg2)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateBrowserAuthentication, methodResolveInvitation), func(callCtx context.Context) (*store.BrowserInvitationResolution, error) {
+		return s.next.ResolveInvitation(callCtx, arg1, arg2)
 	})
 }
 
 func (s *timedBrowserAuthenticationStore) IssueCode(arg0 context.Context, arg1 *store.DesktopAuthorizationCodeIssue) (*store.DesktopAuthorizationCodeIssued, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateBrowserAuthentication, methodIssueCode), func() (*store.DesktopAuthorizationCodeIssued, error) {
-		return s.next.IssueCode(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateBrowserAuthentication, methodIssueCode), func(callCtx context.Context) (*store.DesktopAuthorizationCodeIssued, error) {
+		return s.next.IssueCode(callCtx, arg1)
 	})
 }
 
 func (s *timedBrowserAuthenticationStore) Cancel(arg0 context.Context, arg1 *store.DesktopAuthorizationCancellation) error {
-	return timeStoreCall0(s.layer, storeOperation(aggregateBrowserAuthentication, methodCancel), func() error {
-		return s.next.Cancel(arg0, arg1)
+	return timeStoreCall0(arg0, s.layer, storeOperation(aggregateBrowserAuthentication, methodCancel), func(callCtx context.Context) error {
+		return s.next.Cancel(callCtx, arg1)
 	})
 }
 
 func (s *timedBrowserAuthenticationStore) ResolveDesktopAuthorizationExchange(arg0 context.Context, arg1 *store.DesktopAuthorizationExchangeProof) (*store.DesktopAuthorizationExchangeTarget, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateBrowserAuthentication, methodResolveDesktopAuthorizationExchange), func() (*store.DesktopAuthorizationExchangeTarget, error) {
-		return s.next.ResolveDesktopAuthorizationExchange(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateBrowserAuthentication, methodResolveDesktopAuthorizationExchange), func(callCtx context.Context) (*store.DesktopAuthorizationExchangeTarget, error) {
+		return s.next.ResolveDesktopAuthorizationExchange(callCtx, arg1)
 	})
 }
 
 func (s *timedBrowserAuthenticationStore) Exchange(arg0 context.Context, arg1 *store.DesktopAuthorizationExchange) (*store.DesktopAuthorizationExchangeResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateBrowserAuthentication, methodExchange), func() (*store.DesktopAuthorizationExchangeResult, error) {
-		return s.next.Exchange(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateBrowserAuthentication, methodExchange), func(callCtx context.Context) (*store.DesktopAuthorizationExchangeResult, error) {
+		return s.next.Exchange(callCtx, arg1)
 	})
 }
 
 func (s *timedBrowserAuthenticationStore) Maintain(arg0 context.Context, arg1 int) (*store.BrowserAuthenticationMaintenanceResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateBrowserAuthentication, methodMaintain), func() (*store.BrowserAuthenticationMaintenanceResult, error) {
-		return s.next.Maintain(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateBrowserAuthentication, methodMaintain), func(callCtx context.Context) (*store.BrowserAuthenticationMaintenanceResult, error) {
+		return s.next.Maintain(callCtx, arg1)
 	})
 }
 
 func (s *timedDesktopRegistrationStore) Get(arg0 context.Context, arg1 model.DesktopRegistrationID) (*model.DesktopRegistration, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateDesktopRegistration, methodGet), func() (*model.DesktopRegistration, error) {
-		return s.next.Get(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateDesktopRegistration, methodGet), func(callCtx context.Context) (*model.DesktopRegistration, error) {
+		return s.next.Get(callCtx, arg1)
 	})
 }
 
 func (s *timedDesktopRegistrationStore) ListByUser(arg0 context.Context, arg1 model.UserID) ([]*model.DesktopRegistration, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateDesktopRegistration, methodListByUser), func() ([]*model.DesktopRegistration, error) {
-		return s.next.ListByUser(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateDesktopRegistration, methodListByUser), func(callCtx context.Context) ([]*model.DesktopRegistration, error) {
+		return s.next.ListByUser(callCtx, arg1)
 	})
 }
 
 func (s *timedDesktopRegistrationStore) Revoke(arg0 context.Context, arg1 *store.DesktopRegistrationRevocation) (*store.DesktopRegistrationRevocationResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateDesktopRegistration, methodRevoke), func() (*store.DesktopRegistrationRevocationResult, error) {
-		return s.next.Revoke(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateDesktopRegistration, methodRevoke), func(callCtx context.Context) (*store.DesktopRegistrationRevocationResult, error) {
+		return s.next.Revoke(callCtx, arg1)
 	})
 }
 
 func (s *timedUserTokenStore) Issue(arg0 context.Context, arg1 *store.UserTokenMailIssue) (*model.UserToken, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateUserToken, methodIssue), func() (*model.UserToken, error) {
-		return s.next.Issue(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateUserToken, methodIssue), func(callCtx context.Context) (*model.UserToken, error) {
+		return s.next.Issue(callCtx, arg1)
 	})
 }
 
 func (s *timedUserTokenStore) ChangeEmail(arg0 context.Context, arg1 *store.UserEmailChange) (*store.UserEmailChangeResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateUserToken, methodChangeEmail), func() (*store.UserEmailChangeResult, error) {
-		return s.next.ChangeEmail(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateUserToken, methodChangeEmail), func(callCtx context.Context) (*store.UserEmailChangeResult, error) {
+		return s.next.ChangeEmail(callCtx, arg1)
 	})
 }
 
 func (s *timedUserTokenStore) VerifyEmailPrivileged(arg0 context.Context, arg1 *store.PrivilegedEmailVerification) (*model.User, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateUserToken, methodVerifyEmailPrivileged), func() (*model.User, error) {
-		return s.next.VerifyEmailPrivileged(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateUserToken, methodVerifyEmailPrivileged), func(callCtx context.Context) (*model.User, error) {
+		return s.next.VerifyEmailPrivileged(callCtx, arg1)
 	})
 }
 
 func (s *timedUserTokenStore) Get(arg0 context.Context, arg1 model.UserTokenID) (*model.UserToken, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateUserToken, methodGet), func() (*model.UserToken, error) {
-		return s.next.Get(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateUserToken, methodGet), func(callCtx context.Context) (*model.UserToken, error) {
+		return s.next.Get(callCtx, arg1)
 	})
 }
 
 func (s *timedUserTokenStore) GetByHash(arg0 context.Context, arg1 string, arg2 model.UserTokenPurpose) (*model.UserToken, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateUserToken, methodGetByHash), func() (*model.UserToken, error) {
-		return s.next.GetByHash(arg0, arg1, arg2)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateUserToken, methodGetByHash), func(callCtx context.Context) (*model.UserToken, error) {
+		return s.next.GetByHash(callCtx, arg1, arg2)
 	})
 }
 
 func (s *timedUserTokenStore) ConsumeEmailVerification(arg0 context.Context, arg1 *store.EmailVerificationConsumption) (*store.EmailVerificationResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateUserToken, methodConsumeEmailVerification), func() (*store.EmailVerificationResult, error) {
-		return s.next.ConsumeEmailVerification(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateUserToken, methodConsumeEmailVerification), func(callCtx context.Context) (*store.EmailVerificationResult, error) {
+		return s.next.ConsumeEmailVerification(callCtx, arg1)
 	})
 }
 
 func (s *timedUserTokenStore) ConsumePasswordReset(arg0 context.Context, arg1 *store.PasswordResetCompletion) (*store.PasswordResetResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateUserToken, methodConsumePasswordReset), func() (*store.PasswordResetResult, error) {
-		return s.next.ConsumePasswordReset(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateUserToken, methodConsumePasswordReset), func(callCtx context.Context) (*store.PasswordResetResult, error) {
+		return s.next.ConsumePasswordReset(callCtx, arg1)
 	})
 }
 
 func (s *timedInvitationStore) IssueStudentClass(arg0 context.Context, arg1 *store.StudentClassInvitationIssue) (*model.Invitation, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateInvitation, methodIssueStudentClass), func() (*model.Invitation, error) {
-		return s.next.IssueStudentClass(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateInvitation, methodIssueStudentClass), func(callCtx context.Context) (*model.Invitation, error) {
+		return s.next.IssueStudentClass(callCtx, arg1)
 	})
 }
 
 func (s *timedInvitationStore) IssueStudentClassIdempotently(arg0 context.Context, arg1 *store.StudentClassInvitationIssue, arg2 *store.CommandIdempotency) (*store.InvitationCommandResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateInvitation, methodIssueStudentClassIdempotently), func() (*store.InvitationCommandResult, error) {
-		return s.next.IssueStudentClassIdempotently(arg0, arg1, arg2)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateInvitation, methodIssueStudentClassIdempotently), func(callCtx context.Context) (*store.InvitationCommandResult, error) {
+		return s.next.IssueStudentClassIdempotently(callCtx, arg1, arg2)
 	})
 }
 
 func (s *timedInvitationStore) IssueTeacherAcademicUnit(arg0 context.Context, arg1 *store.TeacherAcademicUnitInvitationIssue) (*model.Invitation, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateInvitation, methodIssueTeacherAcademicUnit), func() (*model.Invitation, error) {
-		return s.next.IssueTeacherAcademicUnit(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateInvitation, methodIssueTeacherAcademicUnit), func(callCtx context.Context) (*model.Invitation, error) {
+		return s.next.IssueTeacherAcademicUnit(callCtx, arg1)
 	})
 }
 
 func (s *timedInvitationStore) IssueTeacherAcademicUnitIdempotently(arg0 context.Context, arg1 *store.TeacherAcademicUnitInvitationIssue, arg2 *store.CommandIdempotency) (*store.InvitationCommandResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateInvitation, methodIssueTeacherAcademicUnitIdempotently), func() (*store.InvitationCommandResult, error) {
-		return s.next.IssueTeacherAcademicUnitIdempotently(arg0, arg1, arg2)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateInvitation, methodIssueTeacherAcademicUnitIdempotently), func(callCtx context.Context) (*store.InvitationCommandResult, error) {
+		return s.next.IssueTeacherAcademicUnitIdempotently(callCtx, arg1, arg2)
 	})
 }
 
 func (s *timedInvitationStore) IssueScopedRole(arg0 context.Context, arg1 *store.ScopedRoleInvitationIssue) (*model.Invitation, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateInvitation, methodIssueScopedRole), func() (*model.Invitation, error) {
-		return s.next.IssueScopedRole(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateInvitation, methodIssueScopedRole), func(callCtx context.Context) (*model.Invitation, error) {
+		return s.next.IssueScopedRole(callCtx, arg1)
 	})
 }
 
 func (s *timedInvitationStore) IssueScopedRoleIdempotently(arg0 context.Context, arg1 *store.ScopedRoleInvitationIssue, arg2 *store.CommandIdempotency) (*store.InvitationCommandResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateInvitation, methodIssueScopedRoleIdempotently), func() (*store.InvitationCommandResult, error) {
-		return s.next.IssueScopedRoleIdempotently(arg0, arg1, arg2)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateInvitation, methodIssueScopedRoleIdempotently), func(callCtx context.Context) (*store.InvitationCommandResult, error) {
+		return s.next.IssueScopedRoleIdempotently(callCtx, arg1, arg2)
 	})
 }
 
 func (s *timedInvitationStore) ResolveOnboardingInvitationNoOp(arg0 context.Context, arg1 *model.Invitation) (*model.Invitation, bool, error) {
-	return timeStoreCall2(s.layer, storeOperation(aggregateInvitation, methodResolveOnboardingInvitationNoOp), func() (*model.Invitation, bool, error) {
-		return s.next.ResolveOnboardingInvitationNoOp(arg0, arg1)
+	return timeStoreCall2(arg0, s.layer, storeOperation(aggregateInvitation, methodResolveOnboardingInvitationNoOp), func(callCtx context.Context) (*model.Invitation, bool, error) {
+		return s.next.ResolveOnboardingInvitationNoOp(callCtx, arg1)
 	})
 }
 
 func (s *timedInvitationStore) FindCommandOutcome(arg0 context.Context, arg1 *store.CommandIdempotency) (*store.InvitationCommandResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateInvitation, methodFindCommandOutcome), func() (*store.InvitationCommandResult, error) {
-		return s.next.FindCommandOutcome(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateInvitation, methodFindCommandOutcome), func(callCtx context.Context) (*store.InvitationCommandResult, error) {
+		return s.next.FindCommandOutcome(callCtx, arg1)
 	})
 }
 
 func (s *timedInvitationStore) ReplayIssue(arg0 context.Context, arg1 *store.InvitationReplay, arg2 *store.CommandIdempotency) (*store.InvitationCommandResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateInvitation, methodReplayIssue), func() (*store.InvitationCommandResult, error) {
-		return s.next.ReplayIssue(arg0, arg1, arg2)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateInvitation, methodReplayIssue), func(callCtx context.Context) (*store.InvitationCommandResult, error) {
+		return s.next.ReplayIssue(callCtx, arg1, arg2)
 	})
 }
 
 func (s *timedInvitationStore) ReplayAdministration(arg0 context.Context, arg1 *store.InvitationReplay, arg2 *store.CommandIdempotency) (*store.InvitationAdministrationCommandResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateInvitation, methodReplayAdministration), func() (*store.InvitationAdministrationCommandResult, error) {
-		return s.next.ReplayAdministration(arg0, arg1, arg2)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateInvitation, methodReplayAdministration), func(callCtx context.Context) (*store.InvitationAdministrationCommandResult, error) {
+		return s.next.ReplayAdministration(callCtx, arg1, arg2)
 	})
 }
 
 func (s *timedInvitationStore) RecordBatchDuplicate(arg0 context.Context, arg1 *store.InvitationBatchDuplicate, arg2 *store.CommandIdempotency) (*store.InvitationBatchCommandResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateInvitation, methodRecordBatchDuplicate), func() (*store.InvitationBatchCommandResult, error) {
-		return s.next.RecordBatchDuplicate(arg0, arg1, arg2)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateInvitation, methodRecordBatchDuplicate), func(callCtx context.Context) (*store.InvitationBatchCommandResult, error) {
+		return s.next.RecordBatchDuplicate(callCtx, arg1, arg2)
 	})
 }
 
 func (s *timedInvitationStore) Get(arg0 context.Context, arg1 model.InvitationID) (*model.Invitation, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateInvitation, methodGet), func() (*model.Invitation, error) {
-		return s.next.Get(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateInvitation, methodGet), func(callCtx context.Context) (*model.Invitation, error) {
+		return s.next.Get(callCtx, arg1)
 	})
 }
 
 func (s *timedInvitationStore) GetByClaimHash(arg0 context.Context, arg1 string) (*model.Invitation, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateInvitation, methodGetByClaimHash), func() (*model.Invitation, error) {
-		return s.next.GetByClaimHash(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateInvitation, methodGetByClaimHash), func(callCtx context.Context) (*model.Invitation, error) {
+		return s.next.GetByClaimHash(callCtx, arg1)
 	})
 }
 
 func (s *timedInvitationStore) AcceptStudentClass(arg0 context.Context, arg1 *store.StudentClassInvitationAcceptance) (*store.StudentClassInvitationAcceptanceResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateInvitation, methodAcceptStudentClass), func() (*store.StudentClassInvitationAcceptanceResult, error) {
-		return s.next.AcceptStudentClass(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateInvitation, methodAcceptStudentClass), func(callCtx context.Context) (*store.StudentClassInvitationAcceptanceResult, error) {
+		return s.next.AcceptStudentClass(callCtx, arg1)
 	})
 }
 
 func (s *timedInvitationStore) AcceptTeacherAcademicUnit(arg0 context.Context, arg1 *store.TeacherAcademicUnitInvitationAcceptance) (*store.TeacherAcademicUnitInvitationAcceptanceResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateInvitation, methodAcceptTeacherAcademicUnit), func() (*store.TeacherAcademicUnitInvitationAcceptanceResult, error) {
-		return s.next.AcceptTeacherAcademicUnit(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateInvitation, methodAcceptTeacherAcademicUnit), func(callCtx context.Context) (*store.TeacherAcademicUnitInvitationAcceptanceResult, error) {
+		return s.next.AcceptTeacherAcademicUnit(callCtx, arg1)
 	})
 }
 
 func (s *timedInvitationStore) AcceptScopedRole(arg0 context.Context, arg1 *store.ScopedRoleInvitationAcceptance) (*store.ScopedRoleInvitationAcceptanceResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateInvitation, methodAcceptScopedRole), func() (*store.ScopedRoleInvitationAcceptanceResult, error) {
-		return s.next.AcceptScopedRole(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateInvitation, methodAcceptScopedRole), func(callCtx context.Context) (*store.ScopedRoleInvitationAcceptanceResult, error) {
+		return s.next.AcceptScopedRole(callCtx, arg1)
 	})
 }
 
 func (s *timedInvitationStore) AcceptExternalIdentity(arg0 context.Context, arg1 *store.ExternalIdentityInvitationAcceptance) (*store.ExternalIdentityInvitationAcceptanceResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateInvitation, methodAcceptExternalIdentity), func() (*store.ExternalIdentityInvitationAcceptanceResult, error) {
-		return s.next.AcceptExternalIdentity(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateInvitation, methodAcceptExternalIdentity), func(callCtx context.Context) (*store.ExternalIdentityInvitationAcceptanceResult, error) {
+		return s.next.AcceptExternalIdentity(callCtx, arg1)
 	})
 }
 
 func (s *timedInvitationStore) List(arg0 context.Context, arg1 store.InvitationListOptions) (*store.InvitationPage, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateInvitation, methodList), func() (*store.InvitationPage, error) {
-		return s.next.List(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateInvitation, methodList), func(callCtx context.Context) (*store.InvitationPage, error) {
+		return s.next.List(callCtx, arg1)
 	})
 }
 
 func (s *timedInvitationStore) GetForAdministration(arg0 context.Context, arg1 model.InvitationID, arg2 store.InvitationVisibilityScope) (*store.InvitationAdministrationRecord, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateInvitation, methodGetForAdministration), func() (*store.InvitationAdministrationRecord, error) {
-		return s.next.GetForAdministration(arg0, arg1, arg2)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateInvitation, methodGetForAdministration), func(callCtx context.Context) (*store.InvitationAdministrationRecord, error) {
+		return s.next.GetForAdministration(callCtx, arg1, arg2)
 	})
 }
 
 func (s *timedInvitationStore) Resend(arg0 context.Context, arg1 *store.InvitationResend) (*store.InvitationAdministrationRecord, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateInvitation, methodResend), func() (*store.InvitationAdministrationRecord, error) {
-		return s.next.Resend(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateInvitation, methodResend), func(callCtx context.Context) (*store.InvitationAdministrationRecord, error) {
+		return s.next.Resend(callCtx, arg1)
 	})
 }
 
 func (s *timedInvitationStore) ResendIdempotently(arg0 context.Context, arg1 *store.InvitationResend, arg2 *store.CommandIdempotency) (*store.InvitationAdministrationCommandResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateInvitation, methodResendIdempotently), func() (*store.InvitationAdministrationCommandResult, error) {
-		return s.next.ResendIdempotently(arg0, arg1, arg2)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateInvitation, methodResendIdempotently), func(callCtx context.Context) (*store.InvitationAdministrationCommandResult, error) {
+		return s.next.ResendIdempotently(callCtx, arg1, arg2)
 	})
 }
 
 func (s *timedInvitationStore) Revoke(arg0 context.Context, arg1 *store.InvitationRevocation) (*store.InvitationAdministrationRecord, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateInvitation, methodRevoke), func() (*store.InvitationAdministrationRecord, error) {
-		return s.next.Revoke(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateInvitation, methodRevoke), func(callCtx context.Context) (*store.InvitationAdministrationRecord, error) {
+		return s.next.Revoke(callCtx, arg1)
 	})
 }
 
 func (s *timedInvitationStore) RevokeIdempotently(arg0 context.Context, arg1 *store.InvitationRevocation, arg2 *store.CommandIdempotency) (*store.InvitationAdministrationCommandResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateInvitation, methodRevokeIdempotently), func() (*store.InvitationAdministrationCommandResult, error) {
-		return s.next.RevokeIdempotently(arg0, arg1, arg2)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateInvitation, methodRevokeIdempotently), func(callCtx context.Context) (*store.InvitationAdministrationCommandResult, error) {
+		return s.next.RevokeIdempotently(callCtx, arg1, arg2)
 	})
 }
 
 func (s *timedInvitationStore) Replace(arg0 context.Context, arg1 *store.InvitationReplacement) (*store.InvitationAdministrationRecord, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateInvitation, methodReplace), func() (*store.InvitationAdministrationRecord, error) {
-		return s.next.Replace(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateInvitation, methodReplace), func(callCtx context.Context) (*store.InvitationAdministrationRecord, error) {
+		return s.next.Replace(callCtx, arg1)
 	})
 }
 
 func (s *timedInvitationStore) Maintain(arg0 context.Context, arg1 int) (*store.InvitationMaintenanceResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateInvitation, methodMaintain), func() (*store.InvitationMaintenanceResult, error) {
-		return s.next.Maintain(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateInvitation, methodMaintain), func(callCtx context.Context) (*store.InvitationMaintenanceResult, error) {
+		return s.next.Maintain(callCtx, arg1)
 	})
 }
 
 func (s *timedOnboardingImportStore) CreateOnboardingImport(arg0 context.Context, arg1 *store.OnboardingImportCreation) (*store.OnboardingImport, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateOnboardingImport, methodCreateOnboardingImport), func() (*store.OnboardingImport, error) {
-		return s.next.CreateOnboardingImport(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateOnboardingImport, methodCreateOnboardingImport), func(callCtx context.Context) (*store.OnboardingImport, error) {
+		return s.next.CreateOnboardingImport(callCtx, arg1)
 	})
 }
 
 func (s *timedOnboardingImportStore) GetOnboardingImport(arg0 context.Context, arg1 model.OnboardingImportID) (*store.OnboardingImport, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateOnboardingImport, methodGetOnboardingImport), func() (*store.OnboardingImport, error) {
-		return s.next.GetOnboardingImport(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateOnboardingImport, methodGetOnboardingImport), func(callCtx context.Context) (*store.OnboardingImport, error) {
+		return s.next.GetOnboardingImport(callCtx, arg1)
 	})
 }
 
 func (s *timedOnboardingImportStore) ListStudentProgressionRoster(arg0 context.Context, arg1 model.ClassID, arg2 time.Time, arg3 int) ([]*model.ClassMember, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateOnboardingImport, methodListStudentProgressionRoster), func() ([]*model.ClassMember, error) {
-		return s.next.ListStudentProgressionRoster(arg0, arg1, arg2, arg3)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateOnboardingImport, methodListStudentProgressionRoster), func(callCtx context.Context) ([]*model.ClassMember, error) {
+		return s.next.ListStudentProgressionRoster(callCtx, arg1, arg2, arg3)
 	})
 }
 
 func (s *timedOnboardingImportStore) CompleteOnboardingImportPreview(arg0 context.Context, arg1 *store.OnboardingImportPreviewCompletion) (*store.OnboardingImport, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateOnboardingImport, methodCompleteOnboardingImportPreview), func() (*store.OnboardingImport, error) {
-		return s.next.CompleteOnboardingImportPreview(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateOnboardingImport, methodCompleteOnboardingImportPreview), func(callCtx context.Context) (*store.OnboardingImport, error) {
+		return s.next.CompleteOnboardingImportPreview(callCtx, arg1)
 	})
 }
 
 func (s *timedOnboardingImportStore) CommitOnboardingImport(arg0 context.Context, arg1 *store.OnboardingImportCommit) (*store.OnboardingImport, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateOnboardingImport, methodCommitOnboardingImport), func() (*store.OnboardingImport, error) {
-		return s.next.CommitOnboardingImport(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateOnboardingImport, methodCommitOnboardingImport), func(callCtx context.Context) (*store.OnboardingImport, error) {
+		return s.next.CommitOnboardingImport(callCtx, arg1)
 	})
 }
 
 func (s *timedOnboardingImportStore) ListOnboardingImportRows(arg0 context.Context, arg1 model.OnboardingImportID, arg2 int, arg3 int) (*store.OnboardingImportPage, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateOnboardingImport, methodListOnboardingImportRows), func() (*store.OnboardingImportPage, error) {
-		return s.next.ListOnboardingImportRows(arg0, arg1, arg2, arg3)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateOnboardingImport, methodListOnboardingImportRows), func(callCtx context.Context) (*store.OnboardingImportPage, error) {
+		return s.next.ListOnboardingImportRows(callCtx, arg1, arg2, arg3)
 	})
 }
 
 func (s *timedOnboardingImportStore) CompleteOnboardingImportRow(arg0 context.Context, arg1 *store.OnboardingImportRowCompletion) (*store.OnboardingImport, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateOnboardingImport, methodCompleteOnboardingImportRow), func() (*store.OnboardingImport, error) {
-		return s.next.CompleteOnboardingImportRow(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateOnboardingImport, methodCompleteOnboardingImportRow), func(callCtx context.Context) (*store.OnboardingImport, error) {
+		return s.next.CompleteOnboardingImportRow(callCtx, arg1)
 	})
 }
 
 func (s *timedOnboardingImportStore) FinishOnboardingImport(arg0 context.Context, arg1 *store.OnboardingImportFinish) (*store.OnboardingImport, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateOnboardingImport, methodFinishOnboardingImport), func() (*store.OnboardingImport, error) {
-		return s.next.FinishOnboardingImport(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateOnboardingImport, methodFinishOnboardingImport), func(callCtx context.Context) (*store.OnboardingImport, error) {
+		return s.next.FinishOnboardingImport(callCtx, arg1)
 	})
 }
 
 func (s *timedOnboardingImportStore) CancelOnboardingImport(arg0 context.Context, arg1 *store.OnboardingImportCancellation) (*store.OnboardingImport, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateOnboardingImport, methodCancelOnboardingImport), func() (*store.OnboardingImport, error) {
-		return s.next.CancelOnboardingImport(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateOnboardingImport, methodCancelOnboardingImport), func(callCtx context.Context) (*store.OnboardingImport, error) {
+		return s.next.CancelOnboardingImport(callCtx, arg1)
 	})
 }
 
 func (s *timedOnboardingImportStore) FailOnboardingImport(arg0 context.Context, arg1 *store.OnboardingImportFailure) (*store.OnboardingImport, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateOnboardingImport, methodFailOnboardingImport), func() (*store.OnboardingImport, error) {
-		return s.next.FailOnboardingImport(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateOnboardingImport, methodFailOnboardingImport), func(callCtx context.Context) (*store.OnboardingImport, error) {
+		return s.next.FailOnboardingImport(callCtx, arg1)
 	})
 }
 
 func (s *timedOnboardingImportStore) ListExpiredOnboardingImports(arg0 context.Context, arg1 int, arg2 time.Time) ([]model.OnboardingImportID, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateOnboardingImport, methodListExpiredOnboardingImports), func() ([]model.OnboardingImportID, error) {
-		return s.next.ListExpiredOnboardingImports(arg0, arg1, arg2)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateOnboardingImport, methodListExpiredOnboardingImports), func(callCtx context.Context) ([]model.OnboardingImportID, error) {
+		return s.next.ListExpiredOnboardingImports(callCtx, arg1, arg2)
 	})
 }
 
 func (s *timedOnboardingImportStore) PurgeOnboardingImport(arg0 context.Context, arg1 *store.OnboardingImportPurge) (bool, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateOnboardingImport, methodPurgeOnboardingImport), func() (bool, error) {
-		return s.next.PurgeOnboardingImport(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateOnboardingImport, methodPurgeOnboardingImport), func(callCtx context.Context) (bool, error) {
+		return s.next.PurgeOnboardingImport(callCtx, arg1)
 	})
 }
 
 func (s *timedPersonalAccessTokenStore) PrepareMutation(arg0 context.Context, arg1 *store.PersonalAccessTokenMutationPreparation) (*store.PreparedPersonalAccessTokenMutation, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregatePersonalAccessToken, methodPrepareMutation), func() (*store.PreparedPersonalAccessTokenMutation, error) {
-		return s.next.PrepareMutation(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregatePersonalAccessToken, methodPrepareMutation), func(callCtx context.Context) (*store.PreparedPersonalAccessTokenMutation, error) {
+		return s.next.PrepareMutation(callCtx, arg1)
 	})
 }
 
 func (s *timedPersonalAccessTokenStore) FailMutation(arg0 context.Context, arg1 *store.PersonalAccessTokenMutationFailure) error {
-	return timeStoreCall0(s.layer, storeOperation(aggregatePersonalAccessToken, methodFailMutation), func() error {
-		return s.next.FailMutation(arg0, arg1)
+	return timeStoreCall0(arg0, s.layer, storeOperation(aggregatePersonalAccessToken, methodFailMutation), func(callCtx context.Context) error {
+		return s.next.FailMutation(callCtx, arg1)
 	})
 }
 
 func (s *timedPersonalAccessTokenStore) MaintainMutationPreparations(arg0 context.Context, arg1 int) (*store.PersonalAccessTokenPreparationMaintenanceResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregatePersonalAccessToken, methodMaintainMutationPreparations), func() (*store.PersonalAccessTokenPreparationMaintenanceResult, error) {
-		return s.next.MaintainMutationPreparations(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregatePersonalAccessToken, methodMaintainMutationPreparations), func(callCtx context.Context) (*store.PersonalAccessTokenPreparationMaintenanceResult, error) {
+		return s.next.MaintainMutationPreparations(callCtx, arg1)
 	})
 }
 
 func (s *timedPersonalAccessTokenStore) Create(arg0 context.Context, arg1 *store.PersonalAccessTokenCreationMutation) (*store.PersonalAccessTokenMutationResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregatePersonalAccessToken, methodCreate), func() (*store.PersonalAccessTokenMutationResult, error) {
-		return s.next.Create(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregatePersonalAccessToken, methodCreate), func(callCtx context.Context) (*store.PersonalAccessTokenMutationResult, error) {
+		return s.next.Create(callCtx, arg1)
 	})
 }
 
 func (s *timedPersonalAccessTokenStore) Get(arg0 context.Context, arg1 model.PersonalAccessTokenID) (*model.PersonalAccessToken, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregatePersonalAccessToken, methodGet), func() (*model.PersonalAccessToken, error) {
-		return s.next.Get(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregatePersonalAccessToken, methodGet), func(callCtx context.Context) (*model.PersonalAccessToken, error) {
+		return s.next.Get(callCtx, arg1)
 	})
 }
 
 func (s *timedPersonalAccessTokenStore) ListByUser(arg0 context.Context, arg1 model.UserID) ([]*model.PersonalAccessToken, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregatePersonalAccessToken, methodListByUser), func() ([]*model.PersonalAccessToken, error) {
-		return s.next.ListByUser(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregatePersonalAccessToken, methodListByUser), func(callCtx context.Context) ([]*model.PersonalAccessToken, error) {
+		return s.next.ListByUser(callCtx, arg1)
 	})
 }
 
 func (s *timedPersonalAccessTokenStore) Resolve(arg0 context.Context, arg1 string, arg2 time.Time, arg3 time.Duration) (*store.PersonalAccessTokenResolution, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregatePersonalAccessToken, methodResolve), func() (*store.PersonalAccessTokenResolution, error) {
-		return s.next.Resolve(arg0, arg1, arg2, arg3)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregatePersonalAccessToken, methodResolve), func(callCtx context.Context) (*store.PersonalAccessTokenResolution, error) {
+		return s.next.Resolve(callCtx, arg1, arg2, arg3)
 	})
 }
 
 func (s *timedPersonalAccessTokenStore) ChangeState(arg0 context.Context, arg1 *store.PersonalAccessTokenStateMutation) (*store.PersonalAccessTokenMutationResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregatePersonalAccessToken, methodChangeState), func() (*store.PersonalAccessTokenMutationResult, error) {
-		return s.next.ChangeState(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregatePersonalAccessToken, methodChangeState), func(callCtx context.Context) (*store.PersonalAccessTokenMutationResult, error) {
+		return s.next.ChangeState(callCtx, arg1)
 	})
 }
 
 func (s *timedPersonalAccessTokenStore) Revoke(arg0 context.Context, arg1 *store.PersonalAccessTokenRevocation) (*store.PersonalAccessTokenMutationResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregatePersonalAccessToken, methodRevoke), func() (*store.PersonalAccessTokenMutationResult, error) {
-		return s.next.Revoke(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregatePersonalAccessToken, methodRevoke), func(callCtx context.Context) (*store.PersonalAccessTokenMutationResult, error) {
+		return s.next.Revoke(callCtx, arg1)
 	})
 }
 
 func (s *timedMFAStore) GetRecoveryState(arg0 context.Context, arg1 model.UserID) (*model.UserMFARecovery, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateMFA, methodGetRecoveryState), func() (*model.UserMFARecovery, error) {
-		return s.next.GetRecoveryState(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateMFA, methodGetRecoveryState), func(callCtx context.Context) (*model.UserMFARecovery, error) {
+		return s.next.GetRecoveryState(callCtx, arg1)
 	})
 }
 
 func (s *timedMFAStore) SavePending(arg0 context.Context, arg1 *store.MFAPendingEnrollment) (*model.MFACredential, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateMFA, methodSavePending), func() (*model.MFACredential, error) {
-		return s.next.SavePending(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateMFA, methodSavePending), func(callCtx context.Context) (*model.MFACredential, error) {
+		return s.next.SavePending(callCtx, arg1)
 	})
 }
 
 func (s *timedMFAStore) Challenge(arg0 context.Context, arg1 *store.MFAChallenge) (*store.SessionReauthenticationResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateMFA, methodChallenge), func() (*store.SessionReauthenticationResult, error) {
-		return s.next.Challenge(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateMFA, methodChallenge), func(callCtx context.Context) (*store.SessionReauthenticationResult, error) {
+		return s.next.Challenge(callCtx, arg1)
 	})
 }
 
 func (s *timedMFAStore) Reset(arg0 context.Context, arg1 *store.MFAAssistedReset) (*store.MFAResetResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateMFA, methodReset), func() (*store.MFAResetResult, error) {
-		return s.next.Reset(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateMFA, methodReset), func(callCtx context.Context) (*store.MFAResetResult, error) {
+		return s.next.Reset(callCtx, arg1)
 	})
 }
 
 func (s *timedMFAStore) GetByUser(arg0 context.Context, arg1 model.UserID) (*model.MFACredential, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateMFA, methodGetByUser), func() (*model.MFACredential, error) {
-		return s.next.GetByUser(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateMFA, methodGetByUser), func(callCtx context.Context) (*model.MFACredential, error) {
+		return s.next.GetByUser(callCtx, arg1)
 	})
 }
 
 func (s *timedMFAStore) Activate(arg0 context.Context, arg1 *store.MFAActivationMutation) (*store.MFAActivationResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateMFA, methodActivate), func() (*store.MFAActivationResult, error) {
-		return s.next.Activate(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateMFA, methodActivate), func(callCtx context.Context) (*store.MFAActivationResult, error) {
+		return s.next.Activate(callCtx, arg1)
 	})
 }
 
 func (s *timedMFAStore) ConsumeSecondFactor(arg0 context.Context, arg1 *store.MFASecondFactorConsumption) error {
-	return timeStoreCall0(s.layer, storeOperation(aggregateMFA, methodConsumeSecondFactor), func() error {
-		return s.next.ConsumeSecondFactor(arg0, arg1)
+	return timeStoreCall0(arg0, s.layer, storeOperation(aggregateMFA, methodConsumeSecondFactor), func(callCtx context.Context) error {
+		return s.next.ConsumeSecondFactor(callCtx, arg1)
 	})
 }
 
 func (s *timedMFAStore) UpgradeSession(arg0 context.Context, arg1 *store.MFASessionUpgrade) ([]string, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateMFA, methodUpgradeSession), func() ([]string, error) {
-		return s.next.UpgradeSession(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateMFA, methodUpgradeSession), func(callCtx context.Context) ([]string, error) {
+		return s.next.UpgradeSession(callCtx, arg1)
 	})
 }
 
 func (s *timedMFAStore) ReplaceRecoveryCodes(arg0 context.Context, arg1 *store.MFARecoveryCodesRegeneration) error {
-	return timeStoreCall0(s.layer, storeOperation(aggregateMFA, methodReplaceRecoveryCodes), func() error {
-		return s.next.ReplaceRecoveryCodes(arg0, arg1)
+	return timeStoreCall0(arg0, s.layer, storeOperation(aggregateMFA, methodReplaceRecoveryCodes), func(callCtx context.Context) error {
+		return s.next.ReplaceRecoveryCodes(callCtx, arg1)
 	})
 }
 
 func (s *timedMFAStore) CountRecoveryCodes(arg0 context.Context, arg1 model.UserID) (int, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateMFA, methodCountRecoveryCodes), func() (int, error) {
-		return s.next.CountRecoveryCodes(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateMFA, methodCountRecoveryCodes), func(callCtx context.Context) (int, error) {
+		return s.next.CountRecoveryCodes(callCtx, arg1)
 	})
 }
 
 func (s *timedMFAStore) InspectKeyState(arg0 context.Context) (*store.MFAKeyState, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateMFA, methodInspectKeyState), func() (*store.MFAKeyState, error) {
-		return s.next.InspectKeyState(arg0)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateMFA, methodInspectKeyState), func(callCtx context.Context) (*store.MFAKeyState, error) {
+		return s.next.InspectKeyState(callCtx)
 	})
 }
 
 func (s *timedMFAStore) StartRekey(arg0 context.Context, arg1 *store.MFARekeyStart) (*store.MFARekeyOperation, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateMFA, methodStartRekey), func() (*store.MFARekeyOperation, error) {
-		return s.next.StartRekey(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateMFA, methodStartRekey), func(callCtx context.Context) (*store.MFARekeyOperation, error) {
+		return s.next.StartRekey(callCtx, arg1)
 	})
 }
 
 func (s *timedMFAStore) ListRekeyTargets(arg0 context.Context, arg1 *store.MFARekeyTargetPageRequest) (*store.MFARekeyTargetPage, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateMFA, methodListRekeyTargets), func() (*store.MFARekeyTargetPage, error) {
-		return s.next.ListRekeyTargets(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateMFA, methodListRekeyTargets), func(callCtx context.Context) (*store.MFARekeyTargetPage, error) {
+		return s.next.ListRekeyTargets(callCtx, arg1)
 	})
 }
 
 func (s *timedMFAStore) ReplaceRekeyTarget(arg0 context.Context, arg1 *store.MFARekeyReplacement) (bool, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateMFA, methodReplaceRekeyTarget), func() (bool, error) {
-		return s.next.ReplaceRekeyTarget(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateMFA, methodReplaceRekeyTarget), func(callCtx context.Context) (bool, error) {
+		return s.next.ReplaceRekeyTarget(callCtx, arg1)
 	})
 }
 
 func (s *timedMFAStore) ProveRekey(arg0 context.Context, arg1 *store.MFARekeyProofRequest) (*store.MFARekeyProof, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateMFA, methodProveRekey), func() (*store.MFARekeyProof, error) {
-		return s.next.ProveRekey(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateMFA, methodProveRekey), func(callCtx context.Context) (*store.MFARekeyProof, error) {
+		return s.next.ProveRekey(callCtx, arg1)
 	})
 }
 
 func (s *timedMFAStore) Disable(arg0 context.Context, arg1 *store.MFADisablement) (*store.MFADisableResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateMFA, methodDisable), func() (*store.MFADisableResult, error) {
-		return s.next.Disable(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateMFA, methodDisable), func(callCtx context.Context) (*store.MFADisableResult, error) {
+		return s.next.Disable(callCtx, arg1)
 	})
 }
 
 func (s *timedMFAStore) SeedPending(arg0 context.Context, arg1 *model.MFACredential) (*model.MFACredential, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateMFA, methodSeedPending), func() (*model.MFACredential, error) {
-		return s.next.SeedPending(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateMFA, methodSeedPending), func(callCtx context.Context) (*model.MFACredential, error) {
+		return s.next.SeedPending(callCtx, arg1)
 	})
 }
 
 func (s *timedAffiliationStore) Create(arg0 context.Context, arg1 *store.AffiliationCreation) (*model.Affiliation, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateAffiliation, methodCreate), func() (*model.Affiliation, error) {
-		return s.next.Create(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateAffiliation, methodCreate), func(callCtx context.Context) (*model.Affiliation, error) {
+		return s.next.Create(callCtx, arg1)
 	})
 }
 
 func (s *timedAffiliationStore) End(arg0 context.Context, arg1 *store.AffiliationEnd) (*model.Affiliation, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateAffiliation, methodEnd), func() (*model.Affiliation, error) {
-		return s.next.End(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateAffiliation, methodEnd), func(callCtx context.Context) (*model.Affiliation, error) {
+		return s.next.End(callCtx, arg1)
 	})
 }
 
 func (s *timedAffiliationStore) Save(arg0 context.Context, arg1 *model.Affiliation) (*model.Affiliation, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateAffiliation, methodSave), func() (*model.Affiliation, error) {
-		return s.next.Save(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateAffiliation, methodSave), func(callCtx context.Context) (*model.Affiliation, error) {
+		return s.next.Save(callCtx, arg1)
 	})
 }
 
 func (s *timedAffiliationStore) Get(arg0 context.Context, arg1 model.AffiliationID) (*model.Affiliation, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateAffiliation, methodGet), func() (*model.Affiliation, error) {
-		return s.next.Get(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateAffiliation, methodGet), func(callCtx context.Context) (*model.Affiliation, error) {
+		return s.next.Get(callCtx, arg1)
 	})
 }
 
 func (s *timedAffiliationStore) ListByUser(arg0 context.Context, arg1 model.UserID) ([]*model.Affiliation, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateAffiliation, methodListByUser), func() ([]*model.Affiliation, error) {
-		return s.next.ListByUser(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateAffiliation, methodListByUser), func(callCtx context.Context) ([]*model.Affiliation, error) {
+		return s.next.ListByUser(callCtx, arg1)
 	})
 }
 
 func (s *timedAffiliationStore) ListActiveByUser(ctx context.Context, userID model.UserID, at time.Time) ([]*model.Affiliation, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateAffiliation, methodListActiveByUser), func() ([]*model.Affiliation, error) {
-		return s.next.ListActiveByUser(ctx, userID, at)
+	return timeStoreCall1(ctx, s.layer, storeOperation(aggregateAffiliation, methodListActiveByUser), func(callCtx context.Context) ([]*model.Affiliation, error) {
+		return s.next.ListActiveByUser(callCtx, userID, at)
 	})
 }
 
 func (s *timedAcademicUnitMemberStore) Create(arg0 context.Context, arg1 *store.AcademicUnitMemberCreation) (*model.AcademicUnitMember, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateAcademicUnitMember, methodCreate), func() (*model.AcademicUnitMember, error) {
-		return s.next.Create(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateAcademicUnitMember, methodCreate), func(callCtx context.Context) (*model.AcademicUnitMember, error) {
+		return s.next.Create(callCtx, arg1)
 	})
 }
 
 func (s *timedAcademicUnitMemberStore) End(arg0 context.Context, arg1 *store.AcademicUnitMemberEnd) (*model.AcademicUnitMember, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateAcademicUnitMember, methodEnd), func() (*model.AcademicUnitMember, error) {
-		return s.next.End(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateAcademicUnitMember, methodEnd), func(callCtx context.Context) (*model.AcademicUnitMember, error) {
+		return s.next.End(callCtx, arg1)
 	})
 }
 
 func (s *timedAcademicUnitMemberStore) Save(arg0 context.Context, arg1 *model.AcademicUnitMember) (*model.AcademicUnitMember, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateAcademicUnitMember, methodSave), func() (*model.AcademicUnitMember, error) {
-		return s.next.Save(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateAcademicUnitMember, methodSave), func(callCtx context.Context) (*model.AcademicUnitMember, error) {
+		return s.next.Save(callCtx, arg1)
 	})
 }
 
 func (s *timedAcademicUnitMemberStore) Get(arg0 context.Context, arg1 model.AcademicUnitMemberID) (*model.AcademicUnitMember, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateAcademicUnitMember, methodGet), func() (*model.AcademicUnitMember, error) {
-		return s.next.Get(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateAcademicUnitMember, methodGet), func(callCtx context.Context) (*model.AcademicUnitMember, error) {
+		return s.next.Get(callCtx, arg1)
 	})
 }
 
 func (s *timedAcademicUnitMemberStore) ListByUser(arg0 context.Context, arg1 model.UserID) ([]*model.AcademicUnitMember, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateAcademicUnitMember, methodListByUser), func() ([]*model.AcademicUnitMember, error) {
-		return s.next.ListByUser(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateAcademicUnitMember, methodListByUser), func(callCtx context.Context) ([]*model.AcademicUnitMember, error) {
+		return s.next.ListByUser(callCtx, arg1)
 	})
 }
 
 func (s *timedAcademicUnitMemberStore) ListByAcademicUnit(ctx context.Context, academicUnitID model.AcademicUnitID, at time.Time) ([]*model.AcademicUnitMember, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateAcademicUnitMember, methodListByAcademicUnit), func() ([]*model.AcademicUnitMember, error) {
-		return s.next.ListByAcademicUnit(ctx, academicUnitID, at)
+	return timeStoreCall1(ctx, s.layer, storeOperation(aggregateAcademicUnitMember, methodListByAcademicUnit), func(callCtx context.Context) ([]*model.AcademicUnitMember, error) {
+		return s.next.ListByAcademicUnit(callCtx, academicUnitID, at)
 	})
 }
 
 func (s *timedAcademicUnitMemberStore) ListPageByAcademicUnit(arg0 context.Context, arg1 store.AcademicUnitMemberPageOptions) (*store.AcademicUnitMemberPage, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateAcademicUnitMember, methodListPageByAcademicUnit), func() (*store.AcademicUnitMemberPage, error) {
-		return s.next.ListPageByAcademicUnit(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateAcademicUnitMember, methodListPageByAcademicUnit), func(callCtx context.Context) (*store.AcademicUnitMemberPage, error) {
+		return s.next.ListPageByAcademicUnit(callCtx, arg1)
 	})
 }
 
 func (s *timedAcademicUnitMemberStore) ListActiveByUser(arg0 context.Context, arg1 model.UserID, arg2 time.Time) ([]*model.AcademicUnitMember, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateAcademicUnitMember, methodListActiveByUser), func() ([]*model.AcademicUnitMember, error) {
-		return s.next.ListActiveByUser(arg0, arg1, arg2)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateAcademicUnitMember, methodListActiveByUser), func(callCtx context.Context) ([]*model.AcademicUnitMember, error) {
+		return s.next.ListActiveByUser(callCtx, arg1, arg2)
 	})
 }
 
 func (s *timedClassMemberStore) Enroll(arg0 context.Context, arg1 *store.ClassMemberEnrollment) (*store.ClassEnrollmentResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateClassMember, methodEnroll), func() (*store.ClassEnrollmentResult, error) {
-		return s.next.Enroll(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateClassMember, methodEnroll), func(callCtx context.Context) (*store.ClassEnrollmentResult, error) {
+		return s.next.Enroll(callCtx, arg1)
 	})
 }
 
 func (s *timedClassMemberStore) End(arg0 context.Context, arg1 *store.ClassMemberEnd) (*model.ClassMember, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateClassMember, methodEnd), func() (*model.ClassMember, error) {
-		return s.next.End(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateClassMember, methodEnd), func(callCtx context.Context) (*model.ClassMember, error) {
+		return s.next.End(callCtx, arg1)
 	})
 }
 
 func (s *timedClassMemberStore) Get(arg0 context.Context, arg1 model.ClassMemberID) (*model.ClassMember, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateClassMember, methodGet), func() (*model.ClassMember, error) {
-		return s.next.Get(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateClassMember, methodGet), func(callCtx context.Context) (*model.ClassMember, error) {
+		return s.next.Get(callCtx, arg1)
 	})
 }
 
 func (s *timedClassMemberStore) ListByUser(arg0 context.Context, arg1 model.UserID) ([]*model.ClassMember, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateClassMember, methodListByUser), func() ([]*model.ClassMember, error) {
-		return s.next.ListByUser(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateClassMember, methodListByUser), func(callCtx context.Context) ([]*model.ClassMember, error) {
+		return s.next.ListByUser(callCtx, arg1)
 	})
 }
 
 func (s *timedClassMemberStore) ListByClass(ctx context.Context, classID model.ClassID, at time.Time) ([]*model.ClassMember, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateClassMember, methodListByClass), func() ([]*model.ClassMember, error) {
-		return s.next.ListByClass(ctx, classID, at)
+	return timeStoreCall1(ctx, s.layer, storeOperation(aggregateClassMember, methodListByClass), func(callCtx context.Context) ([]*model.ClassMember, error) {
+		return s.next.ListByClass(callCtx, classID, at)
 	})
 }
 
 func (s *timedClassMemberStore) ListPageByClass(arg0 context.Context, arg1 store.ClassMemberPageOptions) (*store.ClassMemberPage, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateClassMember, methodListPageByClass), func() (*store.ClassMemberPage, error) {
-		return s.next.ListPageByClass(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateClassMember, methodListPageByClass), func(callCtx context.Context) (*store.ClassMemberPage, error) {
+		return s.next.ListPageByClass(callCtx, arg1)
 	})
 }
 
 func (s *timedClassMemberStore) ListActiveByUser(ctx context.Context, userID model.UserID, at time.Time) ([]*model.ClassMember, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateClassMember, methodListActiveByUser), func() ([]*model.ClassMember, error) {
-		return s.next.ListActiveByUser(ctx, userID, at)
+	return timeStoreCall1(ctx, s.layer, storeOperation(aggregateClassMember, methodListActiveByUser), func(callCtx context.Context) ([]*model.ClassMember, error) {
+		return s.next.ListActiveByUser(callCtx, userID, at)
 	})
 }
 
 func (s *timedClassMemberStore) SeedEnroll(arg0 context.Context, arg1 *model.ClassMember) (*store.ClassEnrollmentResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateClassMember, methodSeedEnroll), func() (*store.ClassEnrollmentResult, error) {
-		return s.next.SeedEnroll(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateClassMember, methodSeedEnroll), func(callCtx context.Context) (*store.ClassEnrollmentResult, error) {
+		return s.next.SeedEnroll(callCtx, arg1)
 	})
 }
 
 func (s *timedClassMemberStore) SeedEnd(arg0 context.Context, arg1 *store.ClassMemberSeedEnd) (*model.ClassMember, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateClassMember, methodSeedEnd), func() (*model.ClassMember, error) {
-		return s.next.SeedEnd(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateClassMember, methodSeedEnd), func(callCtx context.Context) (*model.ClassMember, error) {
+		return s.next.SeedEnd(callCtx, arg1)
 	})
 }
 
 func (s *timedPasswordCredentialStore) Save(arg0 context.Context, arg1 *model.PasswordCredential) (*model.PasswordCredential, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregatePasswordCredential, methodSave), func() (*model.PasswordCredential, error) {
-		return s.next.Save(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregatePasswordCredential, methodSave), func(callCtx context.Context) (*model.PasswordCredential, error) {
+		return s.next.Save(callCtx, arg1)
 	})
 }
 
 func (s *timedPasswordCredentialStore) GetByUser(arg0 context.Context, arg1 model.UserID) (*model.PasswordCredential, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregatePasswordCredential, methodGetByUser), func() (*model.PasswordCredential, error) {
-		return s.next.GetByUser(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregatePasswordCredential, methodGetByUser), func(callCtx context.Context) (*model.PasswordCredential, error) {
+		return s.next.GetByUser(callCtx, arg1)
 	})
 }
 
 func (s *timedPasswordCredentialStore) Rehash(arg0 context.Context, arg1 *store.PasswordCredentialRehash) error {
-	return timeStoreCall0(s.layer, storeOperation(aggregatePasswordCredential, methodRehash), func() error {
-		return s.next.Rehash(arg0, arg1)
+	return timeStoreCall0(arg0, s.layer, storeOperation(aggregatePasswordCredential, methodRehash), func(callCtx context.Context) error {
+		return s.next.Rehash(callCtx, arg1)
 	})
 }
 
 func (s *timedPasswordCredentialStore) Enroll(arg0 context.Context, arg1 *store.PasswordCredentialEnrollment) (*store.AuthenticationMethodMutationResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregatePasswordCredential, methodEnroll), func() (*store.AuthenticationMethodMutationResult, error) {
-		return s.next.Enroll(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregatePasswordCredential, methodEnroll), func(callCtx context.Context) (*store.AuthenticationMethodMutationResult, error) {
+		return s.next.Enroll(callCtx, arg1)
 	})
 }
 
 func (s *timedPasswordCredentialStore) Remove(arg0 context.Context, arg1 *store.PasswordCredentialRemoval) (*store.AuthenticationMethodMutationResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregatePasswordCredential, methodRemove), func() (*store.AuthenticationMethodMutationResult, error) {
-		return s.next.Remove(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregatePasswordCredential, methodRemove), func(callCtx context.Context) (*store.AuthenticationMethodMutationResult, error) {
+		return s.next.Remove(callCtx, arg1)
 	})
 }
 
 func (s *timedSessionStore) ReauthenticateExternal(arg0 context.Context, arg1 *store.SessionExternalReauthentication) (*store.SessionReauthenticationResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateSession, methodReauthenticateExternal), func() (*store.SessionReauthenticationResult, error) {
-		return s.next.ReauthenticateExternal(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateSession, methodReauthenticateExternal), func(callCtx context.Context) (*store.SessionReauthenticationResult, error) {
+		return s.next.ReauthenticateExternal(callCtx, arg1)
 	})
 }
 
 func (s *timedSessionStore) ReauthenticatePassword(arg0 context.Context, arg1 *store.SessionPasswordReauthentication) (*store.SessionReauthenticationResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateSession, methodReauthenticatePassword), func() (*store.SessionReauthenticationResult, error) {
-		return s.next.ReauthenticatePassword(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateSession, methodReauthenticatePassword), func(callCtx context.Context) (*store.SessionReauthenticationResult, error) {
+		return s.next.ReauthenticatePassword(callCtx, arg1)
 	})
 }
 
 func (s *timedSessionStore) Save(arg0 context.Context, arg1 *store.SessionCreation) (*model.Session, []*model.SessionCredential, error) {
-	return timeStoreCall2(s.layer, storeOperation(aggregateSession, methodSave), func() (*model.Session, []*model.SessionCredential, error) {
-		return s.next.Save(arg0, arg1)
+	return timeStoreCall2(arg0, s.layer, storeOperation(aggregateSession, methodSave), func(callCtx context.Context) (*model.Session, []*model.SessionCredential, error) {
+		return s.next.Save(callCtx, arg1)
 	})
 }
 
 func (s *timedSessionStore) Get(arg0 context.Context, arg1 model.SessionID) (*model.Session, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateSession, methodGet), func() (*model.Session, error) {
-		return s.next.Get(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateSession, methodGet), func(callCtx context.Context) (*model.Session, error) {
+		return s.next.Get(callCtx, arg1)
 	})
 }
 
 func (s *timedSessionStore) ListByUser(arg0 context.Context, arg1 *store.SessionPageQuery) ([]*model.Session, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateSession, methodListByUser), func() ([]*model.Session, error) {
-		return s.next.ListByUser(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateSession, methodListByUser), func(callCtx context.Context) ([]*model.Session, error) {
+		return s.next.ListByUser(callCtx, arg1)
 	})
 }
 
 func (s *timedSessionStore) ListActiveByUser(arg0 context.Context, arg1 model.UserID, arg2 time.Time) ([]*model.Session, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateSession, methodListActiveByUser), func() ([]*model.Session, error) {
-		return s.next.ListActiveByUser(arg0, arg1, arg2)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateSession, methodListActiveByUser), func(callCtx context.Context) ([]*model.Session, error) {
+		return s.next.ListActiveByUser(callCtx, arg1, arg2)
 	})
 }
 
 func (s *timedSessionStore) UpdateActivity(arg0 context.Context, arg1 *store.SessionActivityUpdate) error {
-	return timeStoreCall0(s.layer, storeOperation(aggregateSession, methodUpdateActivity), func() error {
-		return s.next.UpdateActivity(arg0, arg1)
+	return timeStoreCall0(arg0, s.layer, storeOperation(aggregateSession, methodUpdateActivity), func(callCtx context.Context) error {
+		return s.next.UpdateActivity(callCtx, arg1)
 	})
 }
 
 func (s *timedSessionStore) EnforceExpiry(arg0 context.Context, arg1 *store.SessionExpiryEnforcement) (*store.SessionExpiryEnforcementResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateSession, methodEnforceExpiry), func() (*store.SessionExpiryEnforcementResult, error) {
-		return s.next.EnforceExpiry(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateSession, methodEnforceExpiry), func(callCtx context.Context) (*store.SessionExpiryEnforcementResult, error) {
+		return s.next.EnforceExpiry(callCtx, arg1)
 	})
 }
 
 func (s *timedSessionStore) Withdraw(arg0 context.Context, arg1 *store.SessionWithdrawal) ([]string, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateSession, methodWithdraw), func() ([]string, error) {
-		return s.next.Withdraw(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateSession, methodWithdraw), func(callCtx context.Context) ([]string, error) {
+		return s.next.Withdraw(callCtx, arg1)
 	})
 }
 
 func (s *timedSessionStore) Revoke(arg0 context.Context, arg1 *store.SessionRevocation) (*store.SessionRevocationResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateSession, methodRevoke), func() (*store.SessionRevocationResult, error) {
-		return s.next.Revoke(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateSession, methodRevoke), func(callCtx context.Context) (*store.SessionRevocationResult, error) {
+		return s.next.Revoke(callCtx, arg1)
 	})
 }
 
 func (s *timedSessionStore) RevokeAllForUser(arg0 context.Context, arg1 *store.UserSessionsRevocation) (*store.UserSessionsRevocationResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateSession, methodRevokeAllForUser), func() (*store.UserSessionsRevocationResult, error) {
-		return s.next.RevokeAllForUser(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateSession, methodRevokeAllForUser), func(callCtx context.Context) (*store.UserSessionsRevocationResult, error) {
+		return s.next.RevokeAllForUser(callCtx, arg1)
 	})
 }
 
 func (s *timedSessionStore) PurgeRetired(arg0 context.Context, arg1 *store.SessionPurge) (*store.SessionPurgeResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateSession, methodPurgeRetired), func() (*store.SessionPurgeResult, error) {
-		return s.next.PurgeRetired(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateSession, methodPurgeRetired), func(callCtx context.Context) (*store.SessionPurgeResult, error) {
+		return s.next.PurgeRetired(callCtx, arg1)
 	})
 }
 
 func (s *timedSessionCredentialStore) GetSessionByTokenHash(arg0 context.Context, arg1 string, arg2 model.SessionCredentialKind) (*model.SessionCredential, *model.Session, error) {
-	return timeStoreCall2(s.layer, storeOperation(aggregateSessionCredential, methodGetSessionByTokenHash), func() (*model.SessionCredential, *model.Session, error) {
-		return s.next.GetSessionByTokenHash(arg0, arg1, arg2)
+	return timeStoreCall2(arg0, s.layer, storeOperation(aggregateSessionCredential, methodGetSessionByTokenHash), func(callCtx context.Context) (*model.SessionCredential, *model.Session, error) {
+		return s.next.GetSessionByTokenHash(callCtx, arg1, arg2)
 	})
 }
 
 func (s *timedSessionCredentialStore) RotateRefresh(arg0 context.Context, arg1 *store.SessionRefreshRotation) (*store.SessionRotation, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateSessionCredential, methodRotateRefresh), func() (*store.SessionRotation, error) {
-		return s.next.RotateRefresh(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateSessionCredential, methodRotateRefresh), func(callCtx context.Context) (*store.SessionRotation, error) {
+		return s.next.RotateRefresh(callCtx, arg1)
 	})
 }
 
 func (s *timedSessionCredentialStore) PurgeRetired(arg0 context.Context, arg1 *store.SessionCredentialPurge) (int64, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateSessionCredential, methodPurgeRetired), func() (int64, error) {
-		return s.next.PurgeRetired(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateSessionCredential, methodPurgeRetired), func(callCtx context.Context) (int64, error) {
+		return s.next.PurgeRetired(callCtx, arg1)
 	})
 }
 
 func (s *timedRoleStore) Save(arg0 context.Context, arg1 *store.RoleCreation) (*model.Role, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateRole, methodSave), func() (*model.Role, error) {
-		return s.next.Save(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateRole, methodSave), func(callCtx context.Context) (*model.Role, error) {
+		return s.next.Save(callCtx, arg1)
 	})
 }
 
 func (s *timedRoleStore) Get(arg0 context.Context, arg1 model.RoleID) (*model.Role, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateRole, methodGet), func() (*model.Role, error) {
-		return s.next.Get(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateRole, methodGet), func(callCtx context.Context) (*model.Role, error) {
+		return s.next.Get(callCtx, arg1)
 	})
 }
 
 func (s *timedRoleStore) GetIncludingArchived(arg0 context.Context, arg1 model.RoleID) (*model.Role, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateRole, methodGetIncludingArchived), func() (*model.Role, error) {
-		return s.next.GetIncludingArchived(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateRole, methodGetIncludingArchived), func(callCtx context.Context) (*model.Role, error) {
+		return s.next.GetIncludingArchived(callCtx, arg1)
 	})
 }
 
 func (s *timedRoleStore) GetByName(arg0 context.Context, arg1 string) (*model.Role, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateRole, methodGetByName), func() (*model.Role, error) {
-		return s.next.GetByName(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateRole, methodGetByName), func(callCtx context.Context) (*model.Role, error) {
+		return s.next.GetByName(callCtx, arg1)
 	})
 }
 
 func (s *timedRoleStore) GetByIDs(arg0 context.Context, arg1 []model.RoleID) ([]*model.Role, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateRole, methodGetByIDs), func() ([]*model.Role, error) {
-		return s.next.GetByIDs(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateRole, methodGetByIDs), func(callCtx context.Context) ([]*model.Role, error) {
+		return s.next.GetByIDs(callCtx, arg1)
 	})
 }
 
 func (s *timedRoleStore) List(arg0 context.Context) ([]*model.Role, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateRole, methodList), func() ([]*model.Role, error) {
-		return s.next.List(arg0)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateRole, methodList), func(callCtx context.Context) ([]*model.Role, error) {
+		return s.next.List(callCtx)
 	})
 }
 
 func (s *timedRoleStore) Update(arg0 context.Context, arg1 *store.RoleUpdate) (*model.Role, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateRole, methodUpdate), func() (*model.Role, error) {
-		return s.next.Update(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateRole, methodUpdate), func(callCtx context.Context) (*model.Role, error) {
+		return s.next.Update(callCtx, arg1)
 	})
 }
 
 func (s *timedRoleStore) Archive(arg0 context.Context, arg1 *store.RoleArchive) (*model.Role, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateRole, methodArchive), func() (*model.Role, error) {
-		return s.next.Archive(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateRole, methodArchive), func(callCtx context.Context) (*model.Role, error) {
+		return s.next.Archive(callCtx, arg1)
 	})
 }
 
 func (s *timedRoleStore) SeedBuiltIn(arg0 context.Context, arg1 *model.Role) (*model.Role, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateRole, methodSeedBuiltIn), func() (*model.Role, error) {
-		return s.next.SeedBuiltIn(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateRole, methodSeedBuiltIn), func(callCtx context.Context) (*model.Role, error) {
+		return s.next.SeedBuiltIn(callCtx, arg1)
 	})
 }
 
 func (s *timedRoleStore) SeedUpdate(arg0 context.Context, arg1 *model.Role) (*model.Role, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateRole, methodSeedUpdate), func() (*model.Role, error) {
-		return s.next.SeedUpdate(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateRole, methodSeedUpdate), func(callCtx context.Context) (*model.Role, error) {
+		return s.next.SeedUpdate(callCtx, arg1)
 	})
 }
 
 func (s *timedRoleBindingStore) Save(arg0 context.Context, arg1 *store.RoleBindingCreation) (*model.RoleBinding, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateRoleBinding, methodSave), func() (*model.RoleBinding, error) {
-		return s.next.Save(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateRoleBinding, methodSave), func(callCtx context.Context) (*model.RoleBinding, error) {
+		return s.next.Save(callCtx, arg1)
 	})
 }
 
 func (s *timedRoleBindingStore) Get(arg0 context.Context, arg1 model.RoleBindingID) (*model.RoleBinding, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateRoleBinding, methodGet), func() (*model.RoleBinding, error) {
-		return s.next.Get(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateRoleBinding, methodGet), func(callCtx context.Context) (*model.RoleBinding, error) {
+		return s.next.Get(callCtx, arg1)
 	})
 }
 
 func (s *timedRoleBindingStore) ListByUser(arg0 context.Context, arg1 model.UserID) ([]*model.RoleBinding, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateRoleBinding, methodListByUser), func() ([]*model.RoleBinding, error) {
-		return s.next.ListByUser(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateRoleBinding, methodListByUser), func(callCtx context.Context) ([]*model.RoleBinding, error) {
+		return s.next.ListByUser(callCtx, arg1)
 	})
 }
 
 func (s *timedRoleBindingStore) ListVisibleByUser(arg0 context.Context, arg1 model.UserID, arg2 store.UserVisibilityScope) ([]*model.RoleBinding, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateRoleBinding, methodListVisibleByUser), func() ([]*model.RoleBinding, error) {
-		return s.next.ListVisibleByUser(arg0, arg1, arg2)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateRoleBinding, methodListVisibleByUser), func(callCtx context.Context) ([]*model.RoleBinding, error) {
+		return s.next.ListVisibleByUser(callCtx, arg1, arg2)
 	})
 }
 
 func (s *timedRoleBindingStore) ListByScope(arg0 context.Context, arg1 model.RoleScopeType, arg2 string) ([]*model.RoleBinding, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateRoleBinding, methodListByScope), func() ([]*model.RoleBinding, error) {
-		return s.next.ListByScope(arg0, arg1, arg2)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateRoleBinding, methodListByScope), func(callCtx context.Context) ([]*model.RoleBinding, error) {
+		return s.next.ListByScope(callCtx, arg1, arg2)
 	})
 }
 
 func (s *timedRoleBindingStore) ListActiveByUser(arg0 context.Context, arg1 model.UserID, arg2 time.Time) ([]*model.RoleBinding, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateRoleBinding, methodListActiveByUser), func() ([]*model.RoleBinding, error) {
-		return s.next.ListActiveByUser(arg0, arg1, arg2)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateRoleBinding, methodListActiveByUser), func(callCtx context.Context) ([]*model.RoleBinding, error) {
+		return s.next.ListActiveByUser(callCtx, arg1, arg2)
 	})
 }
 
 func (s *timedRoleBindingStore) End(arg0 context.Context, arg1 *store.RoleBindingEnd) (*model.RoleBinding, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateRoleBinding, methodEnd), func() (*model.RoleBinding, error) {
-		return s.next.End(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateRoleBinding, methodEnd), func(callCtx context.Context) (*model.RoleBinding, error) {
+		return s.next.End(callCtx, arg1)
 	})
 }
 
 func (s *timedAuditStore) Save(arg0 context.Context, arg1 *model.AuditEvent) (*model.AuditEvent, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateAudit, methodSave), func() (*model.AuditEvent, error) {
-		return s.next.Save(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateAudit, methodSave), func(callCtx context.Context) (*model.AuditEvent, error) {
+		return s.next.Save(callCtx, arg1)
 	})
 }
 
 func (s *timedAuditStore) Get(arg0 context.Context, arg1 model.AuditEventID) (*model.AuditEvent, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateAudit, methodGet), func() (*model.AuditEvent, error) {
-		return s.next.Get(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateAudit, methodGet), func(callCtx context.Context) (*model.AuditEvent, error) {
+		return s.next.Get(callCtx, arg1)
 	})
 }
 
 func (s *timedAuditStore) Complete(arg0 context.Context, arg1 *store.AuditCompletion) (*model.AuditEvent, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateAudit, methodComplete), func() (*model.AuditEvent, error) {
-		return s.next.Complete(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateAudit, methodComplete), func(callCtx context.Context) (*model.AuditEvent, error) {
+		return s.next.Complete(callCtx, arg1)
 	})
 }
 
 func (s *timedAuditStore) List(arg0 context.Context, arg1 store.AuditListOptions) ([]*model.AuditEvent, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateAudit, methodList), func() ([]*model.AuditEvent, error) {
-		return s.next.List(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateAudit, methodList), func(callCtx context.Context) ([]*model.AuditEvent, error) {
+		return s.next.List(callCtx, arg1)
 	})
 }
 
 func (s *timedAuditStore) FailAbandonedAttempts(arg0 context.Context, arg1 *store.AuditAttemptAbandonment) (int64, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateAudit, methodFailAbandonedAttempts), func() (int64, error) {
-		return s.next.FailAbandonedAttempts(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateAudit, methodFailAbandonedAttempts), func(callCtx context.Context) (int64, error) {
+		return s.next.FailAbandonedAttempts(callCtx, arg1)
 	})
 }
 
 func (s *timedInstallationStore) Get(arg0 context.Context) (*model.InstallationState, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateInstallation, methodGet), func() (*model.InstallationState, error) {
-		return s.next.Get(arg0)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateInstallation, methodGet), func(callCtx context.Context) (*model.InstallationState, error) {
+		return s.next.Get(callCtx)
 	})
 }
 
 func (s *timedInstallationStore) Bootstrap(arg0 context.Context, arg1 *store.InstallationBootstrap) (*model.InstallationBootstrapResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateInstallation, methodBootstrap), func() (*model.InstallationBootstrapResult, error) {
-		return s.next.Bootstrap(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateInstallation, methodBootstrap), func(callCtx context.Context) (*model.InstallationBootstrapResult, error) {
+		return s.next.Bootstrap(callCtx, arg1)
 	})
 }
 
 func (s *timedInstallationStore) ReconcileSystemAdministratorRole(arg0 context.Context, arg1 *store.SystemAdministratorRoleReconciliation) (*store.SystemAdministratorRoleReconciliationResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateInstallation, methodReconcileSystemAdministratorRole), func() (*store.SystemAdministratorRoleReconciliationResult, error) {
-		return s.next.ReconcileSystemAdministratorRole(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateInstallation, methodReconcileSystemAdministratorRole), func(callCtx context.Context) (*store.SystemAdministratorRoleReconciliationResult, error) {
+		return s.next.ReconcileSystemAdministratorRole(callCtx, arg1)
 	})
 }
 
 func (s *timedInstallationStore) RecoverAdministratorAccess(arg0 context.Context, arg1 *store.AdministratorRecovery) (*store.AdministratorRecoveryResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateInstallation, methodRecoverAdministratorAccess), func() (*store.AdministratorRecoveryResult, error) {
-		return s.next.RecoverAdministratorAccess(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateInstallation, methodRecoverAdministratorAccess), func(callCtx context.Context) (*store.AdministratorRecoveryResult, error) {
+		return s.next.RecoverAdministratorAccess(callCtx, arg1)
 	})
 }
 
 func (s *timedInstallationStore) ResetAdministratorMFA(arg0 context.Context, arg1 *store.AdministratorMFAReset) (*store.AdministratorMFAResetResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateInstallation, methodResetAdministratorMFA), func() (*store.AdministratorMFAResetResult, error) {
-		return s.next.ResetAdministratorMFA(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateInstallation, methodResetAdministratorMFA), func(callCtx context.Context) (*store.AdministratorMFAResetResult, error) {
+		return s.next.ResetAdministratorMFA(callCtx, arg1)
 	})
 }
 
 func (s *timedInstallationStore) ReconcileAdministratorRecovery(arg0 context.Context, arg1 *store.AdministratorRecoveryReconciliation) (*store.AdministratorRecoveryReconciliationResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateInstallation, methodReconcileAdministratorRecovery), func() (*store.AdministratorRecoveryReconciliationResult, error) {
-		return s.next.ReconcileAdministratorRecovery(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateInstallation, methodReconcileAdministratorRecovery), func(callCtx context.Context) (*store.AdministratorRecoveryReconciliationResult, error) {
+		return s.next.ReconcileAdministratorRecovery(callCtx, arg1)
 	})
 }
 
 func (s *timedAccessPolicyStore) Get(arg0 context.Context, arg1 int) (*store.AccessPolicySnapshot, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateAccessPolicy, methodGet), func() (*store.AccessPolicySnapshot, error) {
-		return s.next.Get(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateAccessPolicy, methodGet), func(callCtx context.Context) (*store.AccessPolicySnapshot, error) {
+		return s.next.Get(callCtx, arg1)
 	})
 }
 
 func (s *timedAccessPolicyStore) Preflight(arg0 context.Context, arg1 *store.AccessPolicyPreflight) ([]store.AccessPolicyBlocker, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateAccessPolicy, methodPreflight), func() ([]store.AccessPolicyBlocker, error) {
-		return s.next.Preflight(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateAccessPolicy, methodPreflight), func(callCtx context.Context) ([]store.AccessPolicyBlocker, error) {
+		return s.next.Preflight(callCtx, arg1)
 	})
 }
 
 func (s *timedAccessPolicyStore) Replace(arg0 context.Context, arg1 *store.AccessPolicyReplacement, arg2 *store.CommandIdempotency) (*store.AccessPolicyReplacementResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateAccessPolicy, methodReplace), func() (*store.AccessPolicyReplacementResult, error) {
-		return s.next.Replace(arg0, arg1, arg2)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateAccessPolicy, methodReplace), func(callCtx context.Context) (*store.AccessPolicyReplacementResult, error) {
+		return s.next.Replace(callCtx, arg1, arg2)
 	})
 }
 
 func (s *timedDesktopCompatibilityPolicyStore) Get(arg0 context.Context) (*model.DesktopCompatibilityPolicy, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateDesktopCompatibilityPolicy, methodGet), func() (*model.DesktopCompatibilityPolicy, error) {
-		return s.next.Get(arg0)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateDesktopCompatibilityPolicy, methodGet), func(callCtx context.Context) (*model.DesktopCompatibilityPolicy, error) {
+		return s.next.Get(callCtx)
 	})
 }
 
 func (s *timedDesktopCompatibilityPolicyStore) Replace(arg0 context.Context, arg1 *store.DesktopCompatibilityPolicyReplacement, arg2 *store.CommandIdempotency) (*store.DesktopCompatibilityPolicyReplacementResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateDesktopCompatibilityPolicy, methodReplace), func() (*store.DesktopCompatibilityPolicyReplacementResult, error) {
-		return s.next.Replace(arg0, arg1, arg2)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateDesktopCompatibilityPolicy, methodReplace), func(callCtx context.Context) (*store.DesktopCompatibilityPolicyReplacementResult, error) {
+		return s.next.Replace(callCtx, arg1, arg2)
 	})
 }
 
 func (s *timedRetentionPolicyStore) Get(arg0 context.Context) (*model.RetentionPolicy, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateRetentionPolicy, methodGet), func() (*model.RetentionPolicy, error) {
-		return s.next.Get(arg0)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateRetentionPolicy, methodGet), func(callCtx context.Context) (*model.RetentionPolicy, error) {
+		return s.next.Get(callCtx)
 	})
 }
 
 func (s *timedRetentionPolicyStore) Replace(arg0 context.Context, arg1 *store.RetentionPolicyReplacement, arg2 *store.CommandIdempotency) (*store.RetentionPolicyReplacementResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateRetentionPolicy, methodReplace), func() (*store.RetentionPolicyReplacementResult, error) {
-		return s.next.Replace(arg0, arg1, arg2)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateRetentionPolicy, methodReplace), func(callCtx context.Context) (*store.RetentionPolicyReplacementResult, error) {
+		return s.next.Replace(callCtx, arg1, arg2)
 	})
 }
 
 func (s *timedRetentionStore) GetControl(arg0 context.Context) (*model.RetentionControl, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateRetention, methodGetControl), func() (*model.RetentionControl, error) {
-		return s.next.GetControl(arg0)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateRetention, methodGetControl), func(callCtx context.Context) (*model.RetentionControl, error) {
+		return s.next.GetControl(callCtx)
 	})
 }
 
 func (s *timedRetentionStore) CreatePreview(arg0 context.Context, arg1 *store.RetentionPreviewCreation, arg2 *store.CommandIdempotency) (*model.RetentionPreview, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateRetention, methodCreatePreview), func() (*model.RetentionPreview, error) {
-		return s.next.CreatePreview(arg0, arg1, arg2)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateRetention, methodCreatePreview), func(callCtx context.Context) (*model.RetentionPreview, error) {
+		return s.next.CreatePreview(callCtx, arg1, arg2)
 	})
 }
 
 func (s *timedRetentionStore) GetPreview(arg0 context.Context, arg1 model.RetentionPreviewID) (*model.RetentionPreview, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateRetention, methodGetPreview), func() (*model.RetentionPreview, error) {
-		return s.next.GetPreview(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateRetention, methodGetPreview), func(callCtx context.Context) (*model.RetentionPreview, error) {
+		return s.next.GetPreview(callCtx, arg1)
 	})
 }
 
 func (s *timedRetentionStore) ChangeControl(arg0 context.Context, arg1 *store.RetentionControlChange, arg2 *store.CommandIdempotency) (*store.RetentionControlResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateRetention, methodChangeControl), func() (*store.RetentionControlResult, error) {
-		return s.next.ChangeControl(arg0, arg1, arg2)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateRetention, methodChangeControl), func(callCtx context.Context) (*store.RetentionControlResult, error) {
+		return s.next.ChangeControl(callCtx, arg1, arg2)
 	})
 }
 
 func (s *timedRetentionStore) ListRecords(arg0 context.Context, arg1 store.RetentionRecordListOptions) (*store.RetentionRecordPage, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateRetention, methodListRecords), func() (*store.RetentionRecordPage, error) {
-		return s.next.ListRecords(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateRetention, methodListRecords), func(callCtx context.Context) (*store.RetentionRecordPage, error) {
+		return s.next.ListRecords(callCtx, arg1)
 	})
 }
 
 func (s *timedRetentionStore) ReconcileSubmission(arg0 context.Context, arg1 *store.RetentionReconciliation) (*store.RetentionReconciliationResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateRetention, methodReconcileSubmission), func() (*store.RetentionReconciliationResult, error) {
-		return s.next.ReconcileSubmission(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateRetention, methodReconcileSubmission), func(callCtx context.Context) (*store.RetentionReconciliationResult, error) {
+		return s.next.ReconcileSubmission(callCtx, arg1)
 	})
 }
 
 func (s *timedRetentionStore) BeginPurgeBatch(arg0 context.Context, arg1 int) ([]store.RetentionPurgeObject, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateRetention, methodBeginPurgeBatch), func() ([]store.RetentionPurgeObject, error) {
-		return s.next.BeginPurgeBatch(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateRetention, methodBeginPurgeBatch), func(callCtx context.Context) ([]store.RetentionPurgeObject, error) {
+		return s.next.BeginPurgeBatch(callCtx, arg1)
 	})
 }
 
 func (s *timedRetentionStore) CompletePurge(arg0 context.Context, arg1 *store.RetentionPurgeCompletion) error {
-	return timeStoreCall0(s.layer, storeOperation(aggregateRetention, methodCompletePurge), func() error {
-		return s.next.CompletePurge(arg0, arg1)
+	return timeStoreCall0(arg0, s.layer, storeOperation(aggregateRetention, methodCompletePurge), func(callCtx context.Context) error {
+		return s.next.CompletePurge(callCtx, arg1)
 	})
 }
 
 func (s *timedRetentionStore) ListNotices(arg0 context.Context, arg1 model.UserID, arg2 model.RetentionRetirementID, arg3 int) ([]model.RetentionNotice, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateRetention, methodListNotices), func() ([]model.RetentionNotice, error) {
-		return s.next.ListNotices(arg0, arg1, arg2, arg3)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateRetention, methodListNotices), func(callCtx context.Context) ([]model.RetentionNotice, error) {
+		return s.next.ListNotices(callCtx, arg1, arg2, arg3)
 	})
 }
 
 func (s *timedRetentionStore) ListPendingNotices(arg0 context.Context, arg1 int) ([]model.RetentionNotice, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateRetention, methodListPendingNotices), func() ([]model.RetentionNotice, error) {
-		return s.next.ListPendingNotices(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateRetention, methodListPendingNotices), func(callCtx context.Context) ([]model.RetentionNotice, error) {
+		return s.next.ListPendingNotices(callCtx, arg1)
 	})
 }
 
 func (s *timedRetentionStore) CompleteNotice(arg0 context.Context, arg1 *store.RetentionNoticeMail) error {
-	return timeStoreCall0(s.layer, storeOperation(aggregateRetention, methodCompleteNotice), func() error {
-		return s.next.CompleteNotice(arg0, arg1)
+	return timeStoreCall0(arg0, s.layer, storeOperation(aggregateRetention, methodCompleteNotice), func(callCtx context.Context) error {
+		return s.next.CompleteNotice(callCtx, arg1)
 	})
 }
 
 func (s *timedRetentionStore) ListExpiryRecords(arg0 context.Context, arg1 store.RetentionExpiryListOptions) (*store.RetentionExpiryPage, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateRetention, methodListExpiryRecords), func() (*store.RetentionExpiryPage, error) {
-		return s.next.ListExpiryRecords(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateRetention, methodListExpiryRecords), func(callCtx context.Context) (*store.RetentionExpiryPage, error) {
+		return s.next.ListExpiryRecords(callCtx, arg1)
 	})
 }
 
 func (s *timedRetentionStore) ReconcileExpiry(arg0 context.Context, arg1 *store.RetentionExpiryReconciliation) (*store.RetentionExpiryResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateRetention, methodReconcileExpiry), func() (*store.RetentionExpiryResult, error) {
-		return s.next.ReconcileExpiry(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateRetention, methodReconcileExpiry), func(callCtx context.Context) (*store.RetentionExpiryResult, error) {
+		return s.next.ReconcileExpiry(callCtx, arg1)
 	})
 }
 
 func (s *timedRetentionStore) ReconcileCleanupAuditExpiry(arg0 context.Context, arg1 *store.RetentionCleanupAuditReconciliation) (*store.RetentionCleanupAuditResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateRetention, methodReconcileCleanupAuditExpiry), func() (*store.RetentionCleanupAuditResult, error) {
-		return s.next.ReconcileCleanupAuditExpiry(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateRetention, methodReconcileCleanupAuditExpiry), func(callCtx context.Context) (*store.RetentionCleanupAuditResult, error) {
+		return s.next.ReconcileCleanupAuditExpiry(callCtx, arg1)
 	})
 }
 
 func (s *timedClusterDiscoveryStore) Upsert(arg0 context.Context, arg1 *store.ClusterDiscoveryNode) error {
-	return timeStoreCall0(s.layer, storeOperation(aggregateClusterDiscovery, methodUpsert), func() error {
-		return s.next.Upsert(arg0, arg1)
+	return timeStoreCall0(arg0, s.layer, storeOperation(aggregateClusterDiscovery, methodUpsert), func(callCtx context.Context) error {
+		return s.next.Upsert(callCtx, arg1)
 	})
 }
 
 func (s *timedClusterDiscoveryStore) ListLive(ctx context.Context, liveAt time.Time) ([]*store.ClusterDiscoveryNode, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateClusterDiscovery, methodListLive), func() ([]*store.ClusterDiscoveryNode, error) {
-		return s.next.ListLive(ctx, liveAt)
+	return timeStoreCall1(ctx, s.layer, storeOperation(aggregateClusterDiscovery, methodListLive), func(callCtx context.Context) ([]*store.ClusterDiscoveryNode, error) {
+		return s.next.ListLive(callCtx, liveAt)
 	})
 }
 
 func (s *timedClusterDiscoveryStore) Delete(arg0 context.Context, arg1 string) error {
-	return timeStoreCall0(s.layer, storeOperation(aggregateClusterDiscovery, methodDelete), func() error {
-		return s.next.Delete(arg0, arg1)
+	return timeStoreCall0(arg0, s.layer, storeOperation(aggregateClusterDiscovery, methodDelete), func(callCtx context.Context) error {
+		return s.next.Delete(callCtx, arg1)
 	})
 }
 
 func (s *timedClusterDiscoveryStore) DeleteExpired(ctx context.Context, expiredAt time.Time) (int64, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateClusterDiscovery, methodDeleteExpired), func() (int64, error) {
-		return s.next.DeleteExpired(ctx, expiredAt)
+	return timeStoreCall1(ctx, s.layer, storeOperation(aggregateClusterDiscovery, methodDeleteExpired), func(callCtx context.Context) (int64, error) {
+		return s.next.DeleteExpired(callCtx, expiredAt)
 	})
 }
 
 func (s *timedServingNodeLeaseStore) Upsert(arg0 context.Context, arg1 *store.ServingNodeLeaseClaim) (*store.ServingNodeLease, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateServingNodeLease, methodUpsert), func() (*store.ServingNodeLease, error) {
-		return s.next.Upsert(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateServingNodeLease, methodUpsert), func(callCtx context.Context) (*store.ServingNodeLease, error) {
+		return s.next.Upsert(callCtx, arg1)
 	})
 }
 
 func (s *timedServingNodeLeaseStore) Delete(arg0 context.Context, arg1 *store.ServingNodeLeaseDeletion) error {
-	return timeStoreCall0(s.layer, storeOperation(aggregateServingNodeLease, methodDelete), func() error {
-		return s.next.Delete(arg0, arg1)
+	return timeStoreCall0(arg0, s.layer, storeOperation(aggregateServingNodeLease, methodDelete), func(callCtx context.Context) error {
+		return s.next.Delete(callCtx, arg1)
 	})
 }
 
 func (s *timedCommandOutcomeStore) Has(arg0 context.Context, arg1 *store.CommandIdempotency) (bool, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateCommandOutcome, methodHas), func() (bool, error) {
-		return s.next.Has(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateCommandOutcome, methodHas), func(callCtx context.Context) (bool, error) {
+		return s.next.Has(callCtx, arg1)
 	})
 }
 
 func (s *timedCommandOutcomeStore) DeleteExpired(arg0 context.Context, arg1 int) (int64, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateCommandOutcome, methodDeleteExpired), func() (int64, error) {
-		return s.next.DeleteExpired(arg0, arg1)
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateCommandOutcome, methodDeleteExpired), func(callCtx context.Context) (int64, error) {
+		return s.next.DeleteExpired(callCtx, arg1)
 	})
 }
 

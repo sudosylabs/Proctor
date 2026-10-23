@@ -8,6 +8,7 @@
 package timerlayer
 
 import (
+	"context"
 	"errors"
 	"time"
 
@@ -50,56 +51,85 @@ type NopRecorder struct{}
 
 func (NopRecorder) Observe(Operation, Outcome, time.Duration) {}
 
+// SlowRecorder receives the operations that took at least the configured slow
+// threshold. Like Recorder it receives only the closed operation name and its
+// duration; the context is the caller's, for log correlation only, and must
+// not be inspected for store arguments. A panic is isolated from store callers.
+type SlowRecorder interface {
+	ObserveSlow(context.Context, Operation, time.Duration)
+}
+
+// Options selects the optional observers of a Layer beyond its Recorder.
+type Options struct {
+	// SlowThreshold, when positive, reports every operation lasting at least
+	// this long to Slow. Zero disables slow-operation reporting.
+	SlowThreshold time.Duration
+	Slow          SlowRecorder
+}
+
 // Layer is a semantics-preserving timing decorator for the complete root
 // persistence store and every per-model store it exposes.
 type Layer struct {
 	next     store.Store
 	recorder Recorder
+	options  Options
 	now      func() time.Time
 	stores   timedStores
 }
 
 // New constructs a transparent timing layer around next.
-func New(next store.Store, recorder Recorder) (*Layer, error) {
+func New(next store.Store, recorder Recorder, options Options) (*Layer, error) {
 	if next == nil {
 		return nil, errors.New("timed store is nil")
 	}
 	if recorder == nil {
 		return nil, errors.New("store timing recorder is nil")
 	}
-	return newLayer(next, recorder, time.Now), nil
+	if options.SlowThreshold < 0 {
+		return nil, errors.New("store slow-operation threshold is negative")
+	}
+	if options.SlowThreshold > 0 && options.Slow == nil {
+		return nil, errors.New("store slow-operation recorder is nil")
+	}
+	return newLayer(next, recorder, options, time.Now), nil
 }
 
-func newLayer(next store.Store, recorder Recorder, now func() time.Time) *Layer {
-	return &Layer{next: next, recorder: recorder, now: now}
+func newLayer(next store.Store, recorder Recorder, options Options, now func() time.Time) *Layer {
+	return &Layer{next: next, recorder: recorder, options: options, now: now}
 }
 
-func timeStoreCall0(layer *Layer, operation Operation, call func() error) error {
+func timeStoreCall0(ctx context.Context, layer *Layer, operation Operation, call func(context.Context) error) error {
 	startedAt := layer.now()
-	err := call()
-	layer.observe(operation, startedAt, err)
+	err := call(ctx)
+	layer.observe(ctx, operation, startedAt, err)
 	return err
 }
 
-func timeStoreCall1[T any](layer *Layer, operation Operation, call func() (T, error)) (T, error) {
+func timeStoreCall1[T any](
+	ctx context.Context,
+	layer *Layer,
+	operation Operation,
+	call func(context.Context) (T, error),
+) (T, error) {
 	startedAt := layer.now()
-	result, err := call()
-	layer.observe(operation, startedAt, err)
+	result, err := call(ctx)
+	layer.observe(ctx, operation, startedAt, err)
 	return result, err
 }
 
 func timeStoreCall2[T, U any](
+	ctx context.Context,
 	layer *Layer,
 	operation Operation,
-	call func() (T, U, error),
+	call func(context.Context) (T, U, error),
 ) (T, U, error) {
 	startedAt := layer.now()
-	first, second, err := call()
-	layer.observe(operation, startedAt, err)
+	first, second, err := call(ctx)
+	layer.observe(ctx, operation, startedAt, err)
 	return first, second, err
 }
 
-func (l *Layer) observe(operation Operation, startedAt time.Time, err error) {
+func (l *Layer) observe(ctx context.Context, operation Operation, startedAt time.Time, err error) {
 	outcome := OutcomeSuccess
 	if err != nil {
 		outcome = OutcomeError
@@ -112,4 +142,10 @@ func (l *Layer) observe(operation Operation, startedAt time.Time, err error) {
 		defer func() { _ = recover() }()
 		l.recorder.Observe(operation, outcome, duration)
 	}()
+	if l.options.SlowThreshold > 0 && duration >= l.options.SlowThreshold {
+		func() {
+			defer func() { _ = recover() }()
+			l.options.Slow.ObserveSlow(ctx, operation, duration)
+		}()
+	}
 }

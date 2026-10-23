@@ -66,7 +66,7 @@ func TestTimerPreservesResultsErrorsAndUsesBoundedMetrics(t *testing.T) {
 	want := &model.Institution{ID: model.NewInstitutionID(), DisplayName: "Northbridge"}
 	wrapped := &institutionStub{result: want}
 	metrics := &recordingMetrics{}
-	layer := newLayer(&rootStub{institution: wrapped}, metrics, now)
+	layer := newLayer(&rootStub{institution: wrapped}, metrics, Options{}, now)
 	institution := layer.Institution()
 	require.Same(t, institution, layer.Institution(), "Institution() returned a different wrapper for the same store")
 
@@ -92,6 +92,7 @@ func TestTimerPreservesExactErrorAndRecordsFailure(t *testing.T) {
 	layer := newLayer(
 		&rootStub{institution: &institutionStub{err: wantErr}},
 		metrics,
+		Options{},
 		sequenceClock(startedAt, startedAt.Add(time.Millisecond)),
 	)
 
@@ -109,6 +110,7 @@ func TestRecorderPanicCannotChangeStoreSemantics(t *testing.T) {
 	layer := newLayer(
 		&rootStub{institution: &institutionStub{result: want}},
 		RecorderFunc(func(Operation, Outcome, time.Duration) { panic("metrics unavailable") }),
+		Options{},
 		time.Now,
 	)
 
@@ -122,7 +124,7 @@ func TestTimerMeasuresRootOperations(t *testing.T) {
 
 	wantErr := errors.New("database unavailable")
 	metrics := &recordingMetrics{}
-	layer := newLayer(&rootStub{pingErr: wantErr}, metrics, time.Now)
+	layer := newLayer(&rootStub{pingErr: wantErr}, metrics, Options{}, time.Now)
 	require.Equal(t, wantErr, layer.Ping(context.Background()), "Ping() error")
 	require.Len(t, metrics.events, 1)
 	require.Equal(t, "store.ping", metrics.events[0].operation.String())
@@ -131,16 +133,93 @@ func TestTimerMeasuresRootOperations(t *testing.T) {
 func TestNewRejectsMissingDependencies(t *testing.T) {
 	t.Parallel()
 
-	_, err := New(nil, NopRecorder{})
+	_, err := New(nil, NopRecorder{}, Options{})
 	require.Error(t, err, "New() accepted a nil store")
-	_, err = New(&rootStub{}, nil)
+	_, err = New(&rootStub{}, nil, Options{})
 	require.Error(t, err, "New() accepted a nil recorder")
+	_, err = New(&rootStub{}, NopRecorder{}, Options{SlowThreshold: time.Second})
+	require.Error(t, err, "New() accepted a slow threshold without a recorder")
+	_, err = New(&rootStub{}, NopRecorder{}, Options{SlowThreshold: -time.Second, Slow: &recordingSlow{}})
+	require.Error(t, err, "New() accepted a negative slow threshold")
 }
+
+type recordedSlow struct {
+	ctx       context.Context
+	operation string
+	duration  time.Duration
+}
+
+type recordingSlow struct {
+	events []recordedSlow
+}
+
+func (r *recordingSlow) ObserveSlow(ctx context.Context, operation Operation, duration time.Duration) {
+	r.events = append(r.events, recordedSlow{ctx: ctx, operation: operation.String(), duration: duration})
+}
+
+type correlationKey struct{}
+
+func TestSlowOperationsAtOrAboveTheThresholdAreReported(t *testing.T) {
+	t.Parallel()
+
+	for _, test := range []struct {
+		name     string
+		elapsed  time.Duration
+		reported bool
+	}{
+		{name: "below threshold", elapsed: 99 * time.Millisecond, reported: false},
+		{name: "at threshold", elapsed: 100 * time.Millisecond, reported: true},
+		{name: "above threshold", elapsed: time.Second, reported: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			startedAt := time.Date(2026, time.August, 8, 9, 0, 0, 0, time.UTC)
+			slow := &recordingSlow{}
+			layer := newLayer(
+				&rootStub{institution: &institutionStub{err: errors.New("student-secret-must-not-leak")}},
+				NopRecorder{},
+				Options{SlowThreshold: 100 * time.Millisecond, Slow: slow},
+				sequenceClock(startedAt, startedAt.Add(test.elapsed)),
+			)
+			ctx := context.WithValue(context.Background(), correlationKey{}, "request")
+			_, err := layer.Institution().Get(ctx, model.NewInstitutionID())
+			require.Error(t, err)
+			if !test.reported {
+				require.Empty(t, slow.events)
+				return
+			}
+			require.Len(t, slow.events, 1)
+			require.Equal(t, "institution.get", slow.events[0].operation)
+			require.Equal(t, test.elapsed, slow.events[0].duration)
+			require.Equal(t, "request", slow.events[0].ctx.Value(correlationKey{}), "caller context for correlation")
+		})
+	}
+}
+
+func TestSlowRecorderPanicCannotChangeStoreSemantics(t *testing.T) {
+	t.Parallel()
+
+	want := &model.Institution{ID: model.NewInstitutionID()}
+	layer := newLayer(
+		&rootStub{institution: &institutionStub{result: want}},
+		NopRecorder{},
+		Options{SlowThreshold: time.Nanosecond, Slow: slowFunc(func() { panic("logging unavailable") })},
+		sequenceClock(time.Unix(0, 0), time.Unix(1, 0)),
+	)
+	got, err := layer.Institution().Get(context.Background(), model.NewInstitutionID())
+	require.NoError(t, err)
+	require.Same(t, want, got)
+}
+
+type slowFunc func()
+
+func (f slowFunc) ObserveSlow(context.Context, Operation, time.Duration) { f() }
 
 func TestTimerPreservesMissingPerModelStores(t *testing.T) {
 	t.Parallel()
 
-	layer := newLayer(&rootStub{}, NopRecorder{}, time.Now)
+	layer := newLayer(&rootStub{}, NopRecorder{}, Options{}, time.Now)
 	require.Nil(t, layer.Institution(), "Institution() wrapped a nil underlying store")
 }
 

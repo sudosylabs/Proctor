@@ -79,7 +79,7 @@ func TestTimerLayerConformance(t *testing.T) {
 
 func newTimerConformanceStore(t *testing.T, sqlStore *SQLStore) store.Store {
 	t.Helper()
-	timedStore, err := timerlayer.New(sqlStore, timerlayer.NopRecorder{})
+	timedStore, err := timerlayer.New(sqlStore, timerlayer.NopRecorder{}, timerlayer.Options{})
 	require.NoError(t, err)
 	return timedStore
 }

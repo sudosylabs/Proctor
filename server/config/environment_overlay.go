@@ -524,6 +524,9 @@ var environmentOverrideCatalog = []environmentOverride{
 	durationEnvironmentOverride("PROCTOR_DATABASE_QUERY_TIMEOUT", func(cfg *Config) *Duration {
 		return &cfg.Database.QueryTimeout
 	}),
+	durationEnvironmentOverride("PROCTOR_DATABASE_SLOW_OPERATION_THRESHOLD", func(cfg *Config) *Duration {
+		return &cfg.Database.SlowOperationThreshold
+	}),
 	durationEnvironmentOverride("PROCTOR_DATABASE_MIGRATION_TIMEOUT", func(cfg *Config) *Duration {
 		return &cfg.Database.MigrationTimeout
 	}),

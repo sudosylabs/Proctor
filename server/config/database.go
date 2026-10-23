@@ -21,6 +21,10 @@ type Database struct {
 	ConnectionMaxIdleTime Duration `json:"ConnectionMaxIdleTime"`
 	QueryTimeout          Duration `json:"QueryTimeout"`
 	MigrationTimeout      Duration `json:"MigrationTimeout"`
+	// SlowOperationThreshold, when positive, logs every store operation that
+	// takes at least this long, by operation name and duration only. Zero
+	// disables the slow-operation log.
+	SlowOperationThreshold Duration `json:"SlowOperationThreshold"`
 }
 
 func validateDatabase(database Database, add func(string, string)) {
@@ -50,5 +54,8 @@ func validateDatabase(database Database, add func(string, string)) {
 		if item.value <= 0 {
 			add(item.field, "must be greater than zero")
 		}
+	}
+	if database.SlowOperationThreshold.Duration < 0 {
+		add("database.slow_operation_threshold", "must be zero (disabled) or greater")
 	}
 }

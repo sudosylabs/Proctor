@@ -246,7 +246,10 @@ func openRuntimeInfrastructure(
 			storeMetrics = timerlayer.NopRecorder{}
 		}
 	}
-	timedPersistence, err := timerlayer.New(result.persistence, storeMetrics)
+	timedPersistence, err := timerlayer.New(result.persistence, storeMetrics, timerlayer.Options{
+		SlowThreshold: cfg.Database.SlowOperationThreshold.Duration,
+		Slow:          slowStoreOperationLog{logger: result.logger},
+	})
 	if err != nil {
 		return result, fmt.Errorf("construct store timing layer: %w", err)
 	}

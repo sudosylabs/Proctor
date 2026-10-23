@@ -23,6 +23,7 @@ state after either is lost. Changes on this page require a process restart.
 | `Database.ConnectionMaxIdleTime`<br />Default: `5m` | Maximum time a pooled connection may remain idle. Must be greater than zero. |
 | `Database.QueryTimeout`<br />Default: `10s` | Default deadline for ordinary database operations when their caller supplies no shorter deadline. Must be greater than zero. |
 | `Database.MigrationTimeout`<br />Default: `1m` | Deadline for startup migration work and its lock acquisition. Must be greater than zero. |
+| `Database.SlowOperationThreshold`<br />Default: `0s` | Logs a `slow store operation` warning for every store operation that takes at least this long, recording only the operation name and duration. `0s` disables the log; negative values are rejected. |
 
 The validator checks URL shape and bounds; it does not connect to PostgreSQL.
 Use TLS and credential settings in the data-source query appropriate to the
