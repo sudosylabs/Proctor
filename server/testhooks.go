@@ -116,9 +116,8 @@ func testingWebappFiles(build httpapi.BuildInfo) fs.FS {
 		build.Version, build.Commit = current.Version, current.Commit
 	}
 	manifest, _ := json.Marshal(map[string]any{
-		"schema_version": 1,
-		"version":        build.Version,
-		"commit":         build.Commit,
+		"version": build.Version,
+		"commit":  build.Commit,
 	})
 	return fstest.MapFS{
 		webui.BuildManifestName: {Data: manifest},

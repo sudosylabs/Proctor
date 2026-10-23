@@ -106,8 +106,9 @@ func TestNewRejectsIncompleteAndMismatchedDistributions(t *testing.T) {
 	}{
 		{name: "manifest missing", files: fstest.MapFS{}, want: "read webapp build manifest"},
 		{name: "manifest malformed", files: fstest.MapFS{webui.BuildManifestName: {Data: []byte(`{`)}}, want: "decode webapp build manifest"},
+		{name: "manifest of another format", files: fstest.MapFS{webui.BuildManifestName: {Data: []byte(`{"schema_version":1,"version":"1.2.3","commit":"abc"}`)}}, want: "decode webapp build manifest"},
 		{name: "build mismatch", files: testFiles("other", "commit"), want: "does not match server build"},
-		{name: "index missing", files: fstest.MapFS{webui.BuildManifestName: {Data: []byte(`{"schema_version":1,"version":"1.2.3","commit":"abc"}`)}}, want: "read webapp index"},
+		{name: "index missing", files: fstest.MapFS{webui.BuildManifestName: {Data: []byte(`{"version":"1.2.3","commit":"abc"}`)}}, want: "read webapp index"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -128,7 +129,7 @@ func newHandler(t *testing.T) http.Handler {
 
 func testFiles(version, commit string) fstest.MapFS {
 	return fstest.MapFS{
-		webui.BuildManifestName:       {Data: []byte(`{"schema_version":1,"version":"` + version + `","commit":"` + commit + `"}`)},
+		webui.BuildManifestName:       {Data: []byte(`{"version":"` + version + `","commit":"` + commit + `"}`)},
 		"index.html":                  {Data: []byte("<!doctype html><title>Proctor</title>")},
 		"assets/index-AbCdEf12.js":    {Data: []byte("export {};")},
 		"assets/unversioned-logo.svg": {Data: []byte("<svg></svg>")},

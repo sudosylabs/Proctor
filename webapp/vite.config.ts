@@ -12,7 +12,6 @@ function proctorBuildManifest(): Plugin {
         type: "asset",
         fileName: "webapp-build.json",
         source: `${JSON.stringify({
-          schema_version: 1,
           version: buildVersion,
           commit: buildCommit,
         })}\n`,

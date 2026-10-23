@@ -128,7 +128,7 @@ func TestCorruptJournalIsRejectedBeforeServerAccess(t *testing.T) {
 		t.Run(corrupt, func(t *testing.T) {
 			directory := filepath.Join(t.TempDir(), "seed")
 			require.NoError(t, os.Mkdir(directory, 0700))
-			state := &journal{Version: schemaVersion, RunID: strings.Repeat("a", 32), Server: "http://127.0.0.1:8065", Mailpit: "http://127.0.0.1:18025", Profile: "small", Seed: 42,
+			state := &journal{RunID: strings.Repeat("a", 32), Server: "http://127.0.0.1:8065", Mailpit: "http://127.0.0.1:18025", Profile: "small", Seed: 42,
 				StartedAt: time.Now(), ScheduleAt: time.Now(), Accounts: map[string]*account{}, Operations: map[string]*operation{}, Records: map[string]record{}}
 			if corrupt == "account" {
 				state.Accounts["broken"] = nil
@@ -141,6 +141,21 @@ func TestCorruptJournalIsRejectedBeforeServerAccess(t *testing.T) {
 			require.Contains(t, err.Error(), "invalid seed journal "+corrupt)
 		})
 	}
+}
+
+func TestJournalOfAnotherFormatIsRejectedBeforeServerAccess(t *testing.T) {
+	directory := filepath.Join(t.TempDir(), "seed")
+	require.NoError(t, os.Mkdir(directory, 0700))
+	state := &journal{RunID: strings.Repeat("a", 32), Server: "http://127.0.0.1:8065", Mailpit: "http://127.0.0.1:18025", Profile: "small", Seed: 42,
+		StartedAt: time.Now(), ScheduleAt: time.Now(), Accounts: map[string]*account{}, Operations: map[string]*operation{}, Records: map[string]record{}}
+	encoded, err := json.Marshal(state)
+	require.NoError(t, err)
+	foreign := map[string]json.RawMessage{}
+	require.NoError(t, json.Unmarshal(encoded, &foreign))
+	foreign["schema_version"] = json.RawMessage("3")
+	require.NoError(t, writeJSON(filepath.Join(directory, "journal.json"), foreign))
+	err = Run(context.Background(), Options{ServerURL: state.Server, MailpitURL: state.Mailpit, Profile: state.Profile, Seed: state.Seed, StateDir: directory, EnvironmentFile: "unused"}, io.Discard)
+	require.ErrorContains(t, err, "invalid seed journal; it may come from another format")
 }
 
 func TestCollectionPagingKeepsEveryItem(t *testing.T) {

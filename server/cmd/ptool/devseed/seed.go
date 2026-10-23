@@ -8,6 +8,7 @@
 package devseed
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -95,11 +96,13 @@ func Run(ctx context.Context, options Options, out io.Writer) error {
 		if len(raw) > 32<<20 {
 			return errors.New("seed journal exceeds 32 MiB")
 		}
-		if err = json.Unmarshal(raw, &r.state); err != nil || r.state == nil {
-			return errors.New("invalid seed journal")
+		decoder := json.NewDecoder(bytes.NewReader(raw))
+		decoder.DisallowUnknownFields()
+		if err = decoder.Decode(&r.state); err != nil || r.state == nil {
+			return errors.New("invalid seed journal; it may come from another format, so use a separate pristine development installation")
 		}
-		if r.state.Version != schemaVersion || r.state.Server != server || r.state.Mailpit != mailpit || r.state.Profile != options.Profile || r.state.Seed != options.Seed || len(r.state.RunID) != 32 || r.state.Accounts == nil || r.state.Operations == nil || r.state.Records == nil {
-			return errors.New("seed journal version, origin, or dataset does not match; use its original options or a separate pristine development installation")
+		if r.state.Server != server || r.state.Mailpit != mailpit || r.state.Profile != options.Profile || r.state.Seed != options.Seed || len(r.state.RunID) != 32 || r.state.Accounts == nil || r.state.Operations == nil || r.state.Records == nil {
+			return errors.New("seed journal origin or dataset does not match; use its original options or a separate pristine development installation")
 		}
 		if err = r.state.validate(); err != nil {
 			return err
@@ -112,7 +115,7 @@ func Run(ctx context.Context, options Options, out io.Writer) error {
 				return errors.New("legacy or incomplete seed state found; preserve it and use a separate pristine development installation")
 			}
 		}
-		r.state = &journal{Version: schemaVersion, Server: server, Mailpit: mailpit, Profile: options.Profile, Seed: options.Seed, StartedAt: time.Now().UTC(), Accounts: map[string]*account{}, Operations: map[string]*operation{}, Records: map[string]record{}}
+		r.state = &journal{Server: server, Mailpit: mailpit, Profile: options.Profile, Seed: options.Seed, StartedAt: time.Now().UTC(), Accounts: map[string]*account{}, Operations: map[string]*operation{}, Records: map[string]record{}}
 		r.state.RunID, err = randomHex(16)
 		if err != nil {
 			return err
@@ -350,7 +353,7 @@ func (r *runner) verify() error {
 }
 
 func (r *runner) report() error {
-	manifest := object{"schema_version": schemaVersion, "server_url": r.state.Server, "profile": r.state.Profile, "seed": r.state.Seed, "institution_id": r.state.InstitutionID, "created_at": r.state.StartedAt, "sitting_generation": r.state.Generation, "records": r.state.Records}
+	manifest := object{"server_url": r.state.Server, "profile": r.state.Profile, "seed": r.state.Seed, "institution_id": r.state.InstitutionID, "created_at": r.state.StartedAt, "sitting_generation": r.state.Generation, "records": r.state.Records}
 	users := map[string]object{}
 	credentials := map[string]object{}
 	for key, a := range r.state.Accounts {
@@ -361,7 +364,7 @@ func (r *runner) report() error {
 	if err := writeJSON(filepath.Join(r.options.StateDir, "fixture.json"), manifest); err != nil {
 		return err
 	}
-	if err := writeJSON(filepath.Join(r.options.StateDir, "credentials.json"), object{"schema_version": schemaVersion, "server_url": r.state.Server, "accounts": credentials}); err != nil {
+	if err := writeJSON(filepath.Join(r.options.StateDir, "credentials.json"), object{"server_url": r.state.Server, "accounts": credentials}); err != nil {
 		return err
 	}
 	fmt.Fprintf(r.out, "Development fixture verified: %d accounts, %d records (%s).\nFixture manifest: %s\nPrivate credentials: %s\n", len(users), len(r.state.Records), r.state.Profile, filepath.Join(r.options.StateDir, "fixture.json"), filepath.Join(r.options.StateDir, "credentials.json"))

@@ -72,9 +72,8 @@ type Options struct {
 }
 
 type buildManifest struct {
-	SchemaVersion int    `json:"schema_version"`
-	Version       string `json:"version"`
-	Commit        string `json:"commit"`
+	Version string `json:"version"`
+	Commit  string `json:"commit"`
 }
 
 type handler struct {
@@ -111,9 +110,6 @@ func New(files fs.FS, options Options) (http.Handler, error) {
 	}
 	if err := requireJSONEOF(decoder); err != nil {
 		return nil, fmt.Errorf("decode webapp build manifest: %w", err)
-	}
-	if manifest.SchemaVersion != 1 {
-		return nil, fmt.Errorf("webapp build manifest schema %d is unsupported", manifest.SchemaVersion)
 	}
 	if manifest.Version != options.BuildVersion || manifest.Commit != options.BuildCommit {
 		return nil, fmt.Errorf(

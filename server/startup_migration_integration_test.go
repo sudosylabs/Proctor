@@ -63,10 +63,9 @@ func createStartupMigrationWebapp(t *testing.T) string {
 	directory := t.TempDir()
 	build := CurrentBuildInfo()
 	manifest, err := json.Marshal(struct {
-		SchemaVersion int    `json:"schema_version"`
-		Version       string `json:"version"`
-		Commit        string `json:"commit"`
-	}{SchemaVersion: 1, Version: build.Version, Commit: build.Commit})
+		Version string `json:"version"`
+		Commit  string `json:"commit"`
+	}{Version: build.Version, Commit: build.Commit})
 	require.NoError(t, err)
 	err = os.WriteFile(filepath.Join(directory, "webapp-build.json"), manifest, 0o600)
 	require.NoError(t, err)

@@ -47,7 +47,7 @@ func createPackageTestWebapp(t *testing.T) string {
 	require.NoError(t, os.MkdirAll(assets, 0o700))
 	for name, data := range map[string]string{
 		"index.html":              "<!doctype html><title>Proctor</title>",
-		"webapp-build.json":       `{"schema_version":1,"version":"dev","commit":"unknown"}`,
+		"webapp-build.json":       `{"version":"dev","commit":"unknown"}`,
 		"assets/index-Test123.js": "export {};",
 	} {
 		require.NoError(t, os.WriteFile(filepath.Join(directory, name), []byte(data), 0o600))

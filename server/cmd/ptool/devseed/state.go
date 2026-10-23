@@ -20,8 +20,6 @@ import (
 	"time"
 )
 
-const schemaVersion = 3
-
 type account struct {
 	Username            string   `json:"username"`
 	Email               string   `json:"email"`
@@ -47,7 +45,6 @@ type operation struct {
 }
 
 type journal struct {
-	Version       int                   `json:"schema_version"`
 	Server        string                `json:"server_url"`
 	Mailpit       string                `json:"mailpit_url"`
 	Profile       string                `json:"profile"`
