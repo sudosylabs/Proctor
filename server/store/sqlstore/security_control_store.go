@@ -75,6 +75,14 @@ type nativeControlOwnerRow struct {
 	SummaryOnly    bool   `db:"summary_only"`
 }
 
+// securityControlBudget is the locked Attempt delivery budget a security
+// control charges.
+type securityControlBudget struct {
+	Metadata    int64 `db:"control_metadata_bytes"`
+	Positions   int64 `db:"native_allocated_positions"`
+	SummaryOnly bool  `db:"native_summary_only"`
+}
+
 // processSecurityCoverage runs under the existing Attempt/Participation/Session
 // locks. It deliberately does not renew or expire the Participation lease.
 func (s *SQLExamAttemptStore) processSecurityCoverage(ctx context.Context, tx *sqlxTxWrapper, input *store.ExamAttemptParticipationRenewal, sittingOpen bool, now time.Time) (model.SecurityCoverageResult, error) {
@@ -85,92 +93,24 @@ func (s *SQLExamAttemptStore) processSecurityCoverage(ctx context.Context, tx *s
 		return zero, store.NewErrInvalidInput("security_control", "body", nil)
 	}
 	digest := model.SHA256Fingerprint(raw)
-	var budget struct {
-		Metadata    int64 `db:"control_metadata_bytes"`
-		Positions   int64 `db:"native_allocated_positions"`
-		SummaryOnly bool  `db:"native_summary_only"`
-	}
-	if err := tx.Get(ctx, &budget, `SELECT control_metadata_bytes,native_allocated_positions,native_summary_only FROM exam_attempt_delivery_budgets WHERE exam_attempt_id=? FOR UPDATE`, input.AttemptID.String()); err != nil {
+	budget, owner, binding, err := lockSecurityControlOwner(ctx, tx, input)
+	if err != nil {
 		return zero, err
-	}
-	var owner nativeControlOwnerRow
-	if err = tx.Get(ctx, &owner, `SELECT binding_canonical,latest_report_canonical,control_ledger_canonical,security_interaction_allowed,allocated_through_sequence,acknowledged_through_sequence,summary_only FROM exam_attempt_security_owners WHERE participation_id=? AND exam_attempt_id=? AND session_id=? AND registration_id=? AND key_thumbprint=? FOR UPDATE`, input.ParticipationID.String(), input.AttemptID.String(), input.SessionID.String(), input.DesktopRegistrationID.String(), input.DPoPKeyThumbprint); err != nil {
-		return zero, translateError("security_owner", input.ParticipationID.String(), err)
-	}
-	var binding admittedSecurityBinding
-	if err := json.Unmarshal(owner.Binding, &binding); err != nil {
-		return zero, invalidPersistedState("security_owner", "binding", err)
 	}
 	admitted := binding.Security
-	if admitted.Validate() != nil || admitted.Generation != input.Generation || admitted.Policy.Scope.AttemptID != input.AttemptID {
-		return zero, invalidPersistedState("security_owner", "binding", model.ErrSecurityPolicyInvalid)
-	}
-	if control.PolicyDigest != admitted.Policy.Digest || control.StreamID != admitted.DeliveryStreamID || control.SecuritySessionID != admitted.SecuritySessionID {
-		return zero, preflightConflict("policy_changed")
-	}
-	if input.DesktopBuild.NativeAgreement == nil || input.DesktopBuild.NativeAgreement.MatrixDigest() != binding.CapabilityMatrixDigest {
-		return zero, preflightConflict("configuration_unsupported")
-	}
-	// Scope and registry are immutable for this owner. Live corrections do not
-	// silently rewrite its source lifetime; the correction/reentry owner fences it.
-	var examIDString string
-	if err := tx.Get(ctx, &examIDString, `SELECT exam_id FROM exam_attempts WHERE id=?`, input.AttemptID.String()); err != nil {
-		return zero, err
-	}
-	examID, err := model.ParseExamID(examIDString)
+	resolved, reasons, err := resolveSecurityControlPolicy(ctx, tx, input, admitted, now)
 	if err != nil {
 		return zero, err
 	}
-	revision, err := getExamRevisionSnapshot(ctx, tx, examID, admitted.Policy.ExamRevisionID)
-	if err != nil {
+	if err = checkSecurityControlSources(control, resolved, admitted, owner); err != nil {
 		return zero, err
-	}
-	selections, err := model.DecodeExamPolicySet(revision.Policy.Bytes)
-	if err != nil {
-		return zero, err
-	}
-	policy := admitted.Policy
-	resolved, err := model.ResolveNativePolicy(model.NativePolicyResolution{PolicyID: policy.PolicyID, Revision: policy.Revision, Ordinal: policy.Ordinal, InstitutionID: policy.InstitutionID, ExamRevisionID: policy.ExamRevisionID, SittingID: policy.SittingID, Scope: policy.Scope, IssuedAt: policy.IssuedAt, ActiveFrom: policy.ActiveFrom, ActivationTime: now.UTC().Truncate(time.Millisecond), Selections: selections, Build: input.DesktopBuild})
-	if err != nil {
-		return zero, err
-	}
-	if resolved.Policy.Digest != policy.Digest || resolved.PolicyContentDigest != admitted.PolicyContentDigest {
-		return zero, preflightConflict("policy_changed")
-	}
-	reasons, err := model.EvaluateNativeCoverage(resolved, control.Sources, control.Coverage, control.Posture)
-	if err != nil {
-		return zero, store.NewErrInvalidInput("security_control", "coverage", nil)
-	}
-	for _, reset := range control.SourceResets {
-		owned := false
-		for _, source := range resolved.Sources {
-			if reset.SourceID == source {
-				owned = true
-			}
-		}
-		if !owned {
-			return zero, store.NewErrNotFound("security_source", string(reset.SourceID))
-		}
-	}
-	// Native ownership exists at admission. Browser watermarks are installed by
-	// their separate source owner; no caller-supplied selector establishes one.
-	for _, watermark := range control.DeliveryWatermarks {
-		if watermark.Family == "browser" {
-			continue
-		}
-		if watermark.SourceID != admitted.DeliveryStreamID {
-			return zero, store.NewErrNotFound("delivery_source", watermark.SourceID)
-		}
-		if watermark.AcknowledgedThroughSequence > owner.Acknowledged {
-			return zero, store.NewErrInvalidInput("security_control", "acknowledgement", nil)
-		}
 	}
 	browserSources, err := lockBrowserControlSources(ctx, tx, input)
 	if err != nil {
 		return zero, err
 	}
 	var ledger nativeControlLedger
-	if err := json.Unmarshal(owner.Ledger, &ledger); err != nil || ledger.Validate() != nil {
+	if err = json.Unmarshal(owner.Ledger, &ledger); err != nil || ledger.Validate() != nil {
 		return zero, invalidPersistedState("security_owner", "control_ledger", model.ErrSecurityControlInvalid)
 	}
 	receipt, processed, err := ledger.Lookup(control.ControlSequence, digest)
@@ -180,19 +120,140 @@ func (s *SQLExamAttemptStore) processSecurityCoverage(ctx context.Context, tx *s
 	if processed {
 		return projectSecurityControl(ctx, tx, input.AttemptID, input.ParticipationID, admitted.DeliveryStreamID, ledger, receipt, owner.Allowed, sittingOpen)
 	}
-	heads, err := decodeNativeCoverageSnapshot(owner.LatestCoverage)
+	continuity, err := resolveSecurityControlContinuity(ctx, tx, input, owner.LatestCoverage)
 	if err != nil {
 		return zero, err
 	}
+	records, err := reserveNativeResetRecords(ctx, tx, input, &budget, &continuity)
+	if err != nil {
+		return zero, err
+	}
+	outcome := securityControlReceipt{Sequence: control.ControlSequence, Digest: digest, Result: continuity.Result, ResetIDs: continuity.ReceiptIDs, Rejections: [][2]int64{}}
+	if err = applySecurityControlWatermarks(ctx, tx, input, browserSources, &owner, &budget, &outcome); err != nil {
+		return zero, err
+	}
+	ledger, err = storeSecurityControl(ctx, tx, input, raw, records, continuity, reasons, &owner, budget, ledger, outcome)
+	if err != nil {
+		return zero, err
+	}
+	return projectSecurityControl(ctx, tx, input.AttemptID, input.ParticipationID, admitted.DeliveryStreamID, ledger, &outcome, owner.Allowed, sittingOpen)
+}
+
+// lockSecurityControlOwner locks the Attempt delivery budget and the security
+// owner and checks the control against the owner's admitted binding.
+func lockSecurityControlOwner(ctx context.Context, tx *sqlxTxWrapper, input *store.ExamAttemptParticipationRenewal) (securityControlBudget, nativeControlOwnerRow, admittedSecurityBinding, error) {
+	control := input.SecurityCoverage
+	var budget securityControlBudget
+	if err := tx.Get(ctx, &budget, `SELECT control_metadata_bytes,native_allocated_positions,native_summary_only FROM exam_attempt_delivery_budgets WHERE exam_attempt_id=? FOR UPDATE`, input.AttemptID.String()); err != nil {
+		return securityControlBudget{}, nativeControlOwnerRow{}, admittedSecurityBinding{}, err
+	}
+	var owner nativeControlOwnerRow
+	if err := tx.Get(ctx, &owner, `SELECT binding_canonical,latest_report_canonical,control_ledger_canonical,security_interaction_allowed,allocated_through_sequence,acknowledged_through_sequence,summary_only FROM exam_attempt_security_owners WHERE participation_id=? AND exam_attempt_id=? AND session_id=? AND registration_id=? AND key_thumbprint=? FOR UPDATE`, input.ParticipationID.String(), input.AttemptID.String(), input.SessionID.String(), input.DesktopRegistrationID.String(), input.DPoPKeyThumbprint); err != nil {
+		return securityControlBudget{}, nativeControlOwnerRow{}, admittedSecurityBinding{}, translateError("security_owner", input.ParticipationID.String(), err)
+	}
+	var binding admittedSecurityBinding
+	if err := json.Unmarshal(owner.Binding, &binding); err != nil {
+		return securityControlBudget{}, nativeControlOwnerRow{}, admittedSecurityBinding{}, invalidPersistedState("security_owner", "binding", err)
+	}
+	admitted := binding.Security
+	if admitted.Validate() != nil || admitted.Generation != input.Generation || admitted.Policy.Scope.AttemptID != input.AttemptID {
+		return securityControlBudget{}, nativeControlOwnerRow{}, admittedSecurityBinding{}, invalidPersistedState("security_owner", "binding", model.ErrSecurityPolicyInvalid)
+	}
+	if control.PolicyDigest != admitted.Policy.Digest || control.StreamID != admitted.DeliveryStreamID || control.SecuritySessionID != admitted.SecuritySessionID {
+		return securityControlBudget{}, nativeControlOwnerRow{}, admittedSecurityBinding{}, preflightConflict("policy_changed")
+	}
+	if input.DesktopBuild.NativeAgreement == nil || input.DesktopBuild.NativeAgreement.MatrixDigest() != binding.CapabilityMatrixDigest {
+		return securityControlBudget{}, nativeControlOwnerRow{}, admittedSecurityBinding{}, preflightConflict("configuration_unsupported")
+	}
+	return budget, owner, binding, nil
+}
+
+// resolveSecurityControlPolicy re-resolves the admitted native policy for the
+// reporting build and evaluates the control's coverage against it.
+func resolveSecurityControlPolicy(ctx context.Context, tx *sqlxTxWrapper, input *store.ExamAttemptParticipationRenewal, admitted model.AdmittedSecurity, now time.Time) (model.ResolvedNativePolicy, []model.SecurityReasonCode, error) {
+	control := input.SecurityCoverage
+	// Scope and registry are immutable for this owner. Live corrections do not
+	// silently rewrite its source lifetime; the correction/reentry owner fences it.
+	var examIDString string
+	if err := tx.Get(ctx, &examIDString, `SELECT exam_id FROM exam_attempts WHERE id=?`, input.AttemptID.String()); err != nil {
+		return model.ResolvedNativePolicy{}, nil, err
+	}
+	examID, err := model.ParseExamID(examIDString)
+	if err != nil {
+		return model.ResolvedNativePolicy{}, nil, err
+	}
+	revision, err := getExamRevisionSnapshot(ctx, tx, examID, admitted.Policy.ExamRevisionID)
+	if err != nil {
+		return model.ResolvedNativePolicy{}, nil, err
+	}
+	selections, err := model.DecodeExamPolicySet(revision.Policy.Bytes)
+	if err != nil {
+		return model.ResolvedNativePolicy{}, nil, err
+	}
+	policy := admitted.Policy
+	resolved, err := model.ResolveNativePolicy(model.NativePolicyResolution{PolicyID: policy.PolicyID, Revision: policy.Revision, Ordinal: policy.Ordinal, InstitutionID: policy.InstitutionID, ExamRevisionID: policy.ExamRevisionID, SittingID: policy.SittingID, Scope: policy.Scope, IssuedAt: policy.IssuedAt, ActiveFrom: policy.ActiveFrom, ActivationTime: now.UTC().Truncate(time.Millisecond), Selections: selections, Build: input.DesktopBuild})
+	if err != nil {
+		return model.ResolvedNativePolicy{}, nil, err
+	}
+	if resolved.Policy.Digest != policy.Digest || resolved.PolicyContentDigest != admitted.PolicyContentDigest {
+		return model.ResolvedNativePolicy{}, nil, preflightConflict("policy_changed")
+	}
+	reasons, err := model.EvaluateNativeCoverage(resolved, control.Sources, control.Coverage, control.Posture)
+	if err != nil {
+		return model.ResolvedNativePolicy{}, nil, store.NewErrInvalidInput("security_control", "coverage", nil)
+	}
+	return resolved, reasons, nil
+}
+
+// checkSecurityControlSources requires every reset to name a resolved source
+// and every native watermark to name the owner's stream within its
+// acknowledgement.
+func checkSecurityControlSources(control model.SecurityCoverageRenewal, resolved model.ResolvedNativePolicy, admitted model.AdmittedSecurity, owner nativeControlOwnerRow) error {
+	for _, reset := range control.SourceResets {
+		owned := false
+		for _, source := range resolved.Sources {
+			if reset.SourceID == source {
+				owned = true
+			}
+		}
+		if !owned {
+			return store.NewErrNotFound("security_source", string(reset.SourceID))
+		}
+	}
+	// Native ownership exists at admission. Browser watermarks are installed by
+	// their separate source owner; no caller-supplied selector establishes one.
+	for _, watermark := range control.DeliveryWatermarks {
+		if watermark.Family == "browser" {
+			continue
+		}
+		if watermark.SourceID != admitted.DeliveryStreamID {
+			return store.NewErrNotFound("delivery_source", watermark.SourceID)
+		}
+		if watermark.AcknowledgedThroughSequence > owner.Acknowledged {
+			return store.NewErrInvalidInput("security_control", "acknowledgement", nil)
+		}
+	}
+	return nil
+}
+
+// resolveSecurityControlContinuity resolves the control's source continuity
+// against the retained heads and reset history, fencing resets below retained
+// evidence.
+func resolveSecurityControlContinuity(ctx context.Context, tx *sqlxTxWrapper, input *store.ExamAttemptParticipationRenewal, latestCoverage []byte) (model.NativeContinuityDecision, error) {
+	control := input.SecurityCoverage
+	heads, err := decodeNativeCoverageSnapshot(latestCoverage)
+	if err != nil {
+		return model.NativeContinuityDecision{}, err
+	}
 	var historyRaw [][]byte
 	if err := tx.Select(ctx, &historyRaw, `SELECT reset_canonical FROM exam_native_source_resets WHERE participation_id=? ORDER BY reset_id`, input.ParticipationID.String()); err != nil {
-		return zero, err
+		return model.NativeContinuityDecision{}, err
 	}
 	history := make([]model.NativeSourceReset, 0, len(historyRaw))
 	for _, encoded := range historyRaw {
 		record, err := decodeNativeResetRecord(encoded, input.ParticipationID, "")
 		if err != nil {
-			return zero, err
+			return model.NativeContinuityDecision{}, err
 		}
 		history = append(history, record.Reset)
 	}
@@ -203,7 +264,7 @@ func (s *SQLExamAttemptStore) processSecurityCoverage(ctx context.Context, tx *s
 	for _, reset := range control.SourceResets {
 		var observed int64
 		if err := tx.Get(ctx, &observed, `SELECT COALESCE(MAX((r->>'last_sequence')::bigint),0) FROM exam_native_delivery_records d CROSS JOIN LATERAL jsonb_array_elements(convert_from(d.metadata_canonical,'UTF8')::jsonb->'source_ranges') r WHERE d.participation_id=? AND r->>'source_id'=? AND r->>'source_instance_id'=?`, input.ParticipationID.String(), string(reset.SourceID), reset.PreviousSourceInstanceID); err != nil {
-			return zero, err
+			return model.NativeContinuityDecision{}, err
 		}
 		if reset.PreviousFinalSequence < observed {
 			resetBelowEvidence = true
@@ -211,21 +272,28 @@ func (s *SQLExamAttemptStore) processSecurityCoverage(ctx context.Context, tx *s
 	}
 	continuity, err := model.ResolveNativeSourceContinuity(heads.Sources, control.Sources, history, control.SourceResets)
 	if err != nil {
-		return zero, store.NewErrInvalidInput("security_control", "source_ownership", nil)
+		return model.NativeContinuityDecision{}, store.NewErrInvalidInput("security_control", "source_ownership", nil)
 	}
 	if resetBelowEvidence {
 		continuity = model.NativeContinuityDecision{Result: "reset_conflict", Heads: heads.Sources, NewResets: []model.NativeSourceReset{}, ReceiptIDs: []string{}}
 	}
+	return continuity, nil
+}
+
+// reserveNativeResetRecords encodes the new reset records and reserves their
+// metadata, downgrading the continuity to reset_required when capacity is
+// exhausted.
+func reserveNativeResetRecords(ctx context.Context, tx *sqlxTxWrapper, input *store.ExamAttemptParticipationRenewal, budget *securityControlBudget, continuity *model.NativeContinuityDecision) ([][]byte, error) {
 	records := make([][]byte, 0, len(continuity.NewResets))
 	additional := int64(0)
 	for _, reset := range continuity.NewResets {
 		canonical, err := reset.Canonical()
 		if err != nil {
-			return zero, err
+			return nil, err
 		}
 		record, err := encodeNativeResetRecord(nativeResetRecord{ParticipationID: input.ParticipationID, Reset: reset, Digest: model.SHA256Fingerprint(canonical)})
 		if err != nil || len(record) > nativeResetRecordMaxBytes {
-			return zero, store.NewErrInvalidInput("security_control", "reset_size", nil)
+			return nil, store.NewErrInvalidInput("security_control", "reset_size", nil)
 		}
 		records = append(records, record)
 		additional += int64(len(record))
@@ -235,10 +303,10 @@ func (s *SQLExamAttemptStore) processSecurityCoverage(ctx context.Context, tx *s
 		if reservationErr != nil {
 			var capacity *model.DeliveryMetadataCapacity
 			if !errors.As(reservationErr, &capacity) {
-				return zero, reservationErr
+				return nil, reservationErr
 			}
 			if err := latchDeliveryMetadata(ctx, tx, input.AttemptID); err != nil {
-				return zero, err
+				return nil, err
 			}
 			budget.SummaryOnly = true
 			continuity.Result = "reset_required"
@@ -249,12 +317,17 @@ func (s *SQLExamAttemptStore) processSecurityCoverage(ctx context.Context, tx *s
 			budget.Metadata = next
 		}
 	}
-	outcome := securityControlReceipt{Sequence: control.ControlSequence, Digest: digest, Result: continuity.Result, ResetIDs: continuity.ReceiptIDs, Rejections: [][2]int64{}}
-	for _, watermark := range control.DeliveryWatermarks {
+	return records, nil
+}
+
+// applySecurityControlWatermarks applies each delivery watermark, charging
+// native positions to the owner and budget and recording rejections.
+func applySecurityControlWatermarks(ctx context.Context, tx *sqlxTxWrapper, input *store.ExamAttemptParticipationRenewal, browserSources map[string]browserControlSource, owner *nativeControlOwnerRow, budget *securityControlBudget, outcome *securityControlReceipt) error {
+	for _, watermark := range input.SecurityCoverage.DeliveryWatermarks {
 		if watermark.Family == "browser" {
 			rejection, err := applyBrowserControlWatermark(ctx, tx, input, watermark, browserSources[watermark.SourceID])
 			if err != nil {
-				return zero, err
+				return err
 			}
 			if rejection != nil {
 				outcome.Rejections = append(outcome.Rejections, *rejection)
@@ -277,42 +350,50 @@ func (s *SQLExamAttemptStore) processSecurityCoverage(ctx context.Context, tx *s
 		owner.Allocated = watermark.AllocatedThroughSequence
 		budget.Positions += delta
 	}
+	return nil
+}
+
+// storeSecurityControl inserts the new resets, records the control in the
+// ledger and writes the owner and budget, returning the updated ledger.
+func storeSecurityControl(ctx context.Context, tx *sqlxTxWrapper, input *store.ExamAttemptParticipationRenewal, raw []byte, records [][]byte, continuity model.NativeContinuityDecision, reasons []model.SecurityReasonCode, owner *nativeControlOwnerRow, budget securityControlBudget, ledger nativeControlLedger, outcome securityControlReceipt) (nativeControlLedger, error) {
+	control := input.SecurityCoverage
 	for i, record := range records {
 		if _, err := tx.Exec(ctx, `INSERT INTO exam_native_source_resets(participation_id,reset_id,reset_canonical) VALUES(?,?,?)`, input.ParticipationID.String(), continuity.NewResets[i].ResetID, record); err != nil {
-			return zero, err
+			return nativeControlLedger{}, err
 		}
 	}
 	owner.Allowed = continuity.Result == "accepted" && len(reasons) == 0
 	if continuity.Result == "accepted" {
+		var err error
 		owner.LatestCoverage, err = canonicalPreflightValue(nativeCoverageSnapshot{Sources: control.Sources, Coverage: control.Coverage})
 		if err != nil || len(owner.LatestCoverage) > model.SecurityControlMaxBytes {
-			return zero, store.NewErrInvalidInput("security_control", "coverage_size", nil)
+			return nativeControlLedger{}, store.NewErrInvalidInput("security_control", "coverage_size", nil)
 		}
 	}
-	ledger, err = ledger.Record(outcome)
+	ledger, err := ledger.Record(outcome)
 	if err != nil {
-		return zero, err
+		return nativeControlLedger{}, err
 	}
 	ledgerJSON, err := json.Marshal(ledger)
 	if err != nil {
-		return zero, err
+		return nativeControlLedger{}, err
 	}
 	ledgerRaw, err := canonicaljson.Canonicalize(ledgerJSON, model.SecurityControlCacheMaxBytes+512)
 	if err != nil {
-		return zero, err
+		return nativeControlLedger{}, err
 	}
 	if _, err := tx.Exec(ctx, `UPDATE exam_attempt_security_owners SET latest_report_canonical=?,control_ledger_canonical=?,control_body_canonical=?,security_interaction_allowed=?,allocated_through_sequence=?,summary_only=?,stop_reason=CASE WHEN ? THEN COALESCE(stop_reason,'positions') ELSE stop_reason END,terminal_missing_through_sequence=CASE WHEN ? THEN ? ELSE terminal_missing_through_sequence END WHERE participation_id=?`, owner.LatestCoverage, ledgerRaw, raw, owner.Allowed, owner.Allocated, owner.SummaryOnly, owner.SummaryOnly, owner.SummaryOnly || budget.SummaryOnly, owner.Allocated, input.ParticipationID.String()); err != nil {
-		return zero, err
+		return nativeControlLedger{}, err
 	}
 	if _, err := tx.Exec(ctx, `UPDATE exam_attempt_delivery_budgets SET control_metadata_bytes=?,native_allocated_positions=?,native_summary_only=?,native_stop_reason=CASE WHEN ? THEN COALESCE(native_stop_reason,'positions') ELSE native_stop_reason END WHERE exam_attempt_id=?`, budget.Metadata, budget.Positions, budget.SummaryOnly, budget.SummaryOnly, input.AttemptID.String()); err != nil {
-		return zero, err
+		return nativeControlLedger{}, err
 	}
 	if budget.SummaryOnly {
 		if _, err := tx.Exec(ctx, `UPDATE exam_attempt_security_owners SET terminal_missing_through_sequence=allocated_through_sequence WHERE exam_attempt_id=?`, input.AttemptID.String()); err != nil {
-			return zero, err
+			return nativeControlLedger{}, err
 		}
 	}
-	return projectSecurityControl(ctx, tx, input.AttemptID, input.ParticipationID, admitted.DeliveryStreamID, ledger, &outcome, owner.Allowed, sittingOpen)
+	return ledger, nil
 }
 func projectSecurityControl(ctx context.Context, tx *sqlxTxWrapper, attemptID model.ExamAttemptID, participationID model.AttemptParticipationID, streamID string, ledger nativeControlLedger, receipt *securityControlReceipt, allowed, sittingOpen bool) (model.SecurityCoverageResult, error) {
 	result := model.SecurityCoverageResult{ProcessedControlSequence: ledger.ProcessedSequence, ProcessedControlDigest: ledger.ProcessedDigest, CoverageResult: "stale_control", SourceResetReceipts: []model.SourceResetReceipt{}, SecurityInteractionAllowed: allowed && sittingOpen, DeliveryWatermarkRejections: []model.DeliveryWatermarkRejection{}}
