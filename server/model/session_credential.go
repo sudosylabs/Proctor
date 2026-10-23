@@ -108,55 +108,8 @@ func (sc *SessionCredential) Validate() error {
 				details,
 			)
 		}
-	} else {
-		if !IsValidOpaqueID(sc.FamilyID) {
-			return invalidModelError(
-				where,
-				"session_credential",
-				"family_id",
-				"must be a valid identifier for refresh credentials",
-				details,
-			)
-		}
-		if !sc.ParentID.IsZero() && !sc.ParentID.IsValid() {
-			return invalidModelError(where, "session_credential", "parent_id", "must be a valid identifier", details)
-		}
-		if sc.ParentID == sc.ID {
-			return invalidModelError(
-				where,
-				"session_credential",
-				"parent_id",
-				"must not reference the credential itself",
-				details,
-			)
-		}
-		if !sc.ReplacedByID.IsZero() && !sc.ReplacedByID.IsValid() {
-			return invalidModelError(
-				where,
-				"session_credential",
-				"replaced_by_id",
-				"must be a valid identifier",
-				details,
-			)
-		}
-		if sc.ReplacedByID == sc.ID {
-			return invalidModelError(
-				where,
-				"session_credential",
-				"replaced_by_id",
-				"must not reference the credential itself",
-				details,
-			)
-		}
-		if !sc.ReplacedByID.IsZero() && !sc.UsedAt.Valid {
-			return invalidModelError(
-				where,
-				"session_credential",
-				"replaced_by_id",
-				"requires used_at to be set",
-				details,
-			)
-		}
+	} else if err := sc.validateRefreshRotation(details); err != nil {
+		return err
 	}
 	if sc.UsedAt.Valid &&
 		(sc.UsedAt.Time.Before(sc.CreatedAt) || !sc.UsedAt.Time.Before(sc.ExpiresAt)) {
@@ -173,6 +126,60 @@ func (sc *SessionCredential) Validate() error {
 	}
 	if sc.RevokedAt.Valid && sc.RevokedAt.Time.Before(sc.CreatedAt) {
 		return invalidModelError(where, "session_credential", "revoked_at", "must not precede create_at", details)
+	}
+	return nil
+}
+
+// validateRefreshRotation checks the rotation lineage fields of a refresh credential.
+func (sc *SessionCredential) validateRefreshRotation(details string) error {
+	const where = "SessionCredential.Validate"
+	if !IsValidOpaqueID(sc.FamilyID) {
+		return invalidModelError(
+			where,
+			"session_credential",
+			"family_id",
+			"must be a valid identifier for refresh credentials",
+			details,
+		)
+	}
+	if !sc.ParentID.IsZero() && !sc.ParentID.IsValid() {
+		return invalidModelError(where, "session_credential", "parent_id", "must be a valid identifier", details)
+	}
+	if sc.ParentID == sc.ID {
+		return invalidModelError(
+			where,
+			"session_credential",
+			"parent_id",
+			"must not reference the credential itself",
+			details,
+		)
+	}
+	if !sc.ReplacedByID.IsZero() && !sc.ReplacedByID.IsValid() {
+		return invalidModelError(
+			where,
+			"session_credential",
+			"replaced_by_id",
+			"must be a valid identifier",
+			details,
+		)
+	}
+	if sc.ReplacedByID == sc.ID {
+		return invalidModelError(
+			where,
+			"session_credential",
+			"replaced_by_id",
+			"must not reference the credential itself",
+			details,
+		)
+	}
+	if !sc.ReplacedByID.IsZero() && !sc.UsedAt.Valid {
+		return invalidModelError(
+			where,
+			"session_credential",
+			"replaced_by_id",
+			"requires used_at to be set",
+			details,
+		)
 	}
 	return nil
 }
