@@ -33,6 +33,7 @@ func TestCatalogDeclaresTheCompleteCoreDurableWorkGraph(t *testing.T) {
 		model.JobTypeMailExpandSitting:             true,
 		model.JobTypeMailCleanup:                   true,
 		model.JobTypeMailRekey:                     true,
+		model.JobTypeMFARekey:                      true,
 		model.JobTypeInvitationMaintenance:         true,
 		model.JobTypeExamSittingLifecycle:          true,
 		model.JobTypeExamSittingSealing:            true,

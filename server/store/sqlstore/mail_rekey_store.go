@@ -169,7 +169,7 @@ func completedMailRekeyAllowsPromotion(job mailRekeyCompletionRow, requiredPrima
 		PrimaryKeyID  string `json:"primary_key_id"`
 		RetiringKeyID string `json:"retiring_key_id"`
 	}
-	if decodeStrictMailRekeyCommand(json.RawMessage(job.Command), &command) != nil || command.PrimaryKeyID != requiredPrimaryKeyID ||
+	if decodeStrictRekeyDocument(json.RawMessage(job.Command), &command) != nil || command.PrimaryKeyID != requiredPrimaryKeyID ||
 		!validMailPayloadKeyID(command.RetiringKeyID) || command.RetiringKeyID == command.PrimaryKeyID {
 		return false
 	}
@@ -182,7 +182,7 @@ func completedMailRekeyAllowsPromotion(job mailRekeyCompletionRow, requiredPrima
 		RetiringReferences   int64  `json:"retiring_references"`
 		RetirementSafe       bool   `json:"retirement_safe"`
 	}
-	return decodeStrictMailRekeyCommand(json.RawMessage(job.Result), &proof) == nil && proof.PrimaryKeyID == command.PrimaryKeyID &&
+	return decodeStrictRekeyDocument(json.RawMessage(job.Result), &proof) == nil && proof.PrimaryKeyID == command.PrimaryKeyID &&
 		proof.RetiringKeyID == command.RetiringKeyID && proof.Processed >= 0 && proof.Reencrypted >= 0 &&
 		proof.Reencrypted <= proof.Processed && proof.NonPrimaryReferences == 0 && proof.RetiringReferences == 0 &&
 		proof.RetirementSafe
@@ -202,7 +202,7 @@ func validateMailRekeyStart(input *store.MailRekeyStart) error {
 		PrimaryKeyID  string `json:"primary_key_id"`
 		RetiringKeyID string `json:"retiring_key_id"`
 	}
-	if err := decodeStrictMailRekeyCommand(input.Job.Command, &command); err != nil || command.PrimaryKeyID != input.PrimaryKeyID ||
+	if err := decodeStrictRekeyDocument(input.Job.Command, &command); err != nil || command.PrimaryKeyID != input.PrimaryKeyID ||
 		command.RetiringKeyID != input.RetiringKeyID {
 		return store.NewErrInvalidInput("mail_rekey", "command", err)
 	}
@@ -345,14 +345,14 @@ func validMailRekeyKind(kind store.MailRekeyTargetKind) bool {
 	return kind == store.MailRekeyTargetDelivery || kind == store.MailRekeyTargetFanoutBundle
 }
 
-func decodeStrictMailRekeyCommand(document json.RawMessage, target any) error {
+func decodeStrictRekeyDocument(document json.RawMessage, target any) error {
 	decoder := json.NewDecoder(bytes.NewReader(document))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(target); err != nil {
 		return err
 	}
 	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
-		return errors.New("mail rekey command contains trailing data")
+		return errors.New("rekey Job document contains trailing data")
 	}
 	return nil
 }

@@ -482,6 +482,9 @@ func insertMFACredential(
 	executor sqlxExecutor,
 	credential *model.MFACredential,
 ) error {
+	if err := requireMFASecretPrimary(ctx, executor, credential.EncryptionKeyID); err != nil {
+		return err
+	}
 	row := newMFACredentialRow(credential)
 	if _, err := executor.Exec(ctx, `
 		INSERT INTO mfa_credentials (
@@ -700,13 +703,13 @@ func (s SQLMFAStore) SeedPending(
 	})
 }
 
-// ListSecretKeyUsage groups unarchived TOTP credentials by sealing key.
-func (s SQLMFAStore) ListSecretKeyUsage(ctx context.Context) ([]store.MFASecretKeyUsage, error) {
+// listMFASecretKeyUsage groups unarchived TOTP credentials by sealing key.
+func listMFASecretKeyUsage(ctx context.Context, executor sqlxExecutor) ([]store.MFASecretKeyUsage, error) {
 	var rows []struct {
 		KeyID       string `db:"key_id"`
 		Credentials int64  `db:"credentials"`
 	}
-	if err := s.GetMaster().Select(ctx, &rows, `
+	if err := executor.Select(ctx, &rows, `
 		SELECT encryption_key_id AS key_id, COUNT(*) AS credentials FROM mfa_credentials
 		 WHERE archived_at IS NULL GROUP BY encryption_key_id ORDER BY encryption_key_id`); err != nil {
 		return nil, fmt.Errorf("list MFA secret key usage: %w", err)

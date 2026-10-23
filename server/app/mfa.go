@@ -29,6 +29,7 @@ import (
 	"time"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	"github.com/sudosylabs/proctor/server/app/jobhandler"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/secretseal"
 	"github.com/sudosylabs/proctor/server/store"
@@ -38,7 +39,6 @@ const (
 	mfaSecretBytes       = 20
 	mfaRecoveryCodeBytes = 15
 	mfaTOTPWindow        = int64(1)
-	mfaSealingPurpose    = "mfa.totp"
 )
 
 // mfaMechanicsDependencies are the collaborators of mfaMechanics;
@@ -183,7 +183,7 @@ func (s *mfaMechanics) sealTOTPSecret(userID string, secret string) (sealedMFASe
 		return sealedMFASecret{}, errors.New("MFA secret sealing is unavailable")
 	}
 	envelope, err := s.deps.Sealer.Seal(
-		secretseal.Binding{Purpose: mfaSealingPurpose, Owner: userID},
+		secretseal.Binding{Purpose: jobhandler.MFASealingPurpose, Owner: userID},
 		[]byte(secret),
 	)
 	if err != nil {
@@ -209,7 +209,7 @@ func (s *mfaMechanics) decrypt(
 		return "", secretseal.ErrInvalidEnvelope
 	}
 	plaintext, err := s.deps.Sealer.Open(
-		secretseal.Binding{Purpose: mfaSealingPurpose, Owner: userID},
+		secretseal.Binding{Purpose: jobhandler.MFASealingPurpose, Owner: userID},
 		envelope,
 	)
 	if err != nil {
@@ -363,13 +363,17 @@ var mfaStoreErrors = apperror.StoreTable{
 		{Kind: apperror.StoreSentinel, Sentinel: store.ErrAuthenticationGenerationChanged, Code: "authentication.mfa.conflict"},
 		{Kind: apperror.StoreSentinel, Sentinel: store.ErrMFAReenrollmentRequired, Code: "authentication.mfa.conflict"},
 	},
+	// A secret sealed with a primary the key-ring fence has moved past means
+	// this node's MFA key configuration is stale: unavailable, not a conflict
+	// the User could resolve.
+	Constraints: map[string]apperror.Code{"stale_primary_key": "authentication.mfa.unavailable"},
 	NotFound:    "authentication.mfa.not_found",
 	Conflict:    "authentication.mfa.conflict",
 	Unavailable: "authentication.mfa.unavailable",
 }
 
 type mfaSecretKeyStore interface {
-	ListSecretKeyUsage(context.Context) ([]store.MFASecretKeyUsage, error)
+	InspectKeyState(context.Context) (*store.MFAKeyState, error)
 }
 
 // validateMFASecretKeys fails startup when a stored TOTP secret is sealed with
@@ -380,11 +384,19 @@ func validateMFASecretKeys(ctx context.Context, persistence mfaSecretKeyStore, s
 	if persistence == nil {
 		return errors.New("MFA secret-key persistence is unavailable")
 	}
-	usage, err := persistence.ListSecretKeyUsage(ctx)
+	state, err := persistence.InspectKeyState(ctx)
 	if err != nil {
 		return fmt.Errorf("inspect MFA secret keys: %w", err)
 	}
-	for _, item := range usage {
+	if state == nil {
+		return errors.New("MFA secret-key state is unavailable")
+	}
+	// Every new secret must be sealed with the fenced primary, so a ring
+	// without it could write nothing.
+	if state.RequiredPrimaryKeyID != "" && (sealer == nil || !sealer.HasKey(state.RequiredPrimaryKeyID)) {
+		return fmt.Errorf("MFA primary key %s required by the last rekey is not configured; restore it to Authentication.MFA", state.RequiredPrimaryKeyID)
+	}
+	for _, item := range state.Active {
 		if sealer == nil || !sealer.HasKey(item.KeyID) {
 			return fmt.Errorf("MFA secret key %s is not configured but seals %d stored credentials; restore it to Authentication.MFA.DecryptionKeys", item.KeyID, item.Credentials)
 		}

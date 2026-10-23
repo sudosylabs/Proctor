@@ -49,7 +49,7 @@ func TestV1HTTPContractCharacterization(t *testing.T) {
 	require.NoError(t, err)
 	digest := sha256.Sum256(canonical)
 	gotDigest := hex.EncodeToString(digest[:])
-	const wantDigest = "c7abcc6090683e3e0c4fbdb4676baea438c212dfcd7e6f3a95c5c2b2f317bcf9"
+	const wantDigest = "263c60ae109cc04f5269f0a123020facfed07a0af08c28bd7c4eb8fd580de3aa"
 	require.Equal(t, wantDigest, gotDigest, "v1 HTTP contract digest")
 
 	var parsed struct {
@@ -64,7 +64,7 @@ func TestV1HTTPContractCharacterization(t *testing.T) {
 			}
 		}
 	}
-	require.Equal(t, 279, operationCount, "v1 operation count")
+	require.Equal(t, 282, operationCount, "v1 operation count")
 	require.Len(t, runtimeAPI.Routes(), operationCount, "runtime route count")
 }
 

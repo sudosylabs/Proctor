@@ -90,10 +90,24 @@ type MFAStore interface {
 	UpgradeSession(context.Context, *MFASessionUpgrade) ([]string, error)
 	ReplaceRecoveryCodes(context.Context, *MFARecoveryCodesRegeneration) error
 	CountRecoveryCodes(context.Context, model.UserID) (int, error)
-	// ListSecretKeyUsage reports, per sealing key, how many unarchived
-	// credentials hold a secret sealed with it, ordered by key ID. Startup
-	// uses it to prove the configured key ring can open every secret.
-	ListSecretKeyUsage(context.Context) ([]MFASecretKeyUsage, error)
+	// InspectKeyState reads the durable primary-key fence with, per sealing
+	// key, how many unarchived credentials hold a secret sealed with it,
+	// ordered by key ID. Startup uses it to prove the configured key ring can
+	// open every secret and write under the fence.
+	InspectKeyState(context.Context) (*MFAKeyState, error)
+	// StartRekey refuses while another rekey is queued or running, advances
+	// the primary-key fence, queues the Job, and completes its audit.
+	StartRekey(context.Context, *MFARekeyStart) (*MFARekeyOperation, error)
+	// ListRekeyTargets pages the live credentials sealed with another key
+	// than the fenced primary; a stale fence is a conflict.
+	ListRekeyTargets(context.Context, *MFARekeyTargetPageRequest) (*MFARekeyTargetPage, error)
+	// ReplaceRekeyTarget reports whether it re-sealed the credential; a
+	// credential archived or re-sealed meanwhile is skipped, and a stale
+	// fence is a conflict.
+	ReplaceRekeyTarget(context.Context, *MFARekeyReplacement) (bool, error)
+	// ProveRekey counts the live credentials still sealed with another key
+	// than the fenced primary, and with the retiring key.
+	ProveRekey(context.Context, *MFARekeyProofRequest) (*MFARekeyProof, error)
 	Disable(context.Context, *MFADisablement) (*MFADisableResult, error)
 	// SeedPending is an unaudited fixture write; production code never calls it.
 	SeedPending(context.Context, *model.MFACredential) (*model.MFACredential, error)

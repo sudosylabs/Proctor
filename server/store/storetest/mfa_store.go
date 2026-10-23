@@ -45,16 +45,20 @@ func TestMFAStore(t *testing.T, ss store.Store) {
 	t.Run("SecretKeyUsageCountsLiveCredentials", func(t *testing.T) {
 		testMFASecretKeyUsage(t, ss)
 	})
+	t.Run("RekeyFencesAndResealsUnderTheKeyIdentity", func(t *testing.T) {
+		testMFARekeyStore(t, ss)
+	})
 }
 
 func testMFASecretKeyUsage(t *testing.T, ss store.Store) {
 	ctx := context.Background()
 	countFor := func(keyID string) int64 {
-		usage, err := ss.MFA().ListSecretKeyUsage(ctx)
+		state, err := ss.MFA().InspectKeyState(ctx)
 		require.NoError(t, err)
+		usage := state.Active
 		for index, item := range usage {
 			if index > 0 {
-				require.Less(t, usage[index-1].KeyID, item.KeyID, "ListSecretKeyUsage() is not ordered by key")
+				require.Less(t, usage[index-1].KeyID, item.KeyID, "InspectKeyState() usage is not ordered by key")
 			}
 			if item.KeyID == keyID {
 				return item.Credentials

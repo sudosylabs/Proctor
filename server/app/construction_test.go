@@ -169,7 +169,10 @@ type constructionCatalogWithJobs struct {
 	examSittings         store.ExamSittingStore
 }
 
-func (c constructionCatalogWithJobs) Job() store.JobStore       { return c.jobs }
+func (c constructionCatalogWithJobs) Job() store.JobStore { return c.jobs }
+
+// MFA has no store in this catalog; the MFA rekey handler is constructed without one.
+func (c constructionCatalogWithJobs) MFA() store.MFAStore       { return nil }
 func (constructionCatalogWithJobs) Mail() store.MailStore       { return nil }
 func (constructionCatalogWithJobs) Audit() store.AuditStore     { return nil }
 func (constructionCatalogWithJobs) Session() store.SessionStore { return nil }

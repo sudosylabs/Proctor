@@ -75,11 +75,22 @@ func constructJobs(
 		mailService.wake = runtime.Wake
 	}
 
+	var mfaKeys *mfaKeyService
+	if deps.Store.MFA() != nil {
+		mfaKeys, err = newMFAKeyService(mfaKeyServiceDependencies{Keys: deps.Store.MFA(), Jobs: deps.Store.Job(),
+			Authorization: mfaKeyAuthorization{authorization: access.authorization, institutions: deps.Store.Institution()},
+			Audit:         mutationAuditAdapter{audit: foundation.audit}, Sealer: deps.MFASecretSealer,
+			RecentAuthenticationTTL: deps.RecentAuthenticationTTL, Now: time.Now, Wake: runtime.Wake})
+		if err != nil {
+			return jobConstruction{}, err
+		}
+	}
+
 	operations, err := newJobOperationsService(jobOperationsServiceDependencies{Jobs: runtime, Authorization: jobOperationsAuthorization{authorization: access.authorization, institutions: deps.Store.Institution()}, Audit: mutationAuditAdapter{audit: foundation.audit}, Now: time.Now})
 	if err != nil {
 		return jobConstruction{}, err
 	}
-	return jobConstruction{runtime: runtime, operations: operations, mail: mailService}, nil
+	return jobConstruction{runtime: runtime, operations: operations, mail: mailService, mfaKeys: mfaKeys}, nil
 }
 
 type activeMailPayloadKeyStore interface {
@@ -168,7 +179,7 @@ func buildApplicationJobDefinitions(
 		MailDeliveries: deps.Store.Mail(), MailSender: deps.MailDeliverySender, MailSealer: deps.MailSecretSealer,
 		MailRecorder: jobMailDeliveryRecorder{recorder: deps.MailDeliveryRecorder}, MailHealth: jobMailHealth{health: mailHealth},
 		MailRelevance: jobMailDeliveryIsRelevant, SittingMailStore: deps.Store.ExamSitting(), SittingMail: examinations.sittingMail,
-		MailCleanup: deps.Store.Mail(), SittingMailMaintenance: deps.Store.ExamSitting(), MailRekey: deps.Store.Mail(),
+		MailCleanup: deps.Store.Mail(), SittingMailMaintenance: deps.Store.ExamSitting(), MailRekey: deps.Store.Mail(), MFARekey: deps.Store.MFA(), MFASealer: deps.MFASecretSealer,
 		Invitations: deps.Store.Invitation(), OnboardingImports: deps.Store.OnboardingImport(), OnboardingFiles: deps.FileContent,
 		ExamSittingLifecycle: lifecycleUseCases, ExamSittingSealing: sealingUseCases, Onboarding: onboarding, Now: time.Now,
 	})

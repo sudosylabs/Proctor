@@ -98,6 +98,7 @@ type jobConstruction struct {
 	runtime    *job.Engine
 	operations *jobOperationsService
 	mail       *mailService
+	mfaKeys    *mfaKeyService
 }
 
 type administrationConstruction struct {
@@ -260,5 +261,6 @@ func assembleApplication(
 		jobs:                 jobs.runtime,
 		jobOperationsService: jobs.operations,
 		mailService:          jobs.mail,
+		mfaKeyService:        jobs.mfaKeys,
 	}
 }

@@ -623,7 +623,8 @@ func (s SQLJobStore) DeleteTerminalHistory(ctx context.Context, input *store.Job
 		// stays until that row is removed; its NO ACTION foreign key would
 		// otherwise fail every page that reaches it.
 		query := `SELECT id, completed_at FROM jobs WHERE id <> ? AND status IN ('succeeded', 'failed', 'canceled') AND completed_at IS NOT NULL
-			AND id <> COALESCE((SELECT active_rekey_job_id FROM mail_key_state WHERE singleton = TRUE), '')` + unreferencedJob
+			AND id <> COALESCE((SELECT active_rekey_job_id FROM mail_key_state WHERE singleton = TRUE), '')
+			AND id <> COALESCE((SELECT active_rekey_job_id FROM mfa_key_state WHERE singleton = TRUE), '')` + unreferencedJob
 		if !input.AfterCompletedAt.IsZero() {
 			query += ` AND (completed_at > ? OR (completed_at = ? AND id > ?))`
 		}
@@ -648,7 +649,8 @@ func (s SQLJobStore) DeleteTerminalHistory(ctx context.Context, input *store.Job
 			return nil, fmt.Errorf("delete retained job attempts: %w", err)
 		}
 		deleted, err := tx.Exec(ctx, `DELETE FROM jobs WHERE id = ANY(?) AND id <> ? AND status IN ('succeeded', 'failed', 'canceled')
-			AND id <> COALESCE((SELECT active_rekey_job_id FROM mail_key_state WHERE singleton = TRUE), '')`+unreferencedJob, pq.Array(ids), input.ExcludeJobID.String())
+			AND id <> COALESCE((SELECT active_rekey_job_id FROM mail_key_state WHERE singleton = TRUE), '')
+			AND id <> COALESCE((SELECT active_rekey_job_id FROM mfa_key_state WHERE singleton = TRUE), '')`+unreferencedJob, pq.Array(ids), input.ExcludeJobID.String())
 		if err != nil {
 			return nil, fmt.Errorf("delete retained jobs: %w", err)
 		}

@@ -44,6 +44,7 @@ DROP TABLE IF EXISTS exam_sitting_records_completions;
 DROP TABLE IF EXISTS cluster_discovery_nodes;
 DROP TABLE IF EXISTS serving_node_leases;
 DROP TABLE IF EXISTS mail_send_rate_limit;
+DROP TABLE IF EXISTS mfa_key_state;
 DROP TABLE IF EXISTS mail_key_state;
 DROP TABLE IF EXISTS exam_sitting_mail_recipients;
 DROP TABLE IF EXISTS exam_sitting_mail_fanouts;

@@ -18,12 +18,16 @@ import (
 )
 
 type mfaSecretKeyStoreFake struct {
-	usage []store.MFASecretKeyUsage
-	err   error
+	usage    []store.MFASecretKeyUsage
+	required string
+	err      error
 }
 
-func (f mfaSecretKeyStoreFake) ListSecretKeyUsage(context.Context) ([]store.MFASecretKeyUsage, error) {
-	return f.usage, f.err
+func (f mfaSecretKeyStoreFake) InspectKeyState(context.Context) (*store.MFAKeyState, error) {
+	if f.err != nil {
+		return nil, f.err
+	}
+	return &store.MFAKeyState{RequiredPrimaryKeyID: f.required, Active: f.usage}, nil
 }
 
 type mfaKeyRingFake map[string]bool
@@ -41,6 +45,10 @@ func TestMFASecretKeyStartupCheckRequiresEveryStoredKey(t *testing.T) {
 	err := validateMFASecretKeys(context.Background(), mfaSecretKeyStoreFake{usage: stranded}, ring)
 	require.ErrorContains(t, err, "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb")
 	require.ErrorContains(t, err, "2 stored credentials")
+
+	fencedElsewhere := validateMFASecretKeys(context.Background(), mfaSecretKeyStoreFake{usage: usage, required: "cccccccccccccccccccccccccccccccc"}, ring)
+	require.ErrorContains(t, fencedElsewhere, "cccccccccccccccccccccccccccccccc", "the ring must hold the primary the last rekey fenced")
+	require.NoError(t, validateMFASecretKeys(context.Background(), mfaSecretKeyStoreFake{usage: usage, required: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}, ring))
 
 	unavailable := errors.New("database unavailable")
 	require.ErrorIs(t, validateMFASecretKeys(context.Background(), mfaSecretKeyStoreFake{err: unavailable}, ring), unavailable)

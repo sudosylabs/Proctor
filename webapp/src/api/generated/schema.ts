@@ -3699,6 +3699,69 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/mfa/keys": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Inspect the MFA key ring and the live secrets each key seals
+         * @description Returns the non-secret identifier of this node's configured MFA primary key, the primary-key fence that the last rekey installed, and, per sealing key, how many live TOTP secrets it seals and whether this node's ring holds it. Use it to plan a rotation and to confirm a retiring key seals nothing before removing it from configuration. No key bytes, ciphertext, or account identities are returned.
+         */
+        get: operations["inspectMFAKeyState"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mfa/rekey": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start a durable fenced rotation of the MFA secret key
+         * @description Fences the MFA key ring on this node's configured primary key and starts one durable Job that re-seals every live TOTP secret from other keys to it, one credential at a time under a compare-and-swap on its key identity. The Job resumes from its checkpoint after a crash or lease loss. A rekey is refused while another is queued or running, and the fence moves to a different primary only after the previous rekey proved that no live secret needs another key. From the fence onwards every node must seal new secrets with the fenced primary.
+         */
+        post: operations["startMFARekey"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mfa/rekey/{job_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The durable MFA rekey Job whose safe progress is requested. */
+                job_id: components["schemas"]["ID"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Inspect safe progress and final retirement proof for one MFA rekey Job
+         * @description Returns bounded progress for one MFA rekey Job and, after it succeeds, the live-secret counts that prove the retiring key seals nothing and may be removed from configuration. A Job of another type is not found. No secrets, ciphertext, account identities, key bytes, or worker diagnostics are returned.
+         */
+        get: operations["getMFARekeyStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/onboarding-imports": {
         parameters: {
             query?: never;
@@ -8250,8 +8313,98 @@ export interface components {
         MFACodeRequest: {
             code: string;
         };
+        /** @description MFA key-ring identities, the durable primary-key fence, and live-secret counts. */
+        MFAKeyStateResponse: {
+            /** @description Keys that seal at least one live MFA secret, ordered by identifier. */
+            active: components["schemas"]["MFASecretKeyUsage"][];
+            active_rekey_job_id?: components["schemas"]["ID"];
+            /** @description Identifier of the key this node uses for new MFA secrets. */
+            primary_key_id: string;
+            /** @description Primary key the last rekey fenced; every node must seal new secrets with it. Absent before the first rekey. */
+            required_primary_key_id?: string;
+        };
         MFARecoveryCodesResponse: {
             recovery_codes: string[];
+        };
+        /** @description Coarse bounded progress while live MFA secrets are re-sealed. */
+        MFARekeyProgress: {
+            /**
+             * Format: int64
+             * @description Credentials examined so far.
+             */
+            current: number;
+            /** @enum {string} */
+            stage: "resealing";
+            /**
+             * Format: int64
+             * @description Credentials in the processing set.
+             */
+            total: number;
+        };
+        /** @description Final live-secret counts used to decide whether the retiring key may be removed. */
+        MFARekeyProof: {
+            /**
+             * Format: int64
+             * @description Live MFA secrets sealed with any non-primary key after processing.
+             */
+            non_primary_references: number;
+            /** @description True only when the final counts prove the retiring key can be removed. */
+            retirement_safe: boolean;
+            /**
+             * Format: int64
+             * @description Live MFA secrets still sealed with the exact retiring key.
+             */
+            retiring_references: number;
+        };
+        /** @description Exact retiring-key selection for a new fenced MFA rotation Job. */
+        MFARekeyRequest: {
+            /** @description Non-secret identifier of the configured MFA key to retire; it must not be the primary key. */
+            retiring_key_id: string;
+        };
+        /** @description Durable identities created when the MFA rotation Job is accepted. */
+        MFARekeyResponse: {
+            /**
+             * Format: date-time
+             * @description Time when the rekey Job was created.
+             */
+            created_at: string;
+            job_id: components["schemas"]["ID"];
+            primary_key_id: string;
+            retiring_key_id: string;
+        };
+        /** @description Safe Job status, progress, and optional final key-retirement proof. */
+        MFARekeyStatusResponse: {
+            attempt_count: number;
+            /** Format: date-time */
+            completed_at?: string;
+            /** Format: date-time */
+            created_at: string;
+            job_id: components["schemas"]["ID"];
+            maximum_attempts: number;
+            primary_key_id: string;
+            /** Format: int64 */
+            processed: number;
+            progress?: components["schemas"]["MFARekeyProgress"];
+            proof?: components["schemas"]["MFARekeyProof"];
+            public_error_code?: string;
+            /** Format: int64 */
+            resealed: number;
+            retiring_key_id: string;
+            status: components["schemas"]["JobStatus"];
+            /** Format: date-time */
+            updated_at: string;
+        };
+        /** @description Live TOTP secrets sealed with one MFA key. */
+        MFASecretKeyUsage: {
+            /** @description Whether this node's configured MFA key ring holds the key. */
+            configured: boolean;
+            /**
+             * Format: int64
+             * @description Number of live MFA credentials whose secret this key seals.
+             */
+            credentials: number;
+            /** @description Non-secret 128-bit key identifier encoded as lowercase hexadecimal. */
+            key_id: string;
         };
         MFASetupResponse: {
             /** Format: date-time */
@@ -11579,6 +11732,16 @@ export interface components {
                 "application/json": components["schemas"]["MFAActivationResponse"];
             };
         };
+        /** @description MFA key-ring identities, fence, and live-secret counts */
+        MFAKeyStateOK: {
+            headers: {
+                "Cache-Control": components["headers"]["NoStore"];
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["MFAKeyStateResponse"];
+            };
+        };
         /** @description New MFA recovery codes */
         MFARecoveryCodesOK: {
             headers: {
@@ -11587,6 +11750,26 @@ export interface components {
             };
             content: {
                 "application/json": components["schemas"]["MFARecoveryCodesResponse"];
+            };
+        };
+        /** @description Durable fenced MFA key rotation accepted */
+        MFARekeyAccepted: {
+            headers: {
+                "Cache-Control": components["headers"]["NoStore"];
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["MFARekeyResponse"];
+            };
+        };
+        /** @description Safe MFA rekey progress and final retirement proof */
+        MFARekeyStatusOK: {
+            headers: {
+                "Cache-Control": components["headers"]["NoStore"];
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["MFARekeyStatusResponse"];
             };
         };
         /** @description Pending MFA setup */
@@ -13883,6 +14066,17 @@ export interface components {
                  *     }
                  */
                 "application/json": components["schemas"]["SecurityPreflightReport"];
+            };
+        };
+        /** @description Identifies the configured non-primary MFA key that this rotation must retire. */
+        StartMFARekey: {
+            content: {
+                /**
+                 * @example {
+                 *       "retiring_key_id": "0123456789abcdef0123456789abcdef"
+                 *     }
+                 */
+                "application/json": components["schemas"]["MFARekeyRequest"];
             };
         };
         /** @description Identifies the currently active non-primary key that this rotation must retire. */
@@ -18976,6 +19170,62 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             409: components["responses"]["Conflict"];
             429: components["responses"]["TooManyRequests"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    inspectMFAKeyState: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["MFAKeyStateOK"];
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    startMFARekey: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: components["requestBodies"]["StartMFARekey"];
+        responses: {
+            202: components["responses"]["MFARekeyAccepted"];
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    getMFARekeyStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The durable MFA rekey Job whose safe progress is requested. */
+                job_id: components["schemas"]["ID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["MFARekeyStatusOK"];
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
             500: components["responses"]["InternalError"];
             503: components["responses"]["ServiceUnavailable"];
         };

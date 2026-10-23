@@ -212,6 +212,7 @@ type Application interface {
 	PersonalAccessTokens
 	MFA
 	MFAAdministration
+	MFAKeyApplication
 	InstitutionApplication
 	DesktopCompatibilityApplication
 	RetentionPolicyApplication

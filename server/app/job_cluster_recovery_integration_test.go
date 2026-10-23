@@ -242,12 +242,14 @@ func openClusteredJobIntegrationStore(t *testing.T) *sqlstore.SQLStore {
 		assert.NoError(t, persistence.Close())
 	})
 	_, err = persistence.GetMaster().Exec(context.Background(), `TRUNCATE TABLE
-		mail_key_state, mail_fanout_bundles, mail_payload_keys, mail_deliveries, mail_occurrences,
+		mail_key_state, mfa_key_state, mail_fanout_bundles, mail_payload_keys, mail_deliveries, mail_occurrences,
 		audit_events, institutions, users, file_entries, job_permanent_occurrences, jobs CASCADE`)
 	require.NoError(t, err)
 	_, err = persistence.GetMaster().Exec(context.Background(), `INSERT INTO mail_key_state(
 		singleton, required_primary_key_id, active_rekey_job_id, updated_at
 	) VALUES (TRUE, NULL, NULL, clock_timestamp())`)
+	require.NoError(t, err)
+	_, err = persistence.GetMaster().Exec(context.Background(), `INSERT INTO mfa_key_state(singleton, required_primary_key_id, active_rekey_job_id, updated_at) VALUES (TRUE, NULL, NULL, clock_timestamp())`)
 	require.NoError(t, err)
 	return persistence
 }

@@ -177,6 +177,10 @@ codes:
     description: "Multi-factor authentication is not available on this installation."
   - code: authentication.mfa.not_found
     description: "No multi-factor enrollment exists for the account."
+  - code: authentication.mfa.rekey.conflict
+    description: "An MFA rekey is already in progress, or the last one has not proved its primary key."
+  - code: authentication.mfa.rekey.invalid
+    description: "The MFA rekey request is invalid."
   - code: authentication.mfa.required
     status: 401
     reason: "The request lacks a credential the route requires."

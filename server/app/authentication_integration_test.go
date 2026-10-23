@@ -1155,7 +1155,7 @@ func openAuthenticationStore(t *testing.T, dataSource string) *sqlstore.SQLStore
 	require.NoError(t, err)
 	if _, err := persistence.GetMaster().Exec(context.Background(), `
 		TRUNCATE TABLE
-			mail_key_state, mail_fanout_bundles, mail_payload_keys, external_login_states, installation_states, access_policy_transitions, access_policies, audit_events, mfa_recovery_codes, mfa_credentials,
+			mail_key_state, mfa_key_state, mail_fanout_bundles, mail_payload_keys, external_login_states, installation_states, access_policy_transitions, access_policies, audit_events, mfa_recovery_codes, mfa_credentials,
 			user_tokens, personal_access_tokens, session_credentials, sessions,
 			role_bindings, roles, class_members, academic_unit_members,
 			affiliations, password_credentials, external_identities, users,
@@ -1164,9 +1164,14 @@ func openAuthenticationStore(t *testing.T, dataSource string) *sqlstore.SQLStore
 		_ = persistence.Close()
 		require.NoError(t, err)
 	}
-	if _, err := persistence.GetMaster().Exec(context.Background(), `INSERT INTO mail_key_state(singleton, required_primary_key_id, active_rekey_job_id, updated_at) VALUES (TRUE, NULL, NULL, clock_timestamp())`); err != nil {
-		_ = persistence.Close()
-		require.NoError(t, err)
+	for _, seed := range []string{
+		`INSERT INTO mail_key_state(singleton, required_primary_key_id, active_rekey_job_id, updated_at) VALUES (TRUE, NULL, NULL, clock_timestamp())`,
+		`INSERT INTO mfa_key_state(singleton, required_primary_key_id, active_rekey_job_id, updated_at) VALUES (TRUE, NULL, NULL, clock_timestamp())`,
+	} {
+		if _, err := persistence.GetMaster().Exec(context.Background(), seed); err != nil {
+			_ = persistence.Close()
+			require.NoError(t, err)
+		}
 	}
 	return persistence
 }

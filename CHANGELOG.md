@@ -158,6 +158,12 @@ module when a change is not server-only. No module has been released yet.
 - Server: startup refuses to serve when a stored MFA secret is sealed with a
   key missing from `Authentication.MFA`, instead of stranding those
   credentials.
+- Server: MFA secret keys can be rotated online. `POST /api/v1/mfa/rekey`
+  fences the key ring on the configured primary and starts a durable Job that
+  re-seals every live TOTP secret under it; `GET /api/v1/mfa/keys` and
+  `GET /api/v1/mfa/rekey/{job_id}` show the key usage, progress and the
+  zero-reference proof that a retiring key may be removed. The operator
+  procedure is in the maintenance guide.
 - Server: `Server.TrustedProxies` names the reverse proxies whose forwarded
   client address and request ID are accepted.
 - VFS: `FileSystem.CheckRoot` checks that the backend root (the local root

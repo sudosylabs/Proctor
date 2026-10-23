@@ -140,13 +140,15 @@ func resetPristineTestStore(t *testing.T, sqlStore *SQLStore) {
 	t.Helper()
 	_, err := sqlStore.GetMaster().Exec(context.Background(), `
 		TRUNCATE TABLE
-			mail_send_rate_limit, mail_key_state, mail_fanout_bundles, mail_payload_keys, mail_deliveries, mail_occurrences, invitations, job_attempts, job_permanent_occurrences, jobs, browser_authentication_transactions, external_login_states, installation_states, access_policy_transitions, access_policies, command_outcomes, audit_events, user_tokens, personal_access_tokens, session_credentials, sessions, file_legal_holds, upload_leases, file_renditions,
+			mail_send_rate_limit, mail_key_state, mfa_key_state, mail_fanout_bundles, mail_payload_keys, mail_deliveries, mail_occurrences, invitations, job_attempts, job_permanent_occurrences, jobs, browser_authentication_transactions, external_login_states, installation_states, access_policy_transitions, access_policies, command_outcomes, audit_events, user_tokens, personal_access_tokens, session_credentials, sessions, file_legal_holds, upload_leases, file_renditions,
 			role_bindings, roles, class_members, academic_unit_members,
 			affiliations, password_credentials, external_identities, users, file_revisions, file_entries,
 			classes, academic_periods, programme_levels, programmes,
 			academic_units, institutions CASCADE`)
 	require.NoError(t, err)
 	_, err = sqlStore.GetMaster().Exec(context.Background(), `INSERT INTO mail_key_state(singleton, required_primary_key_id, active_rekey_job_id, updated_at) VALUES (TRUE, NULL, NULL, clock_timestamp())`)
+	require.NoError(t, err)
+	_, err = sqlStore.GetMaster().Exec(context.Background(), `INSERT INTO mfa_key_state(singleton, required_primary_key_id, active_rekey_job_id, updated_at) VALUES (TRUE, NULL, NULL, clock_timestamp())`)
 	require.NoError(t, err)
 }
 

@@ -322,6 +322,15 @@ replay-protected, recovery codes are hashed and single-use, and recovery-code
 values are shown only once. External-provider MFA counts only when an
 explicitly configured trusted assertion proves it.
 
+The MFA rekey mirrors the mail rekey. Starting it advances the durable
+`mfa_key_state` fence to the configured primary; from then on every credential
+insert takes the fence's shared lock and refuses another sealing key. The
+`mfa.rekey` Job re-seals live secrets one at a time under a compare-and-swap
+on the stored key identity, checkpoints after each, and succeeds only with a
+zero-reference proof. The fence moves to another primary only after the
+previous rekey proved its own, and startup refuses a ring that lacks the
+fenced primary or any key still sealing a live secret.
+
 Primary reauthentication preserves the Session's original method, provider,
 initial authentication and MFA history. Password proof targets the exact current
 User and current password revision. A separate optional reauthentication instant

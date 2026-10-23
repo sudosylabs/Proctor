@@ -3032,9 +3032,33 @@ func (s *timedMFAStore) CountRecoveryCodes(arg0 context.Context, arg1 model.User
 	})
 }
 
-func (s *timedMFAStore) ListSecretKeyUsage(arg0 context.Context) ([]store.MFASecretKeyUsage, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateMFA, methodListSecretKeyUsage), func() ([]store.MFASecretKeyUsage, error) {
-		return s.next.ListSecretKeyUsage(arg0)
+func (s *timedMFAStore) InspectKeyState(arg0 context.Context) (*store.MFAKeyState, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateMFA, methodInspectKeyState), func() (*store.MFAKeyState, error) {
+		return s.next.InspectKeyState(arg0)
+	})
+}
+
+func (s *timedMFAStore) StartRekey(arg0 context.Context, arg1 *store.MFARekeyStart) (*store.MFARekeyOperation, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateMFA, methodStartRekey), func() (*store.MFARekeyOperation, error) {
+		return s.next.StartRekey(arg0, arg1)
+	})
+}
+
+func (s *timedMFAStore) ListRekeyTargets(arg0 context.Context, arg1 *store.MFARekeyTargetPageRequest) (*store.MFARekeyTargetPage, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateMFA, methodListRekeyTargets), func() (*store.MFARekeyTargetPage, error) {
+		return s.next.ListRekeyTargets(arg0, arg1)
+	})
+}
+
+func (s *timedMFAStore) ReplaceRekeyTarget(arg0 context.Context, arg1 *store.MFARekeyReplacement) (bool, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateMFA, methodReplaceRekeyTarget), func() (bool, error) {
+		return s.next.ReplaceRekeyTarget(arg0, arg1)
+	})
+}
+
+func (s *timedMFAStore) ProveRekey(arg0 context.Context, arg1 *store.MFARekeyProofRequest) (*store.MFARekeyProof, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateMFA, methodProveRekey), func() (*store.MFARekeyProof, error) {
+		return s.next.ProveRekey(arg0, arg1)
 	})
 }
 

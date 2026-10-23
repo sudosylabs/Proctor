@@ -30,6 +30,7 @@ type resourceApplications struct {
 	sessionReauthentication SessionReauthentication
 	mfa                     MFA
 	mfaAdministration       MFAAdministration
+	mfaKeys                 MFAKeyApplication
 	personalAccessTokens    PersonalAccessTokens
 
 	institutions        InstitutionApplication
@@ -87,6 +88,7 @@ func resolveResourceApplications(options Options) (resourceApplications, error) 
 	var sessions Sessions = application
 	var mfa MFA = application
 	var mfaAdministration MFAAdministration = application
+	var mfaKeys MFAKeyApplication = application
 	var personalAccessTokens PersonalAccessTokens = application
 	var exams ExamApplication = application
 	var examRevisions ExamRevisionApplication = application
@@ -149,6 +151,7 @@ func resolveResourceApplications(options Options) (resourceApplications, error) 
 		accountStates: options.AccountStates, sessionAdministration: options.SessionAdministrations,
 		sessions: sessions, mfa: mfa, personalAccessTokens: personalAccessTokens,
 		mfaAdministration:       mfaAdministration,
+		mfaKeys:                 mfaKeys,
 		sessionReauthentication: sessionReauthentication,
 		institutions:            options.Institutions, academicUnits: options.AcademicUnits,
 		programmes: options.Programmes, programmeLevels: options.ProgrammeLevels,

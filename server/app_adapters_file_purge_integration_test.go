@@ -222,6 +222,12 @@ func openFilePurgeStorageIntegrationStore(t *testing.T) *sqlstore.SQLStore {
 	})
 	_, err = persistence.GetMaster().Exec(context.Background(), `TRUNCATE TABLE users, file_entries, job_permanent_occurrences, jobs CASCADE`)
 	require.NoError(t, err)
+	// Truncating jobs cascades to the key-ring fences, whose singleton rows
+	// later writers require.
+	_, err = persistence.GetMaster().Exec(context.Background(), `INSERT INTO mail_key_state(singleton, required_primary_key_id, active_rekey_job_id, updated_at) VALUES (TRUE, NULL, NULL, clock_timestamp())`)
+	require.NoError(t, err)
+	_, err = persistence.GetMaster().Exec(context.Background(), `INSERT INTO mfa_key_state(singleton, required_primary_key_id, active_rekey_job_id, updated_at) VALUES (TRUE, NULL, NULL, clock_timestamp())`)
+	require.NoError(t, err)
 	return persistence
 }
 

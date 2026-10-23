@@ -2033,6 +2033,20 @@
         "description": "Complete bounded minimized preflight report, with no native content or inventory.",
         "required": true
       },
+      "StartMFARekey": {
+        "content": {
+          "application/json": {
+            "example": {
+              "retiring_key_id": "0123456789abcdef0123456789abcdef"
+            },
+            "schema": {
+              "$ref": "#/components/schemas/MFARekeyRequest"
+            }
+          }
+        },
+        "description": "Identifies the configured non-primary MFA key that this rotation must retire.",
+        "required": true
+      },
       "StartMailRekey": {
         "content": {
           "application/json": {
@@ -4333,6 +4347,21 @@
           }
         }
       },
+      "MFAKeyStateOK": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/MFAKeyStateResponse"
+            }
+          }
+        },
+        "description": "MFA key-ring identities, fence, and live-secret counts",
+        "headers": {
+          "Cache-Control": {
+            "$ref": "#/components/headers/NoStore"
+          }
+        }
+      },
       "MFARecoveryCodesOK": {
         "content": {
           "application/json": {
@@ -4342,6 +4371,36 @@
           }
         },
         "description": "New MFA recovery codes",
+        "headers": {
+          "Cache-Control": {
+            "$ref": "#/components/headers/NoStore"
+          }
+        }
+      },
+      "MFARekeyAccepted": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/MFARekeyResponse"
+            }
+          }
+        },
+        "description": "Durable fenced MFA key rotation accepted",
+        "headers": {
+          "Cache-Control": {
+            "$ref": "#/components/headers/NoStore"
+          }
+        }
+      },
+      "MFARekeyStatusOK": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/MFARekeyStatusResponse"
+            }
+          }
+        },
+        "description": "Safe MFA rekey progress and final retirement proof",
         "headers": {
           "Cache-Control": {
             "$ref": "#/components/headers/NoStore"
@@ -16537,6 +16596,38 @@
         ],
         "type": "object"
       },
+      "MFAKeyStateResponse": {
+        "additionalProperties": false,
+        "description": "MFA key-ring identities, the durable primary-key fence, and live-secret counts.",
+        "properties": {
+          "active": {
+            "description": "Keys that seal at least one live MFA secret, ordered by identifier.",
+            "items": {
+              "$ref": "#/components/schemas/MFASecretKeyUsage"
+            },
+            "maxItems": 9,
+            "type": "array"
+          },
+          "active_rekey_job_id": {
+            "$ref": "#/components/schemas/ID"
+          },
+          "primary_key_id": {
+            "description": "Identifier of the key this node uses for new MFA secrets.",
+            "pattern": "^[0-9a-f]{32}$",
+            "type": "string"
+          },
+          "required_primary_key_id": {
+            "description": "Primary key the last rekey fenced; every node must seal new secrets with it. Absent before the first rekey.",
+            "pattern": "^[0-9a-f]{32}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "primary_key_id",
+          "active"
+        ],
+        "type": "object"
+      },
       "MFARecoveryCodesResponse": {
         "additionalProperties": false,
         "properties": {
@@ -16549,6 +16640,208 @@
         },
         "required": [
           "recovery_codes"
+        ],
+        "type": "object"
+      },
+      "MFARekeyProgress": {
+        "additionalProperties": false,
+        "description": "Coarse bounded progress while live MFA secrets are re-sealed.",
+        "properties": {
+          "current": {
+            "description": "Credentials examined so far.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "stage": {
+            "enum": [
+              "resealing"
+            ],
+            "type": "string"
+          },
+          "total": {
+            "description": "Credentials in the processing set.",
+            "format": "int64",
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "current",
+          "total",
+          "stage"
+        ],
+        "type": "object"
+      },
+      "MFARekeyProof": {
+        "additionalProperties": false,
+        "description": "Final live-secret counts used to decide whether the retiring key may be removed.",
+        "properties": {
+          "non_primary_references": {
+            "description": "Live MFA secrets sealed with any non-primary key after processing.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "retirement_safe": {
+            "description": "True only when the final counts prove the retiring key can be removed.",
+            "type": "boolean"
+          },
+          "retiring_references": {
+            "description": "Live MFA secrets still sealed with the exact retiring key.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "non_primary_references",
+          "retiring_references",
+          "retirement_safe"
+        ],
+        "type": "object"
+      },
+      "MFARekeyRequest": {
+        "additionalProperties": false,
+        "description": "Exact retiring-key selection for a new fenced MFA rotation Job.",
+        "properties": {
+          "retiring_key_id": {
+            "description": "Non-secret identifier of the configured MFA key to retire; it must not be the primary key.",
+            "pattern": "^[0-9a-f]{32}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "retiring_key_id"
+        ],
+        "type": "object"
+      },
+      "MFARekeyResponse": {
+        "additionalProperties": false,
+        "description": "Durable identities created when the MFA rotation Job is accepted.",
+        "properties": {
+          "created_at": {
+            "description": "Time when the rekey Job was created.",
+            "format": "date-time",
+            "type": "string"
+          },
+          "job_id": {
+            "$ref": "#/components/schemas/ID"
+          },
+          "primary_key_id": {
+            "pattern": "^[0-9a-f]{32}$",
+            "type": "string"
+          },
+          "retiring_key_id": {
+            "pattern": "^[0-9a-f]{32}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "job_id",
+          "primary_key_id",
+          "retiring_key_id",
+          "created_at"
+        ],
+        "type": "object"
+      },
+      "MFARekeyStatusResponse": {
+        "additionalProperties": false,
+        "description": "Safe Job status, progress, and optional final key-retirement proof.",
+        "properties": {
+          "attempt_count": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "completed_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "job_id": {
+            "$ref": "#/components/schemas/ID"
+          },
+          "maximum_attempts": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "primary_key_id": {
+            "pattern": "^[0-9a-f]{32}$",
+            "type": "string"
+          },
+          "processed": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "progress": {
+            "$ref": "#/components/schemas/MFARekeyProgress"
+          },
+          "proof": {
+            "$ref": "#/components/schemas/MFARekeyProof"
+          },
+          "public_error_code": {
+            "maxLength": 128,
+            "type": "string"
+          },
+          "resealed": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "retiring_key_id": {
+            "pattern": "^[0-9a-f]{32}$",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/JobStatus"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "job_id",
+          "status",
+          "primary_key_id",
+          "retiring_key_id",
+          "created_at",
+          "updated_at",
+          "attempt_count",
+          "maximum_attempts",
+          "processed",
+          "resealed"
+        ],
+        "type": "object"
+      },
+      "MFASecretKeyUsage": {
+        "additionalProperties": false,
+        "description": "Live TOTP secrets sealed with one MFA key.",
+        "properties": {
+          "configured": {
+            "description": "Whether this node's configured MFA key ring holds the key.",
+            "type": "boolean"
+          },
+          "credentials": {
+            "description": "Number of live MFA credentials whose secret this key seals.",
+            "format": "int64",
+            "minimum": 1,
+            "type": "integer"
+          },
+          "key_id": {
+            "description": "Non-secret 128-bit key identifier encoded as lowercase hexadecimal.",
+            "pattern": "^[0-9a-f]{32}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key_id",
+          "credentials",
+          "configured"
         ],
         "type": "object"
       },
@@ -39247,6 +39540,208 @@
         ],
         "x-proctor-idempotency": "none"
       }
+    },
+    "/api/v1/mfa/keys": {
+      "get": {
+        "description": "Returns the non-secret identifier of this node's configured MFA primary key, the primary-key fence that the last rekey installed, and, per sealing key, how many live TOTP secrets it seals and whether this node's ring holds it. Use it to plan a rotation and to confirm a retiring key seals nothing before removing it from configuration. No key bytes, ciphertext, or account identities are returned.",
+        "operationId": "inspectMFAKeyState",
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/MFAKeyStateOK"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "dpopAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Inspect the MFA key ring and the live secrets each key seals",
+        "tags": [
+          "Authentication"
+        ],
+        "x-proctor-auth": "strong_recent_session_required",
+        "x-proctor-error-codes": [
+          "authentication.required",
+          "authentication.token_invalid",
+          "authentication.credential_ambiguous",
+          "authorization.denied",
+          "authorization.request.invalid",
+          "authorization.unavailable",
+          "authentication.strong_required",
+          "authentication.reauthentication_required",
+          "authentication.mfa.unavailable",
+          "authentication.dpop.invalid",
+          "authentication.dpop.replayed",
+          "authentication.dpop.use_nonce",
+          "authentication.dpop.unavailable"
+        ],
+        "x-proctor-idempotency": "none"
+      }
+    },
+    "/api/v1/mfa/rekey": {
+      "post": {
+        "description": "Fences the MFA key ring on this node's configured primary key and starts one durable Job that re-seals every live TOTP secret from other keys to it, one credential at a time under a compare-and-swap on its key identity. The Job resumes from its checkpoint after a crash or lease loss. A rekey is refused while another is queued or running, and the fence moves to a different primary only after the previous rekey proved that no live secret needs another key. From the fence onwards every node must seal new secrets with the fenced primary.",
+        "operationId": "startMFARekey",
+        "requestBody": {
+          "$ref": "#/components/requestBodies/StartMFARekey"
+        },
+        "responses": {
+          "202": {
+            "$ref": "#/components/responses/MFARekeyAccepted"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "dpopAuth": []
+          },
+          {
+            "csrfToken": [],
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Start a durable fenced rotation of the MFA secret key",
+        "tags": [
+          "Authentication"
+        ],
+        "x-proctor-auth": "strong_recent_session_required",
+        "x-proctor-error-codes": [
+          "authentication.required",
+          "authentication.token_invalid",
+          "authentication.credential_ambiguous",
+          "authorization.denied",
+          "authorization.request.invalid",
+          "authorization.unavailable",
+          "authentication.csrf.invalid",
+          "audit.unavailable",
+          "authentication.strong_required",
+          "authentication.reauthentication_required",
+          "request.invalid",
+          "authentication.mfa.rekey.invalid",
+          "authentication.mfa.rekey.conflict",
+          "authentication.mfa.unavailable",
+          "authentication.dpop.invalid",
+          "authentication.dpop.replayed",
+          "authentication.dpop.use_nonce",
+          "authentication.dpop.unavailable"
+        ],
+        "x-proctor-idempotency": "none"
+      }
+    },
+    "/api/v1/mfa/rekey/{job_id}": {
+      "get": {
+        "description": "Returns bounded progress for one MFA rekey Job and, after it succeeds, the live-secret counts that prove the retiring key seals nothing and may be removed from configuration. A Job of another type is not found. No secrets, ciphertext, account identities, key bytes, or worker diagnostics are returned.",
+        "operationId": "getMFARekeyStatus",
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/MFARekeyStatusOK"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "dpopAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Inspect safe progress and final retirement proof for one MFA rekey Job",
+        "tags": [
+          "Authentication"
+        ],
+        "x-proctor-auth": "strong_recent_session_required",
+        "x-proctor-error-codes": [
+          "authentication.required",
+          "authentication.token_invalid",
+          "authentication.credential_ambiguous",
+          "authorization.denied",
+          "authorization.request.invalid",
+          "authorization.unavailable",
+          "authentication.strong_required",
+          "authentication.reauthentication_required",
+          "request.invalid",
+          "resource.not_found",
+          "authentication.mfa.unavailable",
+          "authentication.dpop.invalid",
+          "authentication.dpop.replayed",
+          "authentication.dpop.use_nonce",
+          "authentication.dpop.unavailable"
+        ],
+        "x-proctor-idempotency": "none"
+      },
+      "parameters": [
+        {
+          "description": "The durable MFA rekey Job whose safe progress is requested.",
+          "in": "path",
+          "name": "job_id",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/ID"
+          }
+        }
+      ]
     },
     "/api/v1/onboarding-imports": {
       "post": {

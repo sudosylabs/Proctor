@@ -75,6 +75,8 @@ type CatalogDependencies struct {
 	MailCleanup            MailCleanupStore
 	SittingMailMaintenance SittingMailMaintenanceStore
 	MailRekey              MailRekeyJobStore
+	MFARekey               MFARekeyJobStore
+	MFASealer              *secretseal.Sealer
 
 	Invitations       InvitationMaintenanceStore
 	OnboardingImports OnboardingImportMaintenanceStore
@@ -115,6 +117,7 @@ func NewCatalog(deps CatalogDependencies) Catalog {
 		sittingMailExpansionDescriptor(sittingMailExpansionHandler{sittings: deps.SittingMailStore, mail: deps.SittingMail}),
 		mailCleanupDescriptor(mailCleanupHandler{mail: deps.MailCleanup, sittings: deps.SittingMailMaintenance, recorder: deps.MailRecorder}),
 		mailRekeyDescriptor(mailRekeyHandler{mail: deps.MailRekey, sealer: deps.MailSealer}),
+		mfaRekeyDescriptor(mfaRekeyHandler{credentials: deps.MFARekey, sealer: deps.MFASealer}),
 		invitationMaintenanceDescriptor(invitationMaintenanceHandler{invitations: deps.Invitations, imports: deps.OnboardingImports, content: deps.OnboardingFiles, now: now}),
 		examSittingLifecycleDescriptor(examSittingLifecycleHandler{reconciler: deps.ExamSittingLifecycle}),
 		examSittingSealingDescriptor(examSittingSealingHandler{service: deps.ExamSittingSealing}),

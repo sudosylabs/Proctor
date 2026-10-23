@@ -38,6 +38,7 @@ const (
 	ActionMailView                       Action = "mail.view"
 	ActionMailManage                     Action = "mail.manage"
 	ActionMailRekey                      Action = "mail.rekey"
+	ActionMFARekey                       Action = "mfa.rekey"
 	ActionExamCreate                     Action = "exam.create"
 	ActionExamCreateOverride             Action = "exam.create.override"
 	ActionExamView                       Action = "exam.view"
@@ -252,6 +253,10 @@ var actionDefinitions = map[Action]ActionDefinition{
 	},
 	ActionMailRekey: {
 		Action: ActionMailRekey, ResourceType: ResourceInstitution,
+		InheritInstitutionScope: true, PersonalAccessTokenForbidden: true,
+	},
+	ActionMFARekey: {
+		Action: ActionMFARekey, ResourceType: ResourceInstitution,
 		InheritInstitutionScope: true, PersonalAccessTokenForbidden: true,
 	},
 	ActionExamCreate: {

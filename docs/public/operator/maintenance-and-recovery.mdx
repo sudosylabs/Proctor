@@ -1,6 +1,6 @@
 ---
 title: Perform Maintenance and Bounded Recovery
-description: Drain an application node, rotate Memberlist keys, recover administrator access offline, and handle the current pre-release database boundary.
+description: Drain an application node, rotate Memberlist and MFA secret keys, recover administrator access offline, and handle the current pre-release database boundary.
 audience: operator
 maturity: preview
 ---
@@ -37,6 +37,47 @@ Key changes require restart and a three-stage overlap:
 Skipping overlap partitions nodes that cannot decrypt each other. The fallback
 ring accepts at most eight distinct keys. This procedure rotates gossip
 encryption only; it does not rotate TLS, MFA, mail, or dependency credentials.
+MFA secret keys rotate as described below.
+
+## Rotate MFA Secret Keys
+
+TOTP secrets are sealed with the MFA key ring
+(`Authentication.MFA.EncryptionKey` plus `DecryptionKeys`). A rotation replaces
+the primary, re-seals every live secret under it with a durable rekey Job, and
+removes the old key only after the Job proves that no live secret needs it. The
+operations need the `mfa.rekey` action and a strong (multi-factor), recent
+interactive Session; a Personal Access Token cannot run them.
+
+1. Generate a new 32-byte key. On every node, keep the current primary and make
+   the new key primary: set it as `EncryptionKey` and move the old primary into
+   `DecryptionKeys`. Restart each node; key changes do not hot-reload.
+2. Confirm convergence with `GET /api/v1/mfa/keys` on each node:
+   `primary_key_id` must be the new key everywhere, and every key listed under
+   `active` must report `configured: true`.
+3. Start the rekey from any node with
+   `POST /api/v1/mfa/rekey` and body `{"retiring_key_id": "<old key ID>"}`.
+   The request fences the key ring on that node's primary. From then on every
+   node must seal new secrets with it: a node still configured with another
+   primary fails MFA setup as temporarily unavailable, and its rekey attempts
+   hand the Job to a node that has the fenced primary. Start the rekey promptly
+   after step 2, because a node whose primary differs from the current fence
+   has the same restriction until the rekey moves the fence.
+4. Follow `GET /api/v1/mfa/rekey/{job_id}`. The Job re-seals one credential at
+   a time, only if its secret is still sealed with the key it read, and
+   checkpoints after each one, so a crash, restart, or lost lease resumes where
+   it stopped without repeating work. Users keep signing in throughout.
+5. When the status is `succeeded`, its `proof` must show
+   `retiring_references: 0` and `retirement_safe: true`, and
+   `GET /api/v1/mfa/keys` must list only the new key under `active`. Only then
+   remove the old key from `DecryptionKeys` on every node and restart.
+
+A second rekey is refused while one is queued or running, and the fence moves
+to a different primary only after the previous rekey has succeeded with that
+proof; rerun a failed rekey with the same primary first. Startup refuses to
+serve when the configured ring lacks the fenced primary or any key that still
+seals a live secret, and names that key, so removing a key too early stops the
+node instead of stranding Users. Archived credentials are not re-sealed; once
+their key is removed they can no longer be opened, which is the intent.
 
 ## Recover Administrator Authentication Offline
 

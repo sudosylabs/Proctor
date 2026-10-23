@@ -3122,6 +3122,23 @@ CREATE INDEX mfa_recovery_codes_user_id_idx
     ON mfa_recovery_codes (user_id)
     WHERE archived_at IS NULL AND consumed_at IS NULL;
 
+-- The MFA key-ring fence. Once a rekey starts, every new TOTP secret must be
+-- sealed with required_primary_key_id, so a node still on the old primary
+-- cannot write behind the rekey scan or its zero-reference proof.
+CREATE TABLE mfa_key_state (
+    singleton boolean PRIMARY KEY DEFAULT TRUE CHECK (singleton),
+    required_primary_key_id char(32)
+        CHECK (required_primary_key_id ~ '^[0-9a-f]{32}$'),
+    active_rekey_job_id varchar(26) REFERENCES jobs(id) ON DELETE SET NULL,
+    updated_at timestamptz NOT NULL,
+    CONSTRAINT mfa_key_state_operation_check CHECK (
+        active_rekey_job_id IS NULL OR required_primary_key_id IS NOT NULL
+    )
+);
+
+INSERT INTO mfa_key_state(singleton, required_primary_key_id, active_rekey_job_id, updated_at)
+VALUES (TRUE, NULL, NULL, clock_timestamp());
+
 CREATE TABLE external_login_states (
     id varchar(26) PRIMARY KEY,
     created_at timestamptz NOT NULL,

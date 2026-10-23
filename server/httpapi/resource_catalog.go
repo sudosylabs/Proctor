@@ -40,6 +40,7 @@ func productionResources(
 		sessionReauthenticationResource(applications.sessionReauthentication, cookies),
 		mfaResource(applications.mfa),
 		mfaAdministrationResource(applications.mfaAdministration),
+		mfaKeyResource(applications.mfaKeys),
 		personalAccessTokenResource(applications.personalAccessTokens),
 		institutionResource(applications.institutions),
 		academicUnitResource(applications.academicUnits),

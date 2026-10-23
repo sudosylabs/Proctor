@@ -67,6 +67,8 @@ var applicationErrorMappings = map[string]applicationErrorMapping{
 	"authentication.mfa.conflict":                                 {status: http.StatusConflict},
 	"authentication.mfa.disabled":                                 {status: http.StatusNotImplemented},
 	"authentication.mfa.not_found":                                {status: http.StatusNotFound},
+	"authentication.mfa.rekey.conflict":                           {status: http.StatusConflict},
+	"authentication.mfa.rekey.invalid":                            {status: http.StatusBadRequest},
 	"authentication.mfa.required":                                 {status: http.StatusUnauthorized},
 	"authentication.mfa.reset_invalid":                            {status: http.StatusBadRequest},
 	"authentication.mfa.unavailable":                              {status: http.StatusServiceUnavailable},

@@ -94,6 +94,7 @@ type App struct {
 	jobs *job.Engine
 	*jobOperationsService
 	*mailService
+	*mfaKeyService
 }
 
 // Jobs returns the root-owned durable Job runtime, or nil for lifecycle-only
