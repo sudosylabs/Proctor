@@ -82,26 +82,8 @@ func applicationDependencies(
 		NodeID:                  capabilities.nodeID,
 		PublicURL:               cfg.Server.PublicURL,
 		LoopbackHTTPDevelopment: explicitLoopbackHTTPDevelopment(cfg.Server.PublicURL),
-		Password: app.PasswordPolicy{
-			MaximumConcurrentOperations: auth.Password.MaximumConcurrentOperations,
-			MinimumLength:               auth.Password.MinimumLength,
-			MaximumLength:               auth.Password.MaximumLength,
-			ArgonMemoryKiB:              auth.Password.ArgonMemoryKiB,
-			ArgonIterations:             auth.Password.ArgonIterations,
-			ArgonParallelism:            auth.Password.ArgonParallelism,
-			ArgonSaltBytes:              auth.Password.ArgonSaltBytes,
-			ArgonKeyBytes:               auth.Password.ArgonKeyBytes,
-			HistoryCount:                auth.Password.HistoryCount,
-		},
-		Sessions: app.SessionPolicy{
-			AccessTTL:              auth.Sessions.AccessTTL.Duration,
-			RefreshTTL:             auth.Sessions.RefreshTTL.Duration,
-			IdleTTL:                auth.Sessions.IdleTTL.Duration,
-			AbsoluteTTL:            auth.Sessions.AbsoluteTTL.Duration,
-			ActivityUpdateInterval: auth.Sessions.ActivityUpdateInterval.Duration,
-			MaximumPerUser:         auth.Sessions.MaximumPerUser,
-			RetiredRetention:       auth.Sessions.RetiredRetention.Duration,
-		},
+		Password:                passwordPolicyFromConfig(auth),
+		Sessions:                sessionPolicyFromConfig(auth),
 		LoginRateLimit: app.LoginRateLimitPolicy{
 			Window:                     auth.LoginRateLimit.Window.Duration,
 			MaximumAttempts:            auth.LoginRateLimit.MaximumAttempts,
@@ -115,37 +97,75 @@ func applicationDependencies(
 			LastUsedUpdateInterval: auth.PersonalAccessTokens.LastUsedUpdateInterval.Duration,
 			MaximumPerUser:         auth.PersonalAccessTokens.MaximumPerUser,
 		},
-		AccountRecovery: app.AccountRecoveryPolicy{
-			EmailVerificationTTL: auth.AccountRecovery.EmailVerificationTTL.Duration,
-			PasswordResetTTL:     auth.AccountRecovery.PasswordResetTTL.Duration,
-			EmailChangeUndoTTL:   auth.AccountRecovery.EmailChangeUndoTTL.Duration,
-			RateLimit: app.LoginRateLimitPolicy{
-				Window:                auth.AccountRecovery.RateLimit.Window.Duration,
-				MaximumAttempts:       auth.AccountRecovery.RateLimit.MaximumAttempts,
-				MaximumSourceAttempts: auth.AccountRecovery.RateLimit.MaximumSourceAttempts,
-			},
-		},
+		AccountRecovery: accountRecoveryPolicyFromConfig(auth),
 		MFA: app.MFAPolicy{
 			Enabled:           auth.MFA.Enabled,
 			Issuer:            auth.MFA.Issuer,
 			SetupTTL:          auth.MFA.SetupTTL.Duration,
 			RecoveryCodeCount: auth.MFA.RecoveryCodeCount,
 		},
-		ExternalAuth: app.ExternalAuthenticationPolicy{
-			PublicURL:     cfg.Server.PublicURL,
-			LoginStateTTL: auth.External.LoginStateTTL.Duration,
-			LoginRateLimit: app.LoginRateLimitPolicy{
-				Window:                auth.LoginRateLimit.Window.Duration,
-				MaximumAttempts:       auth.LoginRateLimit.MaximumAttempts,
-				MaximumSourceAttempts: auth.LoginRateLimit.MaximumSourceAttempts,
-			},
-			NodeID: capabilities.nodeID,
-		},
+		ExternalAuth:              externalAuthenticationPolicyFromConfig(auth, cfg.Server.PublicURL, capabilities.nodeID),
 		RecentAuthenticationTTL:   auth.RecentAuthenticationTTL.Duration,
 		AuthenticationDiagnostics: loggingAuthenticationDiagnostics{log: log},
 		RealtimeDiagnostics:       loggingRealtimeDiagnostics{log: log},
 		RecoveryDiagnostics:       loggingRecoveryDiagnostics{log: log},
 	}, nil
+}
+
+// passwordPolicyFromConfig translates the configured password settings into the application password policy.
+func passwordPolicyFromConfig(auth config.Authentication) app.PasswordPolicy {
+	return app.PasswordPolicy{
+		MaximumConcurrentOperations: auth.Password.MaximumConcurrentOperations,
+		MinimumLength:               auth.Password.MinimumLength,
+		MaximumLength:               auth.Password.MaximumLength,
+		ArgonMemoryKiB:              auth.Password.ArgonMemoryKiB,
+		ArgonIterations:             auth.Password.ArgonIterations,
+		ArgonParallelism:            auth.Password.ArgonParallelism,
+		ArgonSaltBytes:              auth.Password.ArgonSaltBytes,
+		ArgonKeyBytes:               auth.Password.ArgonKeyBytes,
+		HistoryCount:                auth.Password.HistoryCount,
+	}
+}
+
+// sessionPolicyFromConfig translates the configured Session settings into the application Session policy.
+func sessionPolicyFromConfig(auth config.Authentication) app.SessionPolicy {
+	return app.SessionPolicy{
+		AccessTTL:              auth.Sessions.AccessTTL.Duration,
+		RefreshTTL:             auth.Sessions.RefreshTTL.Duration,
+		IdleTTL:                auth.Sessions.IdleTTL.Duration,
+		AbsoluteTTL:            auth.Sessions.AbsoluteTTL.Duration,
+		ActivityUpdateInterval: auth.Sessions.ActivityUpdateInterval.Duration,
+		MaximumPerUser:         auth.Sessions.MaximumPerUser,
+		RetiredRetention:       auth.Sessions.RetiredRetention.Duration,
+	}
+}
+
+// accountRecoveryPolicyFromConfig translates the configured account recovery settings into the application policy.
+func accountRecoveryPolicyFromConfig(auth config.Authentication) app.AccountRecoveryPolicy {
+	return app.AccountRecoveryPolicy{
+		EmailVerificationTTL: auth.AccountRecovery.EmailVerificationTTL.Duration,
+		PasswordResetTTL:     auth.AccountRecovery.PasswordResetTTL.Duration,
+		EmailChangeUndoTTL:   auth.AccountRecovery.EmailChangeUndoTTL.Duration,
+		RateLimit: app.LoginRateLimitPolicy{
+			Window:                auth.AccountRecovery.RateLimit.Window.Duration,
+			MaximumAttempts:       auth.AccountRecovery.RateLimit.MaximumAttempts,
+			MaximumSourceAttempts: auth.AccountRecovery.RateLimit.MaximumSourceAttempts,
+		},
+	}
+}
+
+// externalAuthenticationPolicyFromConfig translates the configured external authentication settings into the application policy.
+func externalAuthenticationPolicyFromConfig(auth config.Authentication, publicURL, nodeID string) app.ExternalAuthenticationPolicy {
+	return app.ExternalAuthenticationPolicy{
+		PublicURL:     publicURL,
+		LoginStateTTL: auth.External.LoginStateTTL.Duration,
+		LoginRateLimit: app.LoginRateLimitPolicy{
+			Window:                auth.LoginRateLimit.Window.Duration,
+			MaximumAttempts:       auth.LoginRateLimit.MaximumAttempts,
+			MaximumSourceAttempts: auth.LoginRateLimit.MaximumSourceAttempts,
+		},
+		NodeID: nodeID,
+	}
 }
 
 // explicitLoopbackHTTPDevelopment projects the deliberately local HTTP
