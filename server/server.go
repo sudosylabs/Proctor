@@ -726,7 +726,7 @@ func (s *Server) Ready() bool {
 
 // Reload re-reads the operator-owned configuration file, applying it to the
 // dynamically reconfigurable consumers as one change, and reloads static TLS
-// certificate files for a serving node. Each step is independent: a failure
+// certificate files for a serving node's HTTP and metrics listeners. Each step is independent: a failure
 // keeps that step's current state in force, is logged, and is returned
 // joined. Changed settings that apply only at startup keep their running
 // values and are named in a warning. The host process invokes Reload on
@@ -749,13 +749,25 @@ func (s *Server) Reload(ctx context.Context) error {
 	s.httpMu.Lock()
 	httpServer := s.http
 	s.httpMu.Unlock()
-	if reloader, ok := httpServer.(interface{ ReloadCertificates() error }); ok {
+	if reloader, ok := httpServer.(certificateReloader); ok {
 		if err := reloader.ReloadCertificates(); err != nil {
 			result = errors.Join(result, fmt.Errorf("reload TLS certificates: %w", err))
 			s.components.logger.ErrorContext(ctx, "TLS certificate reload failed; keeping the current certificate", logging.Err(err))
 		}
 	}
+	if reloader, ok := s.components.metrics.(certificateReloader); ok {
+		if err := reloader.ReloadCertificates(); err != nil {
+			result = errors.Join(result, fmt.Errorf("reload metrics TLS certificates: %w", err))
+			s.components.logger.ErrorContext(ctx, "metrics TLS certificate reload failed; keeping the current certificate", logging.Err(err))
+		}
+	}
 	return result
+}
+
+// certificateReloader is the capability Reload uses on the HTTP runtime and the
+// metrics listener to reload operator-managed TLS key pairs.
+type certificateReloader interface {
+	ReloadCertificates() error
 }
 
 // configurationReloader is the platform capability Reload uses.

@@ -24,6 +24,7 @@ import (
 
 	"github.com/sudosylabs/proctor/server/config"
 	"github.com/sudosylabs/proctor/server/internal/autocert"
+	"github.com/sudosylabs/proctor/server/internal/tlscert"
 )
 
 type automaticCertificateManager interface {
@@ -42,7 +43,7 @@ type standardHTTPRuntime struct {
 	listen                         func(string, string) (net.Listener, error)
 	tls                            httpTLSSettings
 	newAutomaticCertificateManager func() automaticCertificateManager
-	certificate                    *staticCertificate
+	certificate                    *tlscert.Static
 	stopping                       atomic.Bool
 }
 
@@ -73,7 +74,7 @@ func newHTTPServer(settings httpServerSettings) httpRuntime {
 
 	switch settings.tls.mode {
 	case config.ServerTLSModeStatic:
-		runtime.certificate = newStaticCertificate(settings.tls.certificateFile, settings.tls.privateKeyFile, func(err error) {
+		runtime.certificate = tlscert.New(settings.tls.certificateFile, settings.tls.privateKeyFile, func(err error) {
 			if settings.errorLog != nil {
 				settings.errorLog.Printf("static TLS certificate reload failed; keeping the previous certificate: %v", err)
 			}

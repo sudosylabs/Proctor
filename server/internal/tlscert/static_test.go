@@ -5,7 +5,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // ---------------------------------------------------------------------------------------------
 
-package server
+package tlscert
 
 import (
 	"crypto/ed25519"
@@ -47,7 +47,7 @@ func writeSerialTestCertificate(t *testing.T, certificateFile, privateKeyFile st
 	}
 }
 
-func servedSerial(t *testing.T, certificate *staticCertificate) int64 {
+func servedSerial(t *testing.T, certificate *Static) int64 {
 	t.Helper()
 	served, err := certificate.GetCertificate(&tls.ClientHelloInfo{ServerName: "proctor.example.edu"})
 	require.NoError(t, err)
@@ -56,14 +56,14 @@ func servedSerial(t *testing.T, certificate *staticCertificate) int64 {
 	return leaf.SerialNumber.Int64()
 }
 
-func TestStaticCertificateReplacesRotatedFilesAndKeepsLastGoodPair(t *testing.T) {
+func TestStaticReplacesRotatedFilesAndKeepsLastGoodPair(t *testing.T) {
 	t.Parallel()
 
 	directory := t.TempDir()
 	certificateFile, privateKeyFile := filepath.Join(directory, "certificate.pem"), filepath.Join(directory, "private-key.pem")
 	writeSerialTestCertificate(t, certificateFile, privateKeyFile, 1)
 	var failures []error
-	certificate := newStaticCertificate(certificateFile, privateKeyFile, func(err error) { failures = append(failures, err) })
+	certificate := New(certificateFile, privateKeyFile, func(err error) { failures = append(failures, err) })
 	now := time.Date(2026, 10, 19, 12, 0, 0, 0, time.UTC)
 	certificate.now = func() time.Time { return now }
 	require.NoError(t, certificate.Reload())
@@ -71,11 +71,11 @@ func TestStaticCertificateReplacesRotatedFilesAndKeepsLastGoodPair(t *testing.T)
 
 	writeSerialTestCertificate(t, certificateFile, privateKeyFile, 2)
 	require.Equal(t, int64(1), servedSerial(t, certificate), "serial before the check interval")
-	now = now.Add(staticCertificateCheckInterval)
+	now = now.Add(CheckInterval)
 	require.Equal(t, int64(2), servedSerial(t, certificate), "serial after rotation")
 
 	require.NoError(t, os.WriteFile(certificateFile, []byte("not a certificate"), 0o600))
-	now = now.Add(staticCertificateCheckInterval)
+	now = now.Add(CheckInterval)
 	require.Equal(t, int64(2), servedSerial(t, certificate), "after invalid replacement serial")
 	require.Len(t, failures, 1, "after invalid replacement serial")
 	require.Error(t, certificate.Reload(), "explicit reload accepted an invalid certificate")

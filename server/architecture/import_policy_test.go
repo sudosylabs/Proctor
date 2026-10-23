@@ -172,6 +172,10 @@ var dependencyRules = []dependencyRule{
 		sources: []pathPattern{subtree(serverModule + "/model/internal/idgen")},
 	},
 	{
+		name:    "static TLS key pair files",
+		sources: []pathPattern{exact(serverModule + "/internal/tlscert")},
+	},
+	{
 		name:    "ACME adapter",
 		sources: []pathPattern{exact(serverModule + "/internal/autocert")},
 		thirdParty: only(
@@ -480,6 +484,7 @@ var dependencyRules = []dependencyRule{
 		sources: []pathPattern{exact(serverModule + "/metrics")},
 		project: only(
 			exact(serverModule+"/config"),
+			exact(serverModule+"/internal/tlscert"),
 			exact(serverModule+"/store/timerlayer"),
 			exact(serverModule+"/store/localcachelayer"),
 		),

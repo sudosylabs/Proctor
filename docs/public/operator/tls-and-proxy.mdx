@@ -77,7 +77,9 @@ mode the header is not sent; configure HSTS on the terminating proxy.
 ## Keep Other TLS Boundaries Separate
 
 - a non-loopback metrics listener requires its own static TLS identity and
-  bearer token;
+  bearer token; its key pair rotates exactly like static TLS above (checked
+  during handshakes at most every 30 seconds, reloaded on `SIGHUP`, last good
+  pair kept on a bad replacement);
 - PostgreSQL, Redis, S3, SMTP, and providers use their own
   client/server trust configuration;
 - Memberlist uses gossip encryption, not public TLS; and

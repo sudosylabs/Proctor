@@ -22,7 +22,7 @@ secretseal ← app
 {internal/openapidoc, internal/errorcatalog} ← cmd/ptool
 cmd/ptool/devseed ← cmd/ptool/commands
 logging ← platform
-{config, store/timerlayer, store/localcachelayer} ← metrics ← server
+{config, internal/tlscert, store/timerlayer, store/localcachelayer} ← metrics ← server
 app ← httpapi
 webui ← server
 model ← filecontent
@@ -31,6 +31,7 @@ app ← filecontent
 {app, httpapi, app/realtime, websocket, filecontent} ← server ← cmd/proctor/commands ← cmd/proctor
 {model, internal/canonicaljson} ← desktoprelease ← server
 internal/autocert ← server
+internal/tlscert ← {server, metrics}
 ~~~
 
 Infrastructure adapters sit to the side and point inward at their contracts. The root `server` package imports the components needed to assemble the graph.
@@ -60,7 +61,7 @@ inside `app/` are application-owned modules, not transports.
 | `secretseal` | Standard library cryptography and encoding | model, persistence, configuration, transports, concrete adapters |
 | `localization` | Standard library, caller-supplied catalog filesystems, and the CLDR-aware localization engine | application, domain, persistence, transports, concrete adapters |
 | `logging` | Standard library and the hidden logging engine/target implementation | application, domain, persistence, transports, global logger state |
-| `metrics` | `config`, narrow store recorder contracts, standard library, and Prometheus client libraries | application policy, platform service location, concrete infrastructure adapters, global Prometheus registry |
+| `metrics` | `config`, `internal/tlscert`, narrow store recorder contracts, standard library, and Prometheus client libraries | application policy, platform service location, concrete infrastructure adapters, global Prometheus registry |
 | `app` | `model`, `store`, `app/apperror`, `app/invocation`, `app/idempotency`, `app/job`, `app/jobhandler`, `app/realtime`, `app/exam`, `app/mail`, consumer-owned ports | `platform`, `httpapi`, `sqlstore` |
 | `filecontent` | `model`, consumer-owned `app` content contracts, `app/exam` export archive types, `packages/vfs`, narrowly allowlisted content codecs | persistence, transports, platform service location, Jobs, configuration, concrete VFS backends |
 | `httpapi` | `app`, `app/apperror`, `app/invocation`, `app/job`, `app/realtime`, `app/exam` and its children, `store` result types, `model`, `localization`, `internal/weborigin`, HTTP libraries | Store contracts and functions, `sqlstore`, `platform` |
@@ -70,6 +71,7 @@ inside `app/` are application-owned modules, not transports.
 | `desktoprelease` | `model`, `internal/canonicaljson`, standard-library signature and artifact validation | persistence, transports, application eligibility, process/filesystem selection |
 | `internal/weborigin` | Standard-library URL parsing | Domain models, application, persistence, transports, configuration |
 | `internal/autocert` | Standard library, `x/crypto/acme`, and `x/net/idna` | Product policy, application, persistence, transports, unrelated third-party libraries |
+| `internal/tlscert` | Standard library | Configuration, product policy, application, persistence, transports, third-party libraries |
 | `internal/openapidoc` | Caller-supplied filesystems, OpenAPI/YAML parsing and validation, standard-library encoding | Process filesystem selection, runtime policy, application, persistence, transports |
 | `internal/errorcatalog` | Caller-supplied catalog bytes and minted-code inventories, YAML parsing, standard-library rendering | Process filesystem and toolchain access, application, persistence, transports |
 | `server` | Construction dependencies | Business rules |

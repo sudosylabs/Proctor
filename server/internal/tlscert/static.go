@@ -5,7 +5,11 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // ---------------------------------------------------------------------------------------------
 
-package server
+// Package tlscert serves an operator-managed TLS key pair from files and
+// replaces it when the files are rotated or a reload is requested. The main
+// HTTP listener and the metrics listener share it, so both follow the same
+// rotation and SIGHUP behavior.
+package tlscert
 
 import (
 	"crypto/tls"
@@ -17,19 +21,19 @@ import (
 	"time"
 )
 
-// staticCertificateCheckInterval bounds how often TLS handshakes stat the
-// operator-managed certificate files for replacement.
-const staticCertificateCheckInterval = 30 * time.Second
+// CheckInterval bounds how often TLS handshakes stat the operator-managed
+// certificate files for replacement.
+const CheckInterval = 30 * time.Second
 
 type certificateFileStamp struct {
 	certificateModified, privateKeyModified time.Time
 	certificateSize, privateKeySize         int64
 }
 
-// staticCertificate serves an operator-managed key pair and replaces it when
-// both files change on disk or when Reload is requested. A replacement that
-// fails to parse keeps the previously loaded certificate in service.
-type staticCertificate struct {
+// Static serves an operator-managed key pair and replaces it when both files
+// change on disk or when Reload is requested. A replacement that fails to
+// parse keeps the previously loaded certificate in service.
+type Static struct {
 	certificateFile string
 	privateKeyFile  string
 	interval        time.Duration
@@ -43,15 +47,18 @@ type staticCertificate struct {
 	checkedAt time.Time
 }
 
-func newStaticCertificate(certificateFile, privateKeyFile string, reportFailure func(error)) *staticCertificate {
-	return &staticCertificate{
+// New returns a Static for the key pair files with nothing loaded yet; call
+// Reload before serving. reportFailure, when set, receives each failed
+// rotation check a handshake triggers.
+func New(certificateFile, privateKeyFile string, reportFailure func(error)) *Static {
+	return &Static{
 		certificateFile: certificateFile, privateKeyFile: privateKeyFile,
-		interval: staticCertificateCheckInterval, now: time.Now, reportFailure: reportFailure,
+		interval: CheckInterval, now: time.Now, reportFailure: reportFailure,
 	}
 }
 
 // GetCertificate implements tls.Config.GetCertificate.
-func (c *staticCertificate) GetCertificate(*tls.ClientHelloInfo) (*tls.Certificate, error) {
+func (c *Static) GetCertificate(*tls.ClientHelloInfo) (*tls.Certificate, error) {
 	c.refreshIfChanged()
 	certificate := c.current.Load()
 	if certificate == nil {
@@ -62,7 +69,7 @@ func (c *staticCertificate) GetCertificate(*tls.ClientHelloInfo) (*tls.Certifica
 
 // Reload loads the configured key pair now. On failure the previously loaded
 // certificate, if any, remains in service.
-func (c *staticCertificate) Reload() error {
+func (c *Static) Reload() error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.checkedAt = c.now()
@@ -73,7 +80,7 @@ func (c *staticCertificate) Reload() error {
 	return c.loadLocked(stamp)
 }
 
-func (c *staticCertificate) refreshIfChanged() {
+func (c *Static) refreshIfChanged() {
 	// A handshake never waits behind another handshake's file check.
 	if !c.mu.TryLock() {
 		return
@@ -96,7 +103,7 @@ func (c *staticCertificate) refreshIfChanged() {
 	}
 }
 
-func (c *staticCertificate) loadLocked(stamp certificateFileStamp) error {
+func (c *Static) loadLocked(stamp certificateFileStamp) error {
 	certificate, err := tls.LoadX509KeyPair(c.certificateFile, c.privateKeyFile)
 	if err != nil {
 		return fmt.Errorf("load static TLS certificate: %w", err)
@@ -106,7 +113,7 @@ func (c *staticCertificate) loadLocked(stamp certificateFileStamp) error {
 	return nil
 }
 
-func (c *staticCertificate) statFiles() (certificateFileStamp, error) {
+func (c *Static) statFiles() (certificateFileStamp, error) {
 	certificate, err := os.Stat(c.certificateFile)
 	if err != nil {
 		return certificateFileStamp{}, fmt.Errorf("inspect static TLS certificate: %w", err)

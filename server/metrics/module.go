@@ -31,6 +31,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	"github.com/sudosylabs/proctor/server/config"
+	"github.com/sudosylabs/proctor/server/internal/tlscert"
 	"github.com/sudosylabs/proctor/server/store/localcachelayer"
 	"github.com/sudosylabs/proctor/server/store/timerlayer"
 )
@@ -59,6 +60,8 @@ type Module struct {
 	registry *prometheus.Registry
 	handler  http.Handler
 	errorLog *log.Logger
+	// certificate serves the TLS key pair once Start loads it; nil without TLS.
+	certificate *tlscert.Static
 
 	ready atomic.Bool
 
@@ -325,12 +328,17 @@ func (m *Module) Start(ctx context.Context) error {
 		return err
 	}
 	if m.settings.TLS.CertificateFile != "" {
-		certificate, loadErr := tls.LoadX509KeyPair(m.settings.TLS.CertificateFile, m.settings.TLS.PrivateKeyFile)
-		if loadErr != nil {
+		certificate := tlscert.New(m.settings.TLS.CertificateFile, m.settings.TLS.PrivateKeyFile, func(err error) {
+			if m.errorLog != nil {
+				m.errorLog.Printf("metrics TLS certificate reload failed; keeping the previous certificate: %v", err)
+			}
+		})
+		if loadErr := certificate.Reload(); loadErr != nil {
 			_ = listener.Close()
 			return fmt.Errorf("load metrics TLS identity: %w", loadErr)
 		}
-		listener = tls.NewListener(listener, &tls.Config{Certificates: []tls.Certificate{certificate}, MinVersion: tls.VersionTLS12})
+		m.certificate = certificate
+		listener = tls.NewListener(listener, &tls.Config{GetCertificate: certificate.GetCertificate, MinVersion: tls.VersionTLS12})
 	}
 	server := &http.Server{Handler: m.handler, ErrorLog: m.errorLog, ReadHeaderTimeout: m.settings.ReadHeaderTimeout.Duration, ReadTimeout: m.settings.ReadTimeout.Duration, WriteTimeout: m.settings.WriteTimeout.Duration, IdleTimeout: m.settings.IdleTimeout.Duration, MaxHeaderBytes: 16 << 10}
 	done := make(chan struct{})
@@ -346,6 +354,22 @@ func (m *Module) Start(ctx context.Context) error {
 		}
 	}()
 	return nil
+}
+
+// ReloadCertificates reloads the metrics listener's operator-managed TLS key
+// pair, as the main listener's does on SIGHUP. On failure the previous pair
+// stays in service. It is a no-op before Start and without TLS.
+func (m *Module) ReloadCertificates() error {
+	if m == nil {
+		return nil
+	}
+	m.mu.Lock()
+	certificate := m.certificate
+	m.mu.Unlock()
+	if certificate == nil {
+		return nil
+	}
+	return certificate.Reload()
 }
 
 func (m *Module) Failures() <-chan error {
