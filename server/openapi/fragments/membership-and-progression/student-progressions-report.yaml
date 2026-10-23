@@ -19,17 +19,16 @@ paths:
         - Membership and progression
       x-proctor-idempotency: none
       x-proctor-error-codes:
-        - authentication.required
-        - authentication.token_invalid
-        - authentication.credential_ambiguous
         - authorization.denied
         - authorization.request.invalid
         - authorization.unavailable
         - request.invalid
         - resource.not_found
-        - administration.unavailable
         - student_progression.unavailable
         - student_progression.conflict
+        - authentication.required
+        - authentication.token_invalid
+        - authentication.credential_ambiguous
         - authentication.dpop.invalid
         - authentication.dpop.replayed
         - authentication.dpop.use_nonce

@@ -217,20 +217,18 @@ func examSittingResource(application ExamSittingApplication) apiResource {
 	extend := apiPath(literal("exams"), canonicalID("exam_id"), literal("sittings"), canonicalID("exam_sitting_id"), literal("extend"))
 	closeSitting := apiPath(literal("exams"), canonicalID("exam_id"), literal("sittings"), canonicalID("exam_sitting_id"), literal("close"))
 	noShows := apiPath(literal("exams"), canonicalID("exam_id"), literal("sittings"), canonicalID("exam_sitting_id"), literal("no-shows"))
-	readErrors := academicReadErrorCodes("request.invalid", "resource.not_found", "exam.sitting.invalid", "exam.sitting.unavailable")
-	noShowErrors := append(append([]string(nil), readErrors...), "exam.sitting.state_conflict")
 	return newResource(
 		"exam-sittings",
-		idempotentPrincipalRoute(IdempotencyRequired, http.MethodPost, collection, examSittingScheduleErrorCodes(), module.schedule),
-		principalRoute(http.MethodGet, collection, readErrors, module.list),
-		principalRoute(http.MethodGet, member, readErrors, module.get),
-		idempotentPrincipalRoute(IdempotencyRequired, http.MethodPatch, member, examSittingUpdateErrorCodes(), module.updateSchedule),
-		idempotentPrincipalRoute(IdempotencyRequired, http.MethodPost, cancel, examSittingCancelErrorCodes(), module.cancel),
-		idempotentPrincipalRoute(IdempotencyRequired, http.MethodPost, pause, examSittingPauseErrorCodes(), module.pause),
-		idempotentPrincipalRoute(IdempotencyRequired, http.MethodPost, resume, examSittingResumeErrorCodes(), module.resume),
-		idempotentPrincipalRoute(IdempotencyRequired, http.MethodPost, extend, examSittingExtendErrorCodes(), module.extend),
-		idempotentPrincipalRoute(IdempotencyRequired, http.MethodPost, closeSitting, examSittingCloseErrorCodes(), module.close),
-		principalRoute(http.MethodGet, noShows, noShowErrors, module.listNoShows),
+		idempotentPrincipalRoute(IdempotencyRequired, http.MethodPost, collection, []string{"authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "resource.not_found", "exam.sitting.invalid", "exam.sitting.conflict", "exam.sitting.unavailable", "exam.archived", "exam.sitting.class_ineligible", "exam.sitting.schedule_outside_period", "exam.sitting.schedule_not_future", "idempotency.key_required", "idempotency.key_invalid", "idempotency.conflict", "idempotency.in_progress"}, module.schedule),
+		principalRoute(http.MethodGet, collection, []string{"authorization.request.invalid", "authorization.unavailable", "request.invalid", "resource.not_found", "exam.sitting.invalid", "exam.sitting.unavailable"}, module.list),
+		principalRoute(http.MethodGet, member, []string{"authorization.request.invalid", "authorization.unavailable", "request.invalid", "resource.not_found", "exam.sitting.invalid", "exam.sitting.unavailable"}, module.get),
+		idempotentPrincipalRoute(IdempotencyRequired, http.MethodPatch, member, []string{"authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "resource.not_found", "exam.sitting.invalid", "exam.sitting.conflict", "exam.sitting.unavailable", "exam.archived", "exam.sitting.revision_conflict", "exam.sitting.no_changes", "exam.sitting.state_conflict", "exam.sitting.class_ineligible", "exam.sitting.schedule_outside_period", "exam.sitting.schedule_not_future", "idempotency.key_required", "idempotency.key_invalid", "idempotency.conflict", "idempotency.in_progress"}, module.updateSchedule),
+		idempotentPrincipalRoute(IdempotencyRequired, http.MethodPost, cancel, []string{"authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "resource.not_found", "exam.sitting.invalid", "exam.sitting.conflict", "exam.sitting.unavailable", "exam.archived", "exam.sitting.revision_conflict", "exam.sitting.state_conflict", "idempotency.key_required", "idempotency.key_invalid", "idempotency.conflict", "idempotency.in_progress"}, module.cancel),
+		idempotentPrincipalRoute(IdempotencyRequired, http.MethodPost, pause, []string{"authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "resource.not_found", "exam.sitting.invalid", "exam.sitting.conflict", "exam.sitting.unavailable", "exam.sitting.revision_conflict", "exam.sitting.state_conflict", "exam.sitting.deadline_reached", "idempotency.key_required", "idempotency.key_invalid", "idempotency.conflict", "idempotency.in_progress", "exam.archived"}, module.pause),
+		idempotentPrincipalRoute(IdempotencyRequired, http.MethodPost, resume, []string{"authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "resource.not_found", "exam.sitting.invalid", "exam.sitting.conflict", "exam.sitting.unavailable", "exam.archived", "exam.sitting.revision_conflict", "exam.sitting.state_conflict", "exam.sitting.deadline_reached", "idempotency.key_required", "idempotency.key_invalid", "idempotency.conflict", "idempotency.in_progress"}, module.resume),
+		idempotentPrincipalRoute(IdempotencyRequired, http.MethodPost, extend, []string{"authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "resource.not_found", "exam.sitting.invalid", "exam.sitting.conflict", "exam.sitting.unavailable", "exam.archived", "exam.sitting.revision_conflict", "exam.sitting.state_conflict", "exam.sitting.deadline_reached", "exam.sitting.extension_not_later", "exam.sitting.class_ineligible", "exam.sitting.schedule_outside_period", "idempotency.key_required", "idempotency.key_invalid", "idempotency.conflict", "idempotency.in_progress"}, module.extend),
+		idempotentPrincipalRoute(IdempotencyRequired, http.MethodPost, closeSitting, []string{"authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "resource.not_found", "exam.sitting.invalid", "exam.sitting.conflict", "exam.sitting.unavailable", "exam.sitting.revision_conflict", "exam.sitting.state_conflict", "exam.sitting.deadline_reached", "idempotency.key_required", "idempotency.key_invalid", "idempotency.conflict", "idempotency.in_progress", "exam.archived"}, module.close),
+		principalRoute(http.MethodGet, noShows, []string{"authorization.request.invalid", "authorization.unavailable", "request.invalid", "resource.not_found", "exam.sitting.invalid", "exam.sitting.unavailable", "exam.sitting.state_conflict"}, module.listNoShows),
 	)
 }
 
@@ -300,42 +298,6 @@ func examSittingNoShowCursorSpec() opaqueCursorSpec[examSittingNoShowCursorWire]
 			return nil
 		},
 	}
-}
-
-func examSittingMutationErrorCodes(specific ...string) []string {
-	common := []string{"request.invalid", "resource.not_found", "exam.sitting.invalid", "exam.sitting.conflict", "exam.sitting.unavailable"}
-	common = append(common, specific...)
-	return academicMutationErrorCodes(append(common,
-		"idempotency.key_required", "idempotency.key_invalid", "idempotency.conflict", "idempotency.in_progress")...)
-}
-
-func examSittingScheduleErrorCodes() []string {
-	return examSittingMutationErrorCodes("exam.archived", "exam.sitting.class_ineligible", "exam.sitting.schedule_outside_period", "exam.sitting.schedule_not_future")
-}
-
-func examSittingUpdateErrorCodes() []string {
-	return examSittingMutationErrorCodes("exam.archived", "exam.sitting.revision_conflict", "exam.sitting.no_changes", "exam.sitting.state_conflict", "exam.sitting.class_ineligible", "exam.sitting.schedule_outside_period", "exam.sitting.schedule_not_future")
-}
-
-func examSittingCancelErrorCodes() []string {
-	return examSittingMutationErrorCodes("exam.archived", "exam.sitting.revision_conflict", "exam.sitting.state_conflict")
-}
-
-func examSittingPauseErrorCodes() []string {
-	return examSittingMutationErrorCodes("exam.sitting.revision_conflict", "exam.sitting.state_conflict", "exam.sitting.deadline_reached")
-}
-
-func examSittingResumeErrorCodes() []string {
-	return examSittingMutationErrorCodes("exam.archived", "exam.sitting.revision_conflict", "exam.sitting.state_conflict", "exam.sitting.deadline_reached")
-}
-
-func examSittingExtendErrorCodes() []string {
-	return examSittingMutationErrorCodes("exam.archived", "exam.sitting.revision_conflict", "exam.sitting.state_conflict",
-		"exam.sitting.deadline_reached", "exam.sitting.extension_not_later", "exam.sitting.class_ineligible", "exam.sitting.schedule_outside_period")
-}
-
-func examSittingCloseErrorCodes() []string {
-	return examSittingMutationErrorCodes("exam.sitting.revision_conflict", "exam.sitting.state_conflict", "exam.sitting.deadline_reached")
 }
 
 func (m examSittingHTTPModule) schedule(request operationRequest) (operationResult, error) {

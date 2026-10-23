@@ -30,13 +30,8 @@ paths:
       x-proctor-auth: session_required
       x-proctor-idempotency: required
       x-proctor-error-codes:
-        - authentication.required
-        - authentication.token_invalid
-        - authentication.credential_ambiguous
-        - authorization.denied
         - authorization.request.invalid
         - authorization.unavailable
-        - authentication.csrf.invalid
         - audit.unavailable
         - request.invalid
         - resource.not_found
@@ -45,7 +40,6 @@ paths:
         - exam.export.not_found
         - exam.export.conflict
         - exam.export.unavailable
-        - administration.unavailable
         - exam.export.policy_unconfigured
         - exam.export.limit
         - exam.export.source_retired
@@ -54,10 +48,14 @@ paths:
         - idempotency.key_invalid
         - idempotency.conflict
         - idempotency.in_progress
+        - authentication.required
+        - authentication.token_invalid
+        - authentication.credential_ambiguous
         - authentication.dpop.invalid
         - authentication.dpop.replayed
         - authentication.dpop.use_nonce
         - authentication.dpop.unavailable
+        - authentication.csrf.invalid
       security:
         - bearerAuth: []
         - dpopAuth: []
@@ -106,10 +104,6 @@ paths:
       x-proctor-auth: session_required
       x-proctor-idempotency: none
       x-proctor-error-codes:
-        - authentication.required
-        - authentication.token_invalid
-        - authentication.credential_ambiguous
-        - authorization.denied
         - authorization.request.invalid
         - authorization.unavailable
         - request.invalid
@@ -119,7 +113,9 @@ paths:
         - exam.export.not_found
         - exam.export.conflict
         - exam.export.unavailable
-        - administration.unavailable
+        - authentication.required
+        - authentication.token_invalid
+        - authentication.credential_ambiguous
         - authentication.dpop.invalid
         - authentication.dpop.replayed
         - authentication.dpop.use_nonce
@@ -172,10 +168,6 @@ paths:
       x-proctor-auth: session_required
       x-proctor-idempotency: none
       x-proctor-error-codes:
-        - authentication.required
-        - authentication.token_invalid
-        - authentication.credential_ambiguous
-        - authorization.denied
         - authorization.request.invalid
         - authorization.unavailable
         - request.invalid
@@ -185,13 +177,15 @@ paths:
         - exam.export.not_found
         - exam.export.conflict
         - exam.export.unavailable
-        - administration.unavailable
+        - exam.export.expired
+        - exam.export.not_ready
+        - authentication.required
+        - authentication.token_invalid
+        - authentication.credential_ambiguous
         - authentication.dpop.invalid
         - authentication.dpop.replayed
         - authentication.dpop.use_nonce
         - authentication.dpop.unavailable
-        - exam.export.expired
-        - exam.export.not_ready
       security:
         - bearerAuth: []
         - dpopAuth: []
@@ -244,13 +238,8 @@ paths:
       x-proctor-auth: session_required
       x-proctor-idempotency: required
       x-proctor-error-codes:
-        - authentication.required
-        - authentication.token_invalid
-        - authentication.credential_ambiguous
-        - authorization.denied
         - authorization.request.invalid
         - authorization.unavailable
-        - authentication.csrf.invalid
         - audit.unavailable
         - request.invalid
         - resource.not_found
@@ -259,7 +248,6 @@ paths:
         - exam.export.not_found
         - exam.export.conflict
         - exam.export.unavailable
-        - administration.unavailable
         - exam.export.policy_unconfigured
         - exam.export.limit
         - exam.export.source_retired
@@ -268,10 +256,14 @@ paths:
         - idempotency.key_invalid
         - idempotency.conflict
         - idempotency.in_progress
+        - authentication.required
+        - authentication.token_invalid
+        - authentication.credential_ambiguous
         - authentication.dpop.invalid
         - authentication.dpop.replayed
         - authentication.dpop.use_nonce
         - authentication.dpop.unavailable
+        - authentication.csrf.invalid
       security:
         - bearerAuth: []
         - dpopAuth: []
@@ -321,10 +313,6 @@ paths:
       x-proctor-auth: session_required
       x-proctor-idempotency: none
       x-proctor-error-codes:
-        - authentication.required
-        - authentication.token_invalid
-        - authentication.credential_ambiguous
-        - authorization.denied
         - authorization.request.invalid
         - authorization.unavailable
         - request.invalid
@@ -334,7 +322,9 @@ paths:
         - exam.export.not_found
         - exam.export.conflict
         - exam.export.unavailable
-        - administration.unavailable
+        - authentication.required
+        - authentication.token_invalid
+        - authentication.credential_ambiguous
         - authentication.dpop.invalid
         - authentication.dpop.replayed
         - authentication.dpop.use_nonce
@@ -388,10 +378,6 @@ paths:
       x-proctor-auth: session_required
       x-proctor-idempotency: none
       x-proctor-error-codes:
-        - authentication.required
-        - authentication.token_invalid
-        - authentication.credential_ambiguous
-        - authorization.denied
         - authorization.request.invalid
         - authorization.unavailable
         - request.invalid
@@ -401,13 +387,15 @@ paths:
         - exam.export.not_found
         - exam.export.conflict
         - exam.export.unavailable
-        - administration.unavailable
+        - exam.export.expired
+        - exam.export.not_ready
+        - authentication.required
+        - authentication.token_invalid
+        - authentication.credential_ambiguous
         - authentication.dpop.invalid
         - authentication.dpop.replayed
         - authentication.dpop.use_nonce
         - authentication.dpop.unavailable
-        - exam.export.expired
-        - exam.export.not_ready
       security:
         - bearerAuth: []
         - dpopAuth: []

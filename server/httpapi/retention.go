@@ -31,17 +31,16 @@ type retentionHTTPModule struct{ application RetentionApplication }
 
 func retentionResource(application RetentionApplication) apiResource {
 	m := retentionHTTPModule{application: application}
-	readErrors := operatorReadErrorCodes("request.invalid", "retention.invalid", "retention.unavailable", "retention_policy.unavailable", "resource.not_found")
 	mutationErrors := operatorMutationErrorCodes("request.invalid", "retention.invalid", "retention.conflict", "retention.unavailable", "retention_policy.unavailable", "retention_policy.revision_conflict", "resource.not_found",
 		"idempotency.key_required", "idempotency.key_invalid", "idempotency.conflict", "idempotency.in_progress")
 	preview := sessionRoute(http.MethodPost, apiPath(literal("retention"), literal("previews")), mutationErrors, m.preview)
 	control := strongRecentSessionRoute(http.MethodPut, apiPath(literal("retention"), literal("control")), mutationErrors, m.changeControl)
 	preview.idempotency, control.idempotency = IdempotencyRequired, IdempotencyRequired
 	return newResource("retention",
-		sessionRoute(http.MethodGet, apiPath(literal("retention"), literal("control")), readErrors, m.getControl), control, preview,
-		sessionRoute(http.MethodGet, apiPath(literal("retention"), literal("previews"), canonicalID("retention_preview_id")), readErrors, m.getPreview),
-		sessionRoute(http.MethodGet, apiPath(literal("retention"), literal("records")), readErrors, m.records),
-		sessionRoute(http.MethodGet, apiPath(literal("users"), literal("me"), literal("retention-notices")), operatorReadErrorCodes("request.invalid", "retention.invalid", "retention.unavailable"), m.notices))
+		sessionRoute(http.MethodGet, apiPath(literal("retention"), literal("control")), []string{"authorization.denied", "authorization.request.invalid", "authorization.unavailable", "retention.invalid", "retention.unavailable", "retention_policy.unavailable", "resource.not_found", "retention_policy.revision_conflict"}, m.getControl), control, preview,
+		sessionRoute(http.MethodGet, apiPath(literal("retention"), literal("previews"), canonicalID("retention_preview_id")), []string{"authorization.denied", "authorization.request.invalid", "authorization.unavailable", "request.invalid", "retention.invalid", "retention.unavailable", "retention_policy.unavailable", "resource.not_found", "retention_policy.revision_conflict"}, m.getPreview),
+		sessionRoute(http.MethodGet, apiPath(literal("retention"), literal("records")), []string{"authorization.denied", "authorization.request.invalid", "authorization.unavailable", "request.invalid", "retention.invalid", "retention.unavailable", "retention_policy.unavailable", "resource.not_found", "retention_policy.revision_conflict"}, m.records),
+		sessionRoute(http.MethodGet, apiPath(literal("users"), literal("me"), literal("retention-notices")), []string{"authorization.denied", "request.invalid", "retention.invalid", "retention.unavailable", "retention_policy.revision_conflict", "retention_policy.unavailable"}, m.notices))
 }
 
 type retentionPreviewRequest struct {

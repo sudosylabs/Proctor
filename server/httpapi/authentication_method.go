@@ -55,10 +55,10 @@ func authenticationMethodResource(application authenticationMethodApplication, c
 	base := apiPath(literal("authentication-methods"))
 	password := appendRoutePath(base, literal("password"))
 	return newResource("authentication-method",
-		sessionRoute(http.MethodGet, base, []string{"authentication.method.unavailable"}, m.list),
+		sessionRoute(http.MethodGet, base, nil, m.list),
 		strongRecentSessionRoute(http.MethodPut, password, strongRecentAuthenticationMethodCodes("request.invalid", "authentication.password.invalid", "service.busy", "authentication.method.disabled", "authentication.method.conflict", "authentication.method.unavailable", "audit.unavailable"), m.enrollPassword),
-		strongRecentSessionRoute(http.MethodDelete, password, authenticationMethodRemovalCodes(), m.removePassword),
-		strongRecentSessionRoute(http.MethodPost, appendRoutePath(base, literal("providers"), providerID("provider_id"), literal("connect")), strongRecentAuthenticationMethodCodes("request.invalid", "authentication.external.provider_not_found", "authentication.external.unavailable", "authentication.rate_limited", "authentication.rate_limit_unavailable", "authentication.internal", "audit.unavailable"), m.connect),
+		strongRecentSessionRoute(http.MethodDelete, password, []string{"authentication.method.last_usable", "authentication.method.not_found", "authentication.method.conflict", "authentication.method.unavailable", "audit.unavailable"}, m.removePassword),
+		strongRecentSessionRoute(http.MethodPost, appendRoutePath(base, literal("providers"), providerID("provider_id"), literal("connect")), []string{"request.invalid", "authentication.external.provider_not_found", "authentication.external.unavailable", "authentication.rate_limited", "authentication.rate_limit_unavailable", "authentication.internal", "audit.unavailable", "authentication.desktop_authorization.invalid", "authentication.external.account_not_linked", "authentication.external.rejected", "authentication.external.request.invalid"}, m.connect),
 		strongRecentSessionRoute(http.MethodDelete, appendRoutePath(base, literal("providers"), canonicalID("external_identity_id")), authenticationMethodRemovalCodes(), m.unlink),
 	)
 }

@@ -19,10 +19,13 @@ paths:
         - Authentication
       x-proctor-auth: session_required
       x-proctor-error-codes:
+        - personal_access_token.unavailable
+        - authentication.reauthentication_required
+        - authentication.session_required
+        - request.invalid
         - authentication.required
         - authentication.token_invalid
         - authentication.credential_ambiguous
-        - personal_access_token.unavailable
         - authentication.dpop.invalid
         - authentication.dpop.replayed
         - authentication.dpop.use_nonce
@@ -39,6 +42,8 @@ paths:
           $ref: '#/components/responses/BadRequest'
         "401":
           $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
         "500":
           $ref: '#/components/responses/InternalError'
         "503":
@@ -52,21 +57,22 @@ paths:
         - Authentication
       x-proctor-auth: recent_session_required
       x-proctor-error-codes:
-        - authentication.required
-        - authentication.token_invalid
-        - authentication.credential_ambiguous
-        - authentication.csrf.invalid
-        - authentication.reauthentication_required
         - request.invalid
         - resource.not_found
         - personal_access_token.invalid
         - personal_access_token.maximum_reached
         - personal_access_token.unavailable
         - audit.unavailable
+        - authentication.session_required
+        - authentication.required
+        - authentication.token_invalid
+        - authentication.credential_ambiguous
         - authentication.dpop.invalid
         - authentication.dpop.replayed
         - authentication.dpop.use_nonce
         - authentication.dpop.unavailable
+        - authentication.csrf.invalid
+        - authentication.reauthentication_required
       x-proctor-idempotency: none
       security:
         - bearerAuth: []
@@ -111,18 +117,21 @@ paths:
         - Authentication
       x-proctor-auth: session_required
       x-proctor-error-codes:
-        - authentication.required
-        - authentication.token_invalid
-        - authentication.credential_ambiguous
-        - authentication.csrf.invalid
         - request.invalid
         - resource.not_found
         - personal_access_token.unavailable
         - audit.unavailable
+        - authentication.reauthentication_required
+        - authentication.session_required
+        - personal_access_token.invalid
+        - authentication.required
+        - authentication.token_invalid
+        - authentication.credential_ambiguous
         - authentication.dpop.invalid
         - authentication.dpop.replayed
         - authentication.dpop.use_nonce
         - authentication.dpop.unavailable
+        - authentication.csrf.invalid
       x-proctor-idempotency: none
       security:
         - bearerAuth: []
@@ -163,20 +172,22 @@ paths:
         - Authentication
       x-proctor-auth: recent_session_required
       x-proctor-error-codes:
-        - authentication.required
-        - authentication.token_invalid
-        - authentication.credential_ambiguous
-        - authentication.csrf.invalid
-        - authentication.reauthentication_required
         - request.invalid
         - resource.not_found
         - personal_access_token.maximum_reached
         - personal_access_token.unavailable
         - audit.unavailable
+        - authentication.session_required
+        - personal_access_token.invalid
+        - authentication.required
+        - authentication.token_invalid
+        - authentication.credential_ambiguous
         - authentication.dpop.invalid
         - authentication.dpop.replayed
         - authentication.dpop.use_nonce
         - authentication.dpop.unavailable
+        - authentication.csrf.invalid
+        - authentication.reauthentication_required
       x-proctor-idempotency: none
       security:
         - bearerAuth: []
@@ -219,18 +230,21 @@ paths:
         - Authentication
       x-proctor-auth: session_required
       x-proctor-error-codes:
-        - authentication.required
-        - authentication.token_invalid
-        - authentication.credential_ambiguous
-        - authentication.csrf.invalid
         - request.invalid
         - resource.not_found
         - personal_access_token.unavailable
         - audit.unavailable
+        - authentication.reauthentication_required
+        - authentication.session_required
+        - personal_access_token.invalid
+        - authentication.required
+        - authentication.token_invalid
+        - authentication.credential_ambiguous
         - authentication.dpop.invalid
         - authentication.dpop.replayed
         - authentication.dpop.use_nonce
         - authentication.dpop.unavailable
+        - authentication.csrf.invalid
       x-proctor-idempotency: none
       security:
         - bearerAuth: []

@@ -17,17 +17,17 @@ paths:
       x-proctor-auth: session_required
       x-proctor-idempotency: none
       x-proctor-error-codes:
-        - authentication.required
-        - authentication.token_invalid
-        - authentication.credential_ambiguous
         - authorization.denied
         - authorization.request.invalid
         - authorization.unavailable
-        - request.invalid
         - retention.invalid
         - retention.unavailable
         - retention_policy.unavailable
         - resource.not_found
+        - retention_policy.revision_conflict
+        - authentication.required
+        - authentication.token_invalid
+        - authentication.credential_ambiguous
         - authentication.dpop.invalid
         - authentication.dpop.replayed
         - authentication.dpop.use_nonce
@@ -51,6 +51,8 @@ paths:
           $ref: '#/components/responses/InternalError'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
+        "409":
+          $ref: '#/components/responses/Conflict'
     put:
       operationId: changeRetentionControl
       summary: Enable or pause institution cleanup
@@ -191,9 +193,6 @@ paths:
       x-proctor-auth: session_required
       x-proctor-idempotency: none
       x-proctor-error-codes:
-        - authentication.required
-        - authentication.token_invalid
-        - authentication.credential_ambiguous
         - authorization.denied
         - authorization.request.invalid
         - authorization.unavailable
@@ -202,6 +201,10 @@ paths:
         - retention.unavailable
         - retention_policy.unavailable
         - resource.not_found
+        - retention_policy.revision_conflict
+        - authentication.required
+        - authentication.token_invalid
+        - authentication.credential_ambiguous
         - authentication.dpop.invalid
         - authentication.dpop.replayed
         - authentication.dpop.use_nonce
@@ -232,6 +235,8 @@ paths:
           $ref: '#/components/responses/InternalError'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
+        "409":
+          $ref: '#/components/responses/Conflict'
   /api/v1/retention/records:
     get:
       operationId: listRetentionRecords
@@ -247,9 +252,6 @@ paths:
       x-proctor-auth: session_required
       x-proctor-idempotency: none
       x-proctor-error-codes:
-        - authentication.required
-        - authentication.token_invalid
-        - authentication.credential_ambiguous
         - authorization.denied
         - authorization.request.invalid
         - authorization.unavailable
@@ -258,6 +260,10 @@ paths:
         - retention.unavailable
         - retention_policy.unavailable
         - resource.not_found
+        - retention_policy.revision_conflict
+        - authentication.required
+        - authentication.token_invalid
+        - authentication.credential_ambiguous
         - authentication.dpop.invalid
         - authentication.dpop.replayed
         - authentication.dpop.use_nonce
@@ -296,6 +302,8 @@ paths:
           $ref: '#/components/responses/InternalError'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
+        "409":
+          $ref: '#/components/responses/Conflict'
 components:
   requestBodies:
     ChangeRetentionControl:

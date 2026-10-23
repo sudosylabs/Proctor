@@ -202,10 +202,11 @@ paths:
         - Authentication
       x-proctor-auth: session_required
       x-proctor-error-codes:
+        - authentication.internal
+        - request.invalid
         - authentication.required
         - authentication.token_invalid
         - authentication.credential_ambiguous
-        - authentication.internal
         - authentication.dpop.invalid
         - authentication.dpop.replayed
         - authentication.dpop.use_nonce
@@ -236,18 +237,19 @@ paths:
         - Authentication
       x-proctor-auth: session_required
       x-proctor-error-codes:
-        - authentication.required
-        - authentication.token_invalid
-        - authentication.credential_ambiguous
-        - authentication.csrf.invalid
         - request.invalid
         - session.id.invalid
         - session.not_found
         - authentication.internal
+        - audit.unavailable
+        - authentication.required
+        - authentication.token_invalid
+        - authentication.credential_ambiguous
         - authentication.dpop.invalid
         - authentication.dpop.replayed
         - authentication.dpop.use_nonce
         - authentication.dpop.unavailable
+        - authentication.csrf.invalid
       x-proctor-idempotency: none
       security:
         - bearerAuth: []
@@ -288,15 +290,16 @@ paths:
         - Authentication
       x-proctor-auth: session_required
       x-proctor-error-codes:
+        - authentication.internal
+        - audit.unavailable
         - authentication.required
         - authentication.token_invalid
         - authentication.credential_ambiguous
-        - authentication.csrf.invalid
-        - authentication.internal
         - authentication.dpop.invalid
         - authentication.dpop.replayed
         - authentication.dpop.use_nonce
         - authentication.dpop.unavailable
+        - authentication.csrf.invalid
       x-proctor-idempotency: none
       security:
         - bearerAuth: []

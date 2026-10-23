@@ -24,10 +24,10 @@ paths:
               --data '{"login_id":"ada@example.edu","password":"<redacted>","client_type":"cli","device_name":"Exam workstation"}'
       x-proctor-auth: public
       x-proctor-error-codes:
-        - service.busy
         - request.invalid
         - authentication.client_type.invalid
         - authentication.password.invalid
+        - service.busy
         - authentication.credentials_invalid
         - authentication.mfa.required
         - authentication.mfa.code_invalid
@@ -38,6 +38,8 @@ paths:
         - authentication.rate_limit_unavailable
         - authentication.internal
         - audit.unavailable
+        - authentication.external.invalid
+        - authentication.session.invalid
       x-proctor-idempotency: none
       security: []
       requestBody:

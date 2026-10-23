@@ -47,13 +47,13 @@ func academicUnitMemberResource(members AcademicUnitMemberApplication) apiResour
 		principalRoute(
 			http.MethodPost,
 			apiPath(literal("academic-units"), canonicalID("academic_unit_id"), literal("members")),
-			academicRelationshipMutationErrorCodes("academic_unit_member.invalid", "academic_unit_member.conflict"),
+			[]string{"authorization.denied", "authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "resource.not_found", "academic_unit_member.invalid", "academic_unit_member.conflict", "administration.unavailable", "mail.unavailable"},
 			module.create,
 		),
 		principalRoute(
 			http.MethodDelete,
 			apiPath(literal("academic-unit-members"), canonicalID("academic_unit_member_id")),
-			academicRelationshipMutationErrorCodes("academic_unit_member.conflict"),
+			[]string{"authorization.denied", "authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "resource.not_found", "academic_unit_member.conflict", "administration.unavailable", "mail.unavailable"},
 			module.end,
 		),
 	)

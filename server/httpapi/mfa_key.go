@@ -81,8 +81,8 @@ type mfaKeyResourceModule struct{ application MFAKeyApplication }
 func mfaKeyResource(application MFAKeyApplication) apiResource {
 	module := mfaKeyResourceModule{application: application}
 	return newResource("mfa-keys",
-		strongRecentSessionRoute(http.MethodGet, apiPath(literal("mfa"), literal("keys")), operatorReadErrorCodes("authentication.mfa.unavailable"), module.getKeyState),
-		strongRecentSessionRoute(http.MethodPost, apiPath(literal("mfa"), literal("rekey")), operatorMutationErrorCodes("request.invalid", "authentication.mfa.rekey.invalid", "authentication.mfa.rekey.conflict", "authentication.mfa.unavailable"), module.startRekey),
+		strongRecentSessionRoute(http.MethodGet, apiPath(literal("mfa"), literal("keys")), []string{"authorization.denied", "authorization.request.invalid", "authorization.unavailable", "authentication.mfa.unavailable", "resource.not_found"}, module.getKeyState),
+		strongRecentSessionRoute(http.MethodPost, apiPath(literal("mfa"), literal("rekey")), []string{"authorization.denied", "authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "authentication.mfa.rekey.invalid", "authentication.mfa.rekey.conflict", "authentication.mfa.unavailable", "resource.not_found"}, module.startRekey),
 		strongRecentSessionRoute(http.MethodGet, apiPath(literal("mfa"), literal("rekey"), canonicalID("job_id")), operatorReadErrorCodes("request.invalid", "resource.not_found", "authentication.mfa.unavailable"), module.getRekeyStatus),
 	)
 }

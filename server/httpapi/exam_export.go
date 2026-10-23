@@ -41,22 +41,15 @@ func examExportsResource(application ExamExportsApplication) apiResource {
 		collection := apiPath(parts...)
 		member := apiPath(append(slices.Clone(parts), canonicalID("exam_export_id"))...)
 		content := apiPath(append(slices.Clone(member.parts), literal("content"))...)
-		create := sessionRoute(http.MethodPost, collection, examExportMutationErrors(), m.create)
+		create := sessionRoute(http.MethodPost, collection, []string{"authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "resource.not_found", "exam.invalid", "exam.unavailable", "exam.export.not_found", "exam.export.conflict", "exam.export.unavailable", "exam.export.policy_unconfigured", "exam.export.limit", "exam.export.source_retired", "exam.export.scope_changed", "idempotency.key_required", "idempotency.key_invalid", "idempotency.conflict", "idempotency.in_progress"}, m.create)
 		create.idempotency = IdempotencyRequired
 		protocol := "sitting-export-content"
 		if submission {
 			protocol = "submission-export-content"
 		}
-		routes = append(routes, create, sessionRoute(http.MethodGet, member, examExportReadErrors(), m.get), protocolRoute(protocol, RouteProtocolBinaryDownload, AuthSessionRequired, http.MethodGet, content, append(examExportReadErrors(), "exam.export.expired", "exam.export.not_ready"), m.open))
+		routes = append(routes, create, sessionRoute(http.MethodGet, member, []string{"authorization.request.invalid", "authorization.unavailable", "request.invalid", "resource.not_found", "exam.invalid", "exam.unavailable", "exam.export.not_found", "exam.export.conflict", "exam.export.unavailable"}, m.get), protocolRoute(protocol, RouteProtocolBinaryDownload, AuthSessionRequired, http.MethodGet, content, []string{"authorization.request.invalid", "authorization.unavailable", "request.invalid", "resource.not_found", "exam.invalid", "exam.unavailable", "exam.export.not_found", "exam.export.conflict", "exam.export.unavailable", "exam.export.expired", "exam.export.not_ready"}, m.open))
 	}
 	return newResource("exam-exports", routes...)
-}
-
-func examExportReadErrors() []string {
-	return academicReadErrorCodes("request.invalid", "resource.not_found", "exam.invalid", "exam.unavailable", "exam.export.not_found", "exam.export.conflict", "exam.export.unavailable")
-}
-func examExportMutationErrors() []string {
-	return academicMutationErrorCodes("request.invalid", "resource.not_found", "exam.invalid", "exam.unavailable", "exam.export.not_found", "exam.export.conflict", "exam.export.unavailable", "exam.export.policy_unconfigured", "exam.export.limit", "exam.export.source_retired", "exam.export.scope_changed", "idempotency.key_required", "idempotency.key_invalid", "idempotency.conflict", "idempotency.in_progress")
 }
 
 type createExamExportRequest struct {

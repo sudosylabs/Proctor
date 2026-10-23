@@ -64,7 +64,7 @@ func externalAuthenticationResource(
 		publicRoute(
 			http.MethodGet,
 			apiPath(literal("auth"), literal("providers")),
-			[]string{"authentication.internal"},
+			[]string{"authentication.internal", "request.invalid"},
 			module.listProviders,
 		),
 		protocolRoute(
@@ -73,12 +73,7 @@ func externalAuthenticationResource(
 			AuthPublic,
 			http.MethodGet,
 			apiPath(literal("auth"), literal("providers"), providerID("provider_id"), literal("login")),
-			[]string{
-				"request.invalid", "authentication.external.request.invalid",
-				"authentication.external.provider_not_found", "authentication.rate_limited",
-				"authentication.rate_limit_unavailable", "authentication.external.unavailable",
-				"authentication.external.rejected", "authentication.internal",
-			},
+			[]string{"request.invalid", "authentication.external.request.invalid", "authentication.external.provider_not_found", "authentication.rate_limited", "authentication.rate_limit_unavailable", "authentication.external.unavailable", "authentication.external.rejected", "authentication.internal", "authentication.desktop_authorization.invalid", "authentication.external.account_not_linked", "authentication.token_invalid"},
 			module.begin,
 		),
 		protocolRoute(
@@ -87,12 +82,7 @@ func externalAuthenticationResource(
 			AuthPublic,
 			http.MethodPost,
 			apiPath(literal("auth"), literal("providers"), providerID("provider_id"), literal("login")),
-			[]string{
-				"request.invalid", "authentication.external.request.invalid",
-				"authentication.external.provider_not_found", "authentication.external.account_not_linked",
-				"authentication.rate_limited", "authentication.rate_limit_unavailable",
-				"authentication.external.unavailable", "authentication.external.rejected", "authentication.internal",
-			},
+			[]string{"request.invalid", "authentication.external.request.invalid", "authentication.external.provider_not_found", "authentication.external.account_not_linked", "authentication.rate_limited", "authentication.rate_limit_unavailable", "authentication.external.unavailable", "authentication.external.rejected", "authentication.internal", "authentication.desktop_authorization.invalid", "authentication.token_invalid"},
 			module.beginFromBody,
 		),
 		protocolRoute(

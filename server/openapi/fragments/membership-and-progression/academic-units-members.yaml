@@ -78,10 +78,6 @@ paths:
       x-proctor-auth: principal_required
       x-proctor-idempotency: none
       x-proctor-error-codes:
-        - authentication.required
-        - authentication.token_invalid
-        - authentication.credential_ambiguous
-        - authentication.csrf.invalid
         - authorization.denied
         - authorization.request.invalid
         - authorization.unavailable
@@ -91,10 +87,15 @@ paths:
         - academic_unit_member.invalid
         - academic_unit_member.conflict
         - administration.unavailable
+        - mail.unavailable
+        - authentication.required
+        - authentication.token_invalid
+        - authentication.credential_ambiguous
         - authentication.dpop.invalid
         - authentication.dpop.replayed
         - authentication.dpop.use_nonce
         - authentication.dpop.unavailable
+        - authentication.csrf.invalid
       security:
         - bearerAuth: []
         - dpopAuth: []

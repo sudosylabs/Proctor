@@ -22,17 +22,15 @@ paths:
       x-proctor-auth: principal_required
       x-proctor-idempotency: none
       x-proctor-error-codes:
-        - authentication.required
-        - authentication.token_invalid
-        - authentication.credential_ambiguous
-        - authorization.denied
         - authorization.request.invalid
         - authorization.unavailable
         - request.invalid
         - resource.not_found
         - exam.starter_workspace.invalid
         - exam.starter_workspace.unavailable
-        - administration.unavailable
+        - authentication.required
+        - authentication.token_invalid
+        - authentication.credential_ambiguous
         - authentication.dpop.invalid
         - authentication.dpop.replayed
         - authentication.dpop.use_nonce
@@ -69,11 +67,6 @@ paths:
       x-proctor-auth: principal_required
       x-proctor-idempotency: required
       x-proctor-error-codes:
-        - authentication.required
-        - authentication.token_invalid
-        - authentication.credential_ambiguous
-        - authentication.csrf.invalid
-        - authorization.denied
         - authorization.request.invalid
         - authorization.unavailable
         - audit.unavailable
@@ -84,18 +77,21 @@ paths:
         - exam.starter_workspace.invalid
         - exam.starter_workspace.conflict
         - exam.starter_workspace.unavailable
-        - exam.starter_workspace.path_conflict
-        - exam.starter_workspace.parent_not_found
-        - exam.starter_workspace.entry_limit
         - idempotency.key_required
         - idempotency.key_invalid
         - idempotency.conflict
         - idempotency.in_progress
-        - administration.unavailable
+        - exam.starter_workspace.path_conflict
+        - exam.starter_workspace.parent_not_found
+        - exam.starter_workspace.entry_limit
+        - authentication.required
+        - authentication.token_invalid
+        - authentication.credential_ambiguous
         - authentication.dpop.invalid
         - authentication.dpop.replayed
         - authentication.dpop.use_nonce
         - authentication.dpop.unavailable
+        - authentication.csrf.invalid
       security:
         - bearerAuth: []
         - dpopAuth: []
@@ -145,11 +141,6 @@ paths:
       x-proctor-auth: principal_required
       x-proctor-idempotency: required
       x-proctor-error-codes:
-        - authentication.required
-        - authentication.token_invalid
-        - authentication.credential_ambiguous
-        - authentication.csrf.invalid
-        - authorization.denied
         - authorization.request.invalid
         - authorization.unavailable
         - audit.unavailable
@@ -160,21 +151,24 @@ paths:
         - exam.starter_workspace.invalid
         - exam.starter_workspace.conflict
         - exam.starter_workspace.unavailable
+        - idempotency.key_required
+        - idempotency.key_invalid
+        - idempotency.conflict
+        - idempotency.in_progress
         - exam.starter_workspace.path_conflict
         - exam.starter_workspace.parent_not_found
         - exam.starter_workspace.entry_limit
         - exam.starter_workspace.total_size_limit
         - exam.starter_workspace.upload_expired
         - exam.starter_workspace.object_conflict
-        - idempotency.key_required
-        - idempotency.key_invalid
-        - idempotency.conflict
-        - idempotency.in_progress
-        - administration.unavailable
+        - authentication.required
+        - authentication.token_invalid
+        - authentication.credential_ambiguous
         - authentication.dpop.invalid
         - authentication.dpop.replayed
         - authentication.dpop.use_nonce
         - authentication.dpop.unavailable
+        - authentication.csrf.invalid
       security:
         - bearerAuth: []
         - dpopAuth: []
@@ -227,11 +221,6 @@ paths:
       x-proctor-auth: principal_required
       x-proctor-idempotency: required
       x-proctor-error-codes:
-        - authentication.required
-        - authentication.token_invalid
-        - authentication.credential_ambiguous
-        - authentication.csrf.invalid
-        - authorization.denied
         - authorization.request.invalid
         - authorization.unavailable
         - audit.unavailable
@@ -242,19 +231,22 @@ paths:
         - exam.starter_workspace.invalid
         - exam.starter_workspace.conflict
         - exam.starter_workspace.unavailable
-        - exam.starter_workspace.path_conflict
-        - exam.starter_workspace.parent_not_found
-        - exam.starter_workspace.no_changes
-        - exam.starter_workspace.move_conflict
         - idempotency.key_required
         - idempotency.key_invalid
         - idempotency.conflict
         - idempotency.in_progress
-        - administration.unavailable
+        - exam.starter_workspace.path_conflict
+        - exam.starter_workspace.parent_not_found
+        - exam.starter_workspace.no_changes
+        - exam.starter_workspace.move_conflict
+        - authentication.required
+        - authentication.token_invalid
+        - authentication.credential_ambiguous
         - authentication.dpop.invalid
         - authentication.dpop.replayed
         - authentication.dpop.use_nonce
         - authentication.dpop.unavailable
+        - authentication.csrf.invalid
       security:
         - bearerAuth: []
         - dpopAuth: []
@@ -291,11 +283,6 @@ paths:
       x-proctor-auth: principal_required
       x-proctor-idempotency: required
       x-proctor-error-codes:
-        - authentication.required
-        - authentication.token_invalid
-        - authentication.credential_ambiguous
-        - authentication.csrf.invalid
-        - authorization.denied
         - authorization.request.invalid
         - authorization.unavailable
         - audit.unavailable
@@ -306,16 +293,19 @@ paths:
         - exam.starter_workspace.invalid
         - exam.starter_workspace.conflict
         - exam.starter_workspace.unavailable
-        - exam.starter_workspace.directory_not_empty
         - idempotency.key_required
         - idempotency.key_invalid
         - idempotency.conflict
         - idempotency.in_progress
-        - administration.unavailable
+        - exam.starter_workspace.directory_not_empty
+        - authentication.required
+        - authentication.token_invalid
+        - authentication.credential_ambiguous
         - authentication.dpop.invalid
         - authentication.dpop.replayed
         - authentication.dpop.use_nonce
         - authentication.dpop.unavailable
+        - authentication.csrf.invalid
       security:
         - bearerAuth: []
         - dpopAuth: []
@@ -356,17 +346,15 @@ paths:
       x-proctor-auth: principal_required
       x-proctor-idempotency: none
       x-proctor-error-codes:
-        - authentication.required
-        - authentication.token_invalid
-        - authentication.credential_ambiguous
-        - authorization.denied
         - authorization.request.invalid
         - authorization.unavailable
         - request.invalid
         - resource.not_found
         - exam.starter_workspace.invalid
         - exam.starter_workspace.unavailable
-        - administration.unavailable
+        - authentication.required
+        - authentication.token_invalid
+        - authentication.credential_ambiguous
         - authentication.dpop.invalid
         - authentication.dpop.replayed
         - authentication.dpop.use_nonce
@@ -419,11 +407,6 @@ paths:
       x-proctor-auth: principal_required
       x-proctor-idempotency: required
       x-proctor-error-codes:
-        - authentication.required
-        - authentication.token_invalid
-        - authentication.credential_ambiguous
-        - authentication.csrf.invalid
-        - authorization.denied
         - authorization.request.invalid
         - authorization.unavailable
         - audit.unavailable
@@ -434,20 +417,23 @@ paths:
         - exam.starter_workspace.invalid
         - exam.starter_workspace.conflict
         - exam.starter_workspace.unavailable
+        - idempotency.key_required
+        - idempotency.key_invalid
+        - idempotency.conflict
+        - idempotency.in_progress
         - exam.starter_workspace.total_size_limit
         - exam.starter_workspace.upload_expired
         - exam.starter_workspace.object_conflict
         - exam.starter_workspace.content_conflict
         - exam.starter_workspace.entry_kind
-        - idempotency.key_required
-        - idempotency.key_invalid
-        - idempotency.conflict
-        - idempotency.in_progress
-        - administration.unavailable
+        - authentication.required
+        - authentication.token_invalid
+        - authentication.credential_ambiguous
         - authentication.dpop.invalid
         - authentication.dpop.replayed
         - authentication.dpop.use_nonce
         - authentication.dpop.unavailable
+        - authentication.csrf.invalid
       security:
         - bearerAuth: []
         - dpopAuth: []

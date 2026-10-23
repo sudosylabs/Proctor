@@ -36,17 +36,14 @@ func examRecordsResource(application ExamRecordsApplication) apiResource {
 	waiver := apiPath(literal("exams"), canonicalID("exam_id"), literal("sittings"), canonicalID("exam_sitting_id"), literal("submissions"), canonicalID("submission_id"), literal("review-waiver"))
 	holds := apiPath(literal("exams"), canonicalID("exam_id"), literal("retention-holds"))
 	release := apiPath(literal("exams"), canonicalID("exam_id"), literal("retention-holds"), canonicalID("retention_hold_id"), literal("release"))
-	readErrors := academicReadErrorCodes("request.invalid", "resource.not_found", "exam.invalid", "exam.unavailable")
-	mutationErrors := academicMutationErrorCodes("request.invalid", "resource.not_found", "exam.invalid", "exam.conflict", "exam.unavailable",
-		"idempotency.key_required", "idempotency.key_invalid", "idempotency.conflict", "idempotency.in_progress")
-	completeRoute := sessionRoute(http.MethodPost, completion, mutationErrors, m.complete)
-	waiveRoute := sessionRoute(http.MethodPost, waiver, mutationErrors, m.waive)
-	createRoute := sessionRoute(http.MethodPost, holds, mutationErrors, m.createHold)
-	releaseRoute := strongRecentSessionRoute(http.MethodPost, release, mutationErrors, m.releaseHold)
+	completeRoute := sessionRoute(http.MethodPost, completion, []string{"authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "resource.not_found", "exam.invalid", "exam.conflict", "exam.unavailable", "idempotency.key_required", "idempotency.key_invalid", "idempotency.conflict", "idempotency.in_progress"}, m.complete)
+	waiveRoute := sessionRoute(http.MethodPost, waiver, []string{"authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "resource.not_found", "exam.invalid", "exam.conflict", "exam.unavailable", "idempotency.key_required", "idempotency.key_invalid", "idempotency.conflict", "idempotency.in_progress"}, m.waive)
+	createRoute := sessionRoute(http.MethodPost, holds, []string{"authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "resource.not_found", "exam.invalid", "exam.conflict", "exam.unavailable", "idempotency.key_required", "idempotency.key_invalid", "idempotency.conflict", "idempotency.in_progress"}, m.createHold)
+	releaseRoute := strongRecentSessionRoute(http.MethodPost, release, []string{"authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "resource.not_found", "exam.invalid", "exam.conflict", "exam.unavailable", "idempotency.key_required", "idempotency.key_invalid", "idempotency.conflict", "idempotency.in_progress"}, m.releaseHold)
 	completeRoute.idempotency, waiveRoute.idempotency, createRoute.idempotency, releaseRoute.idempotency = IdempotencyRequired, IdempotencyRequired, IdempotencyRequired, IdempotencyRequired
-	return newResource("exam-records", sessionRoute(http.MethodGet, completion, readErrors, m.getCompletion), completeRoute,
-		sessionRoute(http.MethodGet, waiver, readErrors, m.getWaiver), waiveRoute,
-		sessionRoute(http.MethodGet, holds, readErrors, m.listHolds), createRoute, releaseRoute)
+	return newResource("exam-records", sessionRoute(http.MethodGet, completion, []string{"authorization.request.invalid", "authorization.unavailable", "request.invalid", "resource.not_found", "exam.invalid", "exam.unavailable"}, m.getCompletion), completeRoute,
+		sessionRoute(http.MethodGet, waiver, []string{"authorization.request.invalid", "authorization.unavailable", "request.invalid", "resource.not_found", "exam.invalid", "exam.unavailable"}, m.getWaiver), waiveRoute,
+		sessionRoute(http.MethodGet, holds, []string{"authorization.request.invalid", "authorization.unavailable", "request.invalid", "resource.not_found", "exam.invalid", "exam.unavailable"}, m.listHolds), createRoute, releaseRoute)
 }
 
 type completeExamRecordsRequest struct {

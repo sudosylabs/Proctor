@@ -268,9 +268,9 @@ func authenticationResource(authentication authenticationEntryApplication, cooki
 			},
 			module.register,
 		),
-		publicRoute(http.MethodPost, apiPath(literal("auth"), literal("login")), authenticationLoginErrorCodes(), module.login),
-		refreshCredentialRoute(http.MethodPost, apiPath(literal("auth"), literal("refresh")), authenticationRefreshErrorCodes(), module.refresh),
-		mfaRecoverySessionRoute(http.MethodPost, apiPath(literal("auth"), literal("logout")), sessionAuthenticationMutationErrorCodes("authentication.internal"), module.logout),
+		publicRoute(http.MethodPost, apiPath(literal("auth"), literal("login")), []string{"request.invalid", "authentication.client_type.invalid", "authentication.password.invalid", "service.busy", "authentication.credentials_invalid", "authentication.mfa.required", "authentication.mfa.code_invalid", "authentication.mfa.unavailable", "authentication.sessions.maximum_reached", "authentication.desktop_authorization.account_session_locked", "authentication.rate_limited", "authentication.rate_limit_unavailable", "authentication.internal", "audit.unavailable", "authentication.external.invalid", "authentication.session.invalid"}, module.login),
+		refreshCredentialRoute(http.MethodPost, apiPath(literal("auth"), literal("refresh")), []string{"authentication.token_invalid", "authentication.internal", "authentication.dpop.invalid", "authentication.dpop.replayed", "authentication.dpop.use_nonce", "authentication.dpop.unavailable"}, module.refresh),
+		mfaRecoverySessionRoute(http.MethodPost, apiPath(literal("auth"), literal("logout")), []string{"authentication.internal", "audit.unavailable"}, module.logout),
 		sessionRoute(
 			http.MethodPost,
 			apiPath(literal("auth"), literal("email-verification"), literal("request")),
@@ -328,24 +328,6 @@ func (m authenticationResourceModule) register(request operationRequest) (operat
 		return operationResult{}, err
 	}
 	return statusResult(http.StatusAccepted).withHeaders(http.Header{"Cache-Control": {"no-store"}}), nil
-}
-
-func authenticationLoginErrorCodes() []string {
-	return []string{
-		"request.invalid", "authentication.client_type.invalid", "authentication.password.invalid", "service.busy",
-		"authentication.credentials_invalid", "authentication.mfa.required", "authentication.mfa.code_invalid",
-		"authentication.mfa.unavailable",
-		"authentication.sessions.maximum_reached", "authentication.desktop_authorization.account_session_locked", "authentication.rate_limited",
-		"authentication.rate_limit_unavailable", "authentication.internal", "audit.unavailable",
-	}
-}
-
-func authenticationRefreshErrorCodes() []string {
-	return []string{
-		"authentication.token_invalid", "authentication.session.invalid", "authentication.internal",
-		"authentication.dpop.invalid", "authentication.dpop.replayed", "authentication.dpop.use_nonce",
-		"authentication.dpop.unavailable",
-	}
 }
 
 func sessionAuthenticationMutationErrorCodes(extra ...string) []string {

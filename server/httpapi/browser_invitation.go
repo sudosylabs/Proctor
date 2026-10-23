@@ -92,10 +92,7 @@ func browserInvitationResource(application BrowserInvitationApplication, cookies
 		sessionRoute(
 			http.MethodPost,
 			apiPath(literal("auth"), literal("browser"), literal("invitations"), literal("accept-session")),
-			sessionAuthenticationMutationErrorCodes(
-				"authentication.rate_limited", "authentication.rate_limit_unavailable",
-				"invitation.invalid", "invitation.unavailable",
-			),
+			[]string{"authentication.rate_limited", "authentication.rate_limit_unavailable", "invitation.invalid", "invitation.unavailable", "audit.unavailable", "request.invalid"},
 			module.acceptWithSession,
 		),
 	)

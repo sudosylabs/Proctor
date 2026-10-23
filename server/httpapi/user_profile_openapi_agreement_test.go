@@ -43,12 +43,12 @@ func TestUserProfileOpenAPIAgreesWithRuntime(t *testing.T) {
 			{
 				Key: "GET /api/v1/users", Auth: AuthPrincipalRequired,
 				SuccessStatus: "200", SuccessRef: "#/components/responses/UserProfileListOK", SuccessSchema: "UserProfileListResponse",
-				PublicErrorCodes: principalContractCodes("request.invalid", "user.invalid", "administration.unavailable"),
+				PublicErrorCodes: []string{"authorization.denied", "authorization.request.invalid", "authorization.unavailable", "request.invalid", "user.invalid", "administration.unavailable", "resource.not_found"},
 			},
 			{
 				Key: "GET /api/v1/users/me", Auth: AuthPrincipalRequired,
 				SuccessStatus: "200", SuccessRef: "#/components/responses/UserProfileOK", SuccessSchema: "UserProfileResponse",
-				PublicErrorCodes: principalContractCodes("resource.not_found", "administration.unavailable"),
+				PublicErrorCodes: []string{"authorization.denied", "authorization.request.invalid", "authorization.unavailable", "resource.not_found", "administration.unavailable", "request.invalid"},
 			},
 			{
 				Key: "GET /api/v1/users/me/context", Auth: AuthSessionRequired,
@@ -58,7 +58,7 @@ func TestUserProfileOpenAPIAgreesWithRuntime(t *testing.T) {
 			{
 				Key: "GET /api/v1/users/me/exam-activity", Auth: AuthSessionRequired,
 				SuccessStatus: "200", SuccessRef: "#/components/responses/CandidateExamActivityOK", SuccessSchema: "CandidateExamActivityResponse",
-				PublicErrorCodes: currentUserContextSessionCodes("request.invalid", "exam.attempt.unavailable"),
+				PublicErrorCodes: []string{"request.invalid", "exam.attempt.unavailable", "exam.attempt.invalid", "exam.delivery.metadata_capacity"},
 			},
 			{
 				Key: "GET /api/v1/users/{user_id}", Auth: AuthPrincipalRequired,
@@ -85,17 +85,17 @@ func TestUserProfileOpenAPIAgreesWithRuntime(t *testing.T) {
 			{
 				Key: "GET /api/v1/users/{user_id}/profile-picture", Auth: AuthPrincipalRequired,
 				SuccessStatus: "200", SuccessRef: "#/components/responses/ProfilePictureOK", ExceptionalSuccess: true,
-				PublicErrorCodes: principalContractCodes("service.busy", "request.invalid", "resource.not_found", "profile_picture.unavailable"),
+				PublicErrorCodes: []string{"authorization.denied", "authorization.request.invalid", "authorization.unavailable", "service.busy", "request.invalid", "resource.not_found", "profile_picture.unavailable", "administration.unavailable"},
 			},
 			{
 				Key: "PUT /api/v1/users/{user_id}/profile-picture", Auth: AuthPrincipalRequired,
 				SuccessStatus: "200", SuccessRef: "#/components/responses/UserProfileOK", SuccessSchema: "UserProfileResponse",
-				PublicErrorCodes: principalMutationContractCodes("service.busy", "request.invalid", "resource.not_found", "profile_picture.invalid", "profile_picture.unavailable", "user.conflict"),
+				PublicErrorCodes: []string{"authorization.denied", "authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "service.busy", "request.invalid", "resource.not_found", "profile_picture.invalid", "profile_picture.unavailable", "user.conflict", "administration.unavailable"},
 			},
 			{
 				Key: "DELETE /api/v1/users/{user_id}/profile-picture", Auth: AuthPrincipalRequired,
 				SuccessStatus: "200", SuccessRef: "#/components/responses/UserProfileOK", SuccessSchema: "UserProfileResponse",
-				PublicErrorCodes: principalMutationContractCodes("request.invalid", "resource.not_found", "profile_picture.unavailable", "user.conflict"),
+				PublicErrorCodes: []string{"authorization.denied", "authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "resource.not_found", "profile_picture.unavailable", "user.conflict", "administration.unavailable"},
 			},
 			{
 				Key: "POST /api/v1/users/{user_id}/disable", Auth: AuthPrincipalRequired,

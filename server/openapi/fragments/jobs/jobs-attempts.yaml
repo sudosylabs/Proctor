@@ -23,17 +23,16 @@ paths:
         Returns the bounded execution history for an authorized, allowlisted Job in attempt-number order. The projection exposes safe status and public failure information, never worker leases, private payloads, stack traces, or infrastructure diagnostics.
       x-proctor-auth: principal_required
       x-proctor-error-codes:
-        - authentication.required
-        - authentication.token_invalid
-        - authentication.credential_ambiguous
         - authorization.denied
         - authorization.request.invalid
         - authorization.unavailable
-        - audit.unavailable
         - job.query.invalid
         - request.invalid
         - resource.not_found
         - job.unavailable
+        - authentication.required
+        - authentication.token_invalid
+        - authentication.credential_ambiguous
         - authentication.dpop.invalid
         - authentication.dpop.replayed
         - authentication.dpop.use_nonce

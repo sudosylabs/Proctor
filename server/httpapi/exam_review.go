@@ -334,24 +334,18 @@ func examIntegrityReviewResource(application ExamIntegrityReviewApplication) api
 	finalize := appendRoutePath(review, literal("finalize"))
 	release := appendRoutePath(review, literal("release"))
 	candidateResult := apiPath(literal("exam-attempts"), canonicalID("exam_attempt_id"), literal("result"))
-	readErrors := academicReadErrorCodes("request.invalid", "resource.not_found", "exam.integrity_review.invalid",
-		"exam.integrity_review.unavailable")
-	mutationErrors := academicMutationErrorCodes("request.invalid", "resource.not_found", "exam.integrity_review.invalid",
-		"exam.integrity_review.revision_conflict", "exam.integrity_review.state_conflict", "exam.integrity_review.incomplete",
-		"exam.integrity_review.too_large", "exam.integrity_review.unavailable", "idempotency.key_required",
-		"idempotency.key_invalid", "idempotency.conflict", "idempotency.in_progress")
 	studentErrors := personalAccessTokenSessionCodes("request.invalid", "resource.not_found",
 		"exam.integrity_review.invalid", "exam.integrity_review.unavailable")
 	return newResource("exam-integrity-reviews",
-		principalRoute(http.MethodGet, flags, readErrors, module.listFlags),
-		principalRoute(http.MethodGet, evidence, readErrors, module.listEvidence),
-		principalRoute(http.MethodGet, appendRoutePath(base, literal("native-conditions")), readErrors, module.listNativeConditions),
-		principalRoute(http.MethodGet, discrepancies, readErrors, module.listDiscrepancies),
-		principalRoute(http.MethodGet, review, readErrors, module.get),
-		idempotentPrincipalRoute(IdempotencyRequired, http.MethodPut, review, mutationErrors, module.update),
-		idempotentPrincipalRoute(IdempotencyRequired, http.MethodPut, decision, mutationErrors, module.saveDecision),
-		idempotentPrincipalRoute(IdempotencyRequired, http.MethodPost, finalize, mutationErrors, module.finalize),
-		idempotentPrincipalRoute(IdempotencyRequired, http.MethodPost, release, mutationErrors, module.release),
+		principalRoute(http.MethodGet, flags, []string{"authorization.request.invalid", "authorization.unavailable", "request.invalid", "resource.not_found", "exam.integrity_review.invalid", "exam.integrity_review.unavailable", "exam.sitting.invalid", "exam.sitting.unavailable"}, module.listFlags),
+		principalRoute(http.MethodGet, evidence, []string{"authorization.request.invalid", "authorization.unavailable", "request.invalid", "resource.not_found", "exam.integrity_review.invalid", "exam.integrity_review.unavailable", "exam.sitting.invalid", "exam.sitting.unavailable"}, module.listEvidence),
+		principalRoute(http.MethodGet, appendRoutePath(base, literal("native-conditions")), []string{"authorization.request.invalid", "authorization.unavailable", "request.invalid", "resource.not_found", "exam.integrity_review.invalid", "exam.integrity_review.unavailable", "exam.sitting.invalid", "exam.sitting.unavailable"}, module.listNativeConditions),
+		principalRoute(http.MethodGet, discrepancies, []string{"authorization.request.invalid", "authorization.unavailable", "request.invalid", "resource.not_found", "exam.integrity_review.invalid", "exam.integrity_review.unavailable", "exam.sitting.invalid", "exam.sitting.unavailable"}, module.listDiscrepancies),
+		principalRoute(http.MethodGet, review, []string{"authorization.request.invalid", "authorization.unavailable", "request.invalid", "resource.not_found", "exam.integrity_review.invalid", "exam.integrity_review.unavailable", "exam.sitting.invalid", "exam.sitting.unavailable"}, module.get),
+		idempotentPrincipalRoute(IdempotencyRequired, http.MethodPut, review, []string{"authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "resource.not_found", "exam.integrity_review.invalid", "exam.integrity_review.revision_conflict", "exam.integrity_review.state_conflict", "exam.integrity_review.incomplete", "exam.integrity_review.too_large", "exam.integrity_review.unavailable", "idempotency.key_required", "idempotency.key_invalid", "idempotency.conflict", "idempotency.in_progress", "exam.sitting.invalid", "exam.sitting.unavailable"}, module.update),
+		idempotentPrincipalRoute(IdempotencyRequired, http.MethodPut, decision, []string{"authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "resource.not_found", "exam.integrity_review.invalid", "exam.integrity_review.revision_conflict", "exam.integrity_review.state_conflict", "exam.integrity_review.incomplete", "exam.integrity_review.too_large", "exam.integrity_review.unavailable", "idempotency.key_required", "idempotency.key_invalid", "idempotency.conflict", "idempotency.in_progress", "exam.sitting.invalid", "exam.sitting.unavailable"}, module.saveDecision),
+		idempotentPrincipalRoute(IdempotencyRequired, http.MethodPost, finalize, []string{"authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "resource.not_found", "exam.integrity_review.invalid", "exam.integrity_review.revision_conflict", "exam.integrity_review.state_conflict", "exam.integrity_review.incomplete", "exam.integrity_review.too_large", "exam.integrity_review.unavailable", "idempotency.key_required", "idempotency.key_invalid", "idempotency.conflict", "idempotency.in_progress", "exam.sitting.invalid", "exam.sitting.unavailable"}, module.finalize),
+		idempotentPrincipalRoute(IdempotencyRequired, http.MethodPost, release, []string{"authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "resource.not_found", "exam.integrity_review.invalid", "exam.integrity_review.revision_conflict", "exam.integrity_review.state_conflict", "exam.integrity_review.incomplete", "exam.integrity_review.too_large", "exam.integrity_review.unavailable", "idempotency.key_required", "idempotency.key_invalid", "idempotency.conflict", "idempotency.in_progress", "exam.sitting.invalid", "exam.sitting.unavailable"}, module.release),
 		sessionRoute(http.MethodGet, candidateResult, studentErrors, module.studentResult),
 	)
 }

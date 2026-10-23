@@ -66,14 +66,6 @@ paths:
       tags: [Authentication]
       x-proctor-auth: mfa_recovery_session_required
       x-proctor-error-codes:
-        - authentication.required
-        - authentication.token_invalid
-        - authentication.credential_ambiguous
-        - authentication.csrf.invalid
-        - authentication.dpop.invalid
-        - authentication.dpop.replayed
-        - authentication.dpop.use_nonce
-        - authentication.dpop.unavailable
         - request.invalid
         - authentication.reauthentication_method_required
         - authentication.external.request.invalid
@@ -84,6 +76,16 @@ paths:
         - authentication.external.rejected
         - authentication.internal
         - audit.unavailable
+        - authentication.desktop_authorization.invalid
+        - authentication.external.account_not_linked
+        - authentication.required
+        - authentication.token_invalid
+        - authentication.credential_ambiguous
+        - authentication.dpop.invalid
+        - authentication.dpop.replayed
+        - authentication.dpop.use_nonce
+        - authentication.dpop.unavailable
+        - authentication.csrf.invalid
       x-proctor-idempotency: none
       security:
         - bearerAuth: []

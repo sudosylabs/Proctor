@@ -28,16 +28,17 @@ paths:
       x-proctor-auth: principal_required
       x-proctor-idempotency: none
       x-proctor-error-codes:
-        - service.busy
-        - authentication.required
-        - authentication.token_invalid
-        - authentication.credential_ambiguous
         - authorization.denied
         - authorization.request.invalid
         - authorization.unavailable
+        - service.busy
         - request.invalid
         - resource.not_found
         - profile_picture.unavailable
+        - administration.unavailable
+        - authentication.required
+        - authentication.token_invalid
+        - authentication.credential_ambiguous
         - authentication.dpop.invalid
         - authentication.dpop.replayed
         - authentication.dpop.use_nonce
@@ -101,24 +102,25 @@ paths:
       x-proctor-auth: principal_required
       x-proctor-idempotency: none
       x-proctor-error-codes:
-        - service.busy
-        - authentication.required
-        - authentication.token_invalid
-        - authentication.credential_ambiguous
-        - authentication.csrf.invalid
         - authorization.denied
         - authorization.request.invalid
         - authorization.unavailable
         - audit.unavailable
+        - service.busy
         - request.invalid
         - resource.not_found
         - profile_picture.invalid
         - profile_picture.unavailable
         - user.conflict
+        - administration.unavailable
+        - authentication.required
+        - authentication.token_invalid
+        - authentication.credential_ambiguous
         - authentication.dpop.invalid
         - authentication.dpop.replayed
         - authentication.dpop.use_nonce
         - authentication.dpop.unavailable
+        - authentication.csrf.invalid
       security:
         - bearerAuth: []
         - dpopAuth: []
@@ -183,10 +185,6 @@ paths:
       x-proctor-auth: principal_required
       x-proctor-idempotency: none
       x-proctor-error-codes:
-        - authentication.required
-        - authentication.token_invalid
-        - authentication.credential_ambiguous
-        - authentication.csrf.invalid
         - authorization.denied
         - authorization.request.invalid
         - authorization.unavailable
@@ -195,10 +193,15 @@ paths:
         - resource.not_found
         - profile_picture.unavailable
         - user.conflict
+        - administration.unavailable
+        - authentication.required
+        - authentication.token_invalid
+        - authentication.credential_ambiguous
         - authentication.dpop.invalid
         - authentication.dpop.replayed
         - authentication.dpop.use_nonce
         - authentication.dpop.unavailable
+        - authentication.csrf.invalid
       security:
         - bearerAuth: []
         - dpopAuth: []

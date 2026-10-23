@@ -65,20 +65,11 @@ func examRevisionResource(application ExamRevisionApplication) apiResource {
 	module := examRevisionHTTPModule{application: application}
 	collection := apiPath(literal("exams"), canonicalID("exam_id"), literal("revisions"))
 	member := apiPath(literal("exams"), canonicalID("exam_id"), literal("revisions"), canonicalID("exam_revision_id"))
-	readErrors := academicReadErrorCodes("request.invalid", "resource.not_found", "exam.invalid", "exam.unavailable")
 	return newResource(
 		"exam-revisions",
-		idempotentPrincipalRoute(IdempotencyRequired, http.MethodPost, collection, examRevisionMutationErrorCodes(), module.publish),
-		principalRoute(http.MethodGet, collection, readErrors, module.list),
-		principalRoute(http.MethodGet, member, readErrors, module.get),
-	)
-}
-
-func examRevisionMutationErrorCodes() []string {
-	return academicMutationErrorCodes(
-		"request.invalid", "resource.not_found", "exam.invalid", "exam.archived", "exam.conflict",
-		"exam.draft.revision_conflict", "exam.revision.no_changes", "exam.revision.capacity_exceeded", "exam.unavailable",
-		"idempotency.key_required", "idempotency.key_invalid", "idempotency.conflict", "idempotency.in_progress",
+		idempotentPrincipalRoute(IdempotencyRequired, http.MethodPost, collection, []string{"authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "resource.not_found", "exam.invalid", "exam.archived", "exam.conflict", "exam.draft.revision_conflict", "exam.revision.no_changes", "exam.revision.capacity_exceeded", "exam.unavailable", "idempotency.key_required", "idempotency.key_invalid", "idempotency.conflict", "idempotency.in_progress"}, module.publish),
+		principalRoute(http.MethodGet, collection, []string{"authorization.request.invalid", "authorization.unavailable", "request.invalid", "resource.not_found", "exam.invalid", "exam.unavailable"}, module.list),
+		principalRoute(http.MethodGet, member, []string{"authorization.request.invalid", "authorization.unavailable", "request.invalid", "resource.not_found", "exam.invalid", "exam.unavailable"}, module.get),
 	)
 }
 

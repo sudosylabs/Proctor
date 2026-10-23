@@ -19,18 +19,6 @@ import (
 
 func TestRetentionPolicyOpenAPIAgreesWithRuntime(t *testing.T) {
 	t.Parallel()
-	replaceCodes := principalMutationContractCodes(
-		"authentication.strong_required",
-		"authentication.reauthentication_required",
-		"idempotency.key_required",
-		"idempotency.key_invalid",
-		"idempotency.conflict",
-		"idempotency.in_progress",
-		"request.invalid",
-		"retention_policy.invalid",
-		"retention_policy.revision_conflict",
-		"retention_policy.unavailable",
-	)
 	suite := openAPIAgreementSuite{
 		Operations: []openAPIAgreementOperation{
 			{
@@ -39,7 +27,7 @@ func TestRetentionPolicyOpenAPIAgreesWithRuntime(t *testing.T) {
 				SuccessStatus:    "200",
 				SuccessRef:       "#/components/responses/RetentionPolicyOK",
 				SuccessSchema:    "RetentionPolicyResponse",
-				PublicErrorCodes: principalContractCodes("retention_policy.unavailable"),
+				PublicErrorCodes: []string{"authorization.denied", "authorization.request.invalid", "authorization.unavailable", "retention_policy.unavailable", "resource.not_found", "retention_policy.revision_conflict"},
 			},
 			{
 				Key:              "PUT /api/v1/retention-policy",
@@ -50,7 +38,7 @@ func TestRetentionPolicyOpenAPIAgreesWithRuntime(t *testing.T) {
 				SuccessStatus:    "200",
 				SuccessRef:       "#/components/responses/RetentionPolicyOK",
 				SuccessSchema:    "RetentionPolicyResponse",
-				PublicErrorCodes: replaceCodes,
+				PublicErrorCodes: []string{"authorization.denied", "authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "idempotency.key_required", "idempotency.key_invalid", "idempotency.conflict", "idempotency.in_progress", "request.invalid", "retention_policy.invalid", "retention_policy.revision_conflict", "retention_policy.unavailable", "resource.not_found"},
 			},
 		},
 		Schemas: []openAPIAgreementSchema{

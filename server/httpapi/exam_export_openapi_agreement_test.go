@@ -18,8 +18,8 @@ import (
 )
 
 func TestExamExportsOpenAPIAgreesWithRuntime(t *testing.T) {
-	read := principalContractCodes("request.invalid", "resource.not_found", "exam.invalid", "exam.unavailable", "exam.export.not_found", "exam.export.conflict", "exam.export.unavailable", "administration.unavailable")
-	mutation := principalMutationContractCodes("request.invalid", "resource.not_found", "exam.invalid", "exam.unavailable", "exam.export.not_found", "exam.export.conflict", "exam.export.unavailable", "exam.export.policy_unconfigured", "exam.export.limit", "exam.export.source_retired", "exam.export.scope_changed", "idempotency.key_required", "idempotency.key_invalid", "idempotency.conflict", "idempotency.in_progress", "administration.unavailable")
+	read := []string{"authorization.request.invalid", "authorization.unavailable", "request.invalid", "resource.not_found", "exam.invalid", "exam.unavailable", "exam.export.not_found", "exam.export.conflict", "exam.export.unavailable"}
+	mutation := []string{"authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "resource.not_found", "exam.invalid", "exam.unavailable", "exam.export.not_found", "exam.export.conflict", "exam.export.unavailable", "exam.export.policy_unconfigured", "exam.export.limit", "exam.export.source_retired", "exam.export.scope_changed", "idempotency.key_required", "idempotency.key_invalid", "idempotency.conflict", "idempotency.in_progress"}
 	suite := openAPIAgreementSuite{Schemas: []openAPIAgreementSchema{
 		{Name: "CreateExamExportRequest", DTO: reflect.TypeOf(createExamExportRequest{}), Required: []string{"categories"}, NonNullable: []string{"categories"}},
 		{Name: "ExamExportResponse", DTO: reflect.TypeOf(examExportResponse{}), Required: []string{"id", "exam_id", "exam_sitting_id", "categories", "state", "policy_revision", "created_at", "expires_at", "construction_deadline", "submission_count", "file_count", "source_bytes"}},

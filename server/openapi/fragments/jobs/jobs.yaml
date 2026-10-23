@@ -16,16 +16,16 @@ paths:
         Lists only Job types deliberately exposed through the public administration contract and authorized for the current principal. Private payloads, claims, worker identities, and infrastructure errors are omitted from every projection.
       x-proctor-auth: principal_required
       x-proctor-error-codes:
-        - authentication.required
-        - authentication.token_invalid
-        - authentication.credential_ambiguous
         - authorization.denied
         - authorization.request.invalid
         - authorization.unavailable
-        - audit.unavailable
         - job.query.invalid
-        - request.invalid
         - job.unavailable
+        - request.invalid
+        - resource.not_found
+        - authentication.required
+        - authentication.token_invalid
+        - authentication.credential_ambiguous
         - authentication.dpop.invalid
         - authentication.dpop.replayed
         - authentication.dpop.use_nonce
@@ -65,6 +65,8 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         "403":
           $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
         "500":
           $ref: '#/components/responses/InternalError'
         "503":
@@ -86,15 +88,15 @@ paths:
         Returns the safe current projection of one authorized, allowlisted durable Job. A Job outside the caller's permitted scope or public type allowlist is concealed through the documented not-found or authorization behavior.
       x-proctor-auth: principal_required
       x-proctor-error-codes:
-        - authentication.required
-        - authentication.token_invalid
-        - authentication.credential_ambiguous
         - authorization.denied
         - authorization.request.invalid
         - authorization.unavailable
-        - audit.unavailable
         - resource.not_found
         - job.unavailable
+        - request.invalid
+        - authentication.required
+        - authentication.token_invalid
+        - authentication.credential_ambiguous
         - authentication.dpop.invalid
         - authentication.dpop.replayed
         - authentication.dpop.use_nonce

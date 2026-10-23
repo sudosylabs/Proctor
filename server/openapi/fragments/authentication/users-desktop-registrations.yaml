@@ -16,7 +16,7 @@ paths:
       description: Returns only bounded registration presentation and compatibility metadata; public keys, thumbprints, proofs, and Session identities are never exposed.
       tags: [Authentication]
       x-proctor-auth: session_required
-      x-proctor-error-codes: [authentication.required, authentication.token_invalid, authentication.credential_ambiguous, desktop_registration.unavailable, authentication.dpop.invalid, authentication.dpop.replayed, authentication.dpop.use_nonce, authentication.dpop.unavailable]
+      x-proctor-error-codes: [desktop_registration.unavailable, authentication.reauthentication_required, authentication.session_required, request.invalid, authentication.required, authentication.token_invalid, authentication.credential_ambiguous, authentication.dpop.invalid, authentication.dpop.replayed, authentication.dpop.use_nonce, authentication.dpop.unavailable]
       x-proctor-idempotency: none
       security:
         - bearerAuth: []
@@ -26,6 +26,7 @@ paths:
         "200": {$ref: '#/components/responses/DesktopRegistrationListOK'}
         "400": {$ref: '#/components/responses/BadRequest'}
         "401": {$ref: '#/components/responses/Unauthorized'}
+        "403": {$ref: '#/components/responses/Forbidden'}
         "500": {$ref: '#/components/responses/InternalError'}
         "503": {$ref: '#/components/responses/ServiceUnavailable'}
   /api/v1/users/me/desktop-registrations/{desktop_registration_id}:
@@ -45,7 +46,7 @@ paths:
       parameters:
         - $ref: '#/components/parameters/DesktopRegistrationID'
       x-proctor-auth: strong_recent_session_required
-      x-proctor-error-codes: [authentication.required, authentication.token_invalid, authentication.credential_ambiguous, desktop_registration.unavailable, authentication.csrf.invalid, authentication.strong_required, authentication.reauthentication_required, request.invalid, resource.not_found, audit.unavailable, authentication.dpop.invalid, authentication.dpop.replayed, authentication.dpop.use_nonce, authentication.dpop.unavailable]
+      x-proctor-error-codes: [desktop_registration.unavailable, request.invalid, resource.not_found, audit.unavailable, authentication.session_required, authentication.required, authentication.token_invalid, authentication.credential_ambiguous, authentication.dpop.invalid, authentication.dpop.replayed, authentication.dpop.use_nonce, authentication.dpop.unavailable, authentication.csrf.invalid, authentication.strong_required, authentication.reauthentication_required]
       x-proctor-idempotency: none
       security:
         - bearerAuth: []

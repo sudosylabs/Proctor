@@ -595,11 +595,13 @@ func (s *auditService) recordDecision(
 		IPAddress:  metadata.IPAddress, UserAgent: metadata.UserAgent,
 		ErrorCode: errorCode,
 	}
+	// An authorization decision that cannot be recorded leaves the request
+	// unauthorized, so it is presented as the authorization step failing.
 	if s.deps.Audits == nil {
-		return auditUnavailable(store.NewErrNotFound("audit_store", ""))
+		return apperror.New("authorization.unavailable").Wrap(store.NewErrNotFound("audit_store", ""))
 	}
 	if _, err := s.deps.Audits.Save(ctx, event); err != nil {
-		return auditUnavailable(err)
+		return apperror.New("authorization.unavailable").Wrap(err)
 	}
 	return nil
 }

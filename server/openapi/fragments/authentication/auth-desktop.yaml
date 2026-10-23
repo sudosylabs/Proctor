@@ -13,7 +13,7 @@ paths:
       description: Starts the current protocol-1 system-browser handoff and pins its exact loopback callback, state, S256 PKCE challenge, and bounded device presentation. Authentication is selected only inside the hosted journey.
       tags: [Authentication]
       x-proctor-auth: public
-      x-proctor-error-codes: [request.invalid, authentication.rate_limited, authentication.rate_limit_unavailable, authentication.desktop_authorization.invalid, authentication.desktop_authorization.disabled, authentication.desktop_authorization.rejected, authentication.desktop_authorization.unavailable, authentication.desktop_authorization.incompatible, authentication.dpop.unavailable]
+      x-proctor-error-codes: [request.invalid, authentication.rate_limited, authentication.rate_limit_unavailable, authentication.desktop_authorization.invalid, authentication.desktop_authorization.disabled, authentication.desktop_authorization.unavailable, authentication.desktop_authorization.incompatible, authentication.dpop.unavailable]
       x-proctor-idempotency: none
       security: []
       requestBody: {$ref: '#/components/requestBodies/DesktopAuthorizationStart'}
@@ -33,7 +33,7 @@ paths:
       description: Exchanges the handle, fragment-delivered browser proof, and pinned state exactly once for a host-only HttpOnly binding cookie, then returns no credential material to rendered content.
       tags: [Authentication]
       x-proctor-auth: public
-      x-proctor-error-codes: &desktopBrowserErrors [request.invalid, authentication.desktop_authorization.invalid, authentication.desktop_authorization.rejected, authentication.desktop_authorization.unavailable, authentication.desktop_authorization.account_session_locked]
+      x-proctor-error-codes: [request.invalid, authentication.desktop_authorization.invalid, authentication.desktop_authorization.rejected, authentication.desktop_authorization.unavailable]
       x-proctor-idempotency: none
       security: []
       requestBody: {$ref: '#/components/requestBodies/DesktopAuthorizationProof'}
@@ -51,7 +51,7 @@ paths:
       description: Resolves the scoped binding cookie and returns only the safe device, authentication-choice, expiry, and confirmed-account presentation needed by the current hosted page.
       tags: [Authentication]
       x-proctor-auth: public
-      x-proctor-error-codes: *desktopBrowserErrors
+      x-proctor-error-codes: [authentication.desktop_authorization.invalid, authentication.desktop_authorization.rejected, authentication.desktop_authorization.unavailable, authentication.credential_ambiguous]
       x-proctor-idempotency: none
       security: []
       responses:
@@ -76,7 +76,7 @@ paths:
               --header 'X-Proctor-CSRF-Token: <csrf-proof>'
       tags: [Authentication]
       x-proctor-auth: session_required
-      x-proctor-error-codes: [authentication.required, authentication.token_invalid, authentication.credential_ambiguous, authentication.csrf.invalid, request.invalid, authentication.desktop_authorization.invalid, authentication.desktop_authorization.rejected, authentication.desktop_authorization.unavailable, authentication.desktop_authorization.account_session_locked, authentication.dpop.invalid, authentication.dpop.replayed, authentication.dpop.use_nonce, authentication.dpop.unavailable]
+      x-proctor-error-codes: [authentication.desktop_authorization.invalid, authentication.desktop_authorization.rejected, authentication.desktop_authorization.unavailable, authentication.desktop_authorization.account_session_locked, authentication.required, authentication.token_invalid, authentication.credential_ambiguous, authentication.dpop.invalid, authentication.dpop.replayed, authentication.dpop.use_nonce, authentication.dpop.unavailable, authentication.csrf.invalid]
       x-proctor-idempotency: none
       security:
         - bearerAuth: []
@@ -98,7 +98,7 @@ paths:
       description: Validates local credentials and any required MFA code only for the browser-bound Desktop transaction, without creating a Web Session or approving the Desktop request.
       tags: [Authentication]
       x-proctor-auth: public
-      x-proctor-error-codes: [service.busy, request.invalid, authentication.desktop_authorization.invalid, authentication.desktop_authorization.rejected, authentication.desktop_authorization.unavailable, authentication.desktop_authorization.account_session_locked, authentication.credentials_invalid, authentication.mfa.required, authentication.mfa.code_invalid, authentication.mfa.unavailable, authentication.rate_limited, authentication.rate_limit_unavailable]
+      x-proctor-error-codes: [request.invalid, authentication.desktop_authorization.invalid, authentication.desktop_authorization.rejected, authentication.desktop_authorization.unavailable, authentication.desktop_authorization.account_session_locked, service.busy, authentication.credentials_invalid, authentication.mfa.required, authentication.mfa.code_invalid, authentication.mfa.unavailable, authentication.rate_limited, authentication.rate_limit_unavailable, authentication.credential_ambiguous]
       x-proctor-idempotency: none
       security: []
       requestBody: {$ref: '#/components/requestBodies/DesktopAuthorizationLocalAuthentication'}
@@ -124,13 +124,14 @@ paths:
           description: The exact opaque state pinned by the Desktop when it created this transaction.
           schema: {type: string, pattern: '^[A-Za-z0-9_-]{43}$'}
       x-proctor-auth: public
-      x-proctor-error-codes: [request.invalid, authentication.desktop_authorization.invalid, authentication.desktop_authorization.rejected, authentication.desktop_authorization.unavailable, authentication.desktop_authorization.account_session_locked, authentication.external.provider_not_found, authentication.external.request.invalid, authentication.external.unavailable, authentication.rate_limited, authentication.rate_limit_unavailable]
+      x-proctor-error-codes: [request.invalid, authentication.desktop_authorization.invalid, authentication.desktop_authorization.rejected, authentication.desktop_authorization.unavailable, authentication.external.provider_not_found, authentication.external.request.invalid, authentication.external.unavailable, authentication.rate_limited, authentication.rate_limit_unavailable, authentication.credential_ambiguous, authentication.external.account_not_linked, authentication.external.rejected, authentication.token_invalid]
       x-proctor-idempotency: none
       security: []
       responses:
         "303": {$ref: '#/components/responses/ExternalAuthenticationRedirect'}
         "400": {$ref: '#/components/responses/BadRequest'}
         "401": {$ref: '#/components/responses/Unauthorized'}
+        "403": {$ref: '#/components/responses/Forbidden'}
         "404": {$ref: '#/components/responses/NotFound'}
         "409": {$ref: '#/components/responses/Conflict'}
         "429": {$ref: '#/components/responses/TooManyRequests'}
@@ -151,7 +152,7 @@ paths:
               --cookie 'PROCTOR_DESKTOP_AUTH=<binding-cookie>'
       tags: [Authentication]
       x-proctor-auth: public
-      x-proctor-error-codes: *desktopBrowserErrors
+      x-proctor-error-codes: [request.invalid, authentication.desktop_authorization.invalid, authentication.desktop_authorization.rejected, authentication.desktop_authorization.unavailable, authentication.credential_ambiguous]
       x-proctor-idempotency: none
       security: []
       responses:
@@ -168,7 +169,7 @@ paths:
       description: Requires the browser-bound transaction's confirmed account and exact pinned state, then issues one short-lived loopback code without exposing Session credentials to the browser.
       tags: [Authentication]
       x-proctor-auth: public
-      x-proctor-error-codes: [request.invalid, authentication.desktop_authorization.invalid, authentication.desktop_authorization.rejected, authentication.desktop_authorization.unavailable, authentication.desktop_authorization.account_session_locked, audit.unavailable]
+      x-proctor-error-codes: [request.invalid, authentication.desktop_authorization.invalid, authentication.desktop_authorization.rejected, authentication.desktop_authorization.unavailable, audit.unavailable, authentication.credential_ambiguous]
       x-proctor-idempotency: none
       security: []
       requestBody: {$ref: '#/components/requestBodies/DesktopAuthorizationState'}
@@ -186,7 +187,7 @@ paths:
       description: Validates the binding cookie and exact pinned state before terminally canceling the transaction and destroying every remaining browser and code proof.
       tags: [Authentication]
       x-proctor-auth: public
-      x-proctor-error-codes: *desktopBrowserErrors
+      x-proctor-error-codes: [request.invalid, authentication.desktop_authorization.invalid, authentication.desktop_authorization.rejected, authentication.desktop_authorization.unavailable, authentication.credential_ambiguous]
       x-proctor-idempotency: none
       security: []
       requestBody: {$ref: '#/components/requestBodies/DesktopAuthorizationState'}

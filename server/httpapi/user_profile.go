@@ -156,19 +156,19 @@ func userProfileResource(profiles UserProfileApplication) apiResource {
 	email := appendRoutePath(user, literal("email"))
 	return newResource(
 		"user-profiles",
-		principalRoute(http.MethodGet, apiPath(literal("users")), userProfileReadCodes("request.invalid", "user.invalid"), module.search),
-		principalRoute(http.MethodGet, apiPath(literal("users"), literal("me")), userProfileReadCodes("resource.not_found"), module.current),
+		principalRoute(http.MethodGet, apiPath(literal("users")), []string{"authorization.denied", "authorization.request.invalid", "authorization.unavailable", "request.invalid", "user.invalid", "administration.unavailable", "resource.not_found"}, module.search),
+		principalRoute(http.MethodGet, apiPath(literal("users"), literal("me")), []string{"authorization.denied", "authorization.request.invalid", "authorization.unavailable", "resource.not_found", "administration.unavailable", "request.invalid"}, module.current),
 		sessionRoute(http.MethodGet, apiPath(literal("users"), literal("me"), literal("context")),
 			currentUserContextSessionCodes("administration.unavailable"), module.context),
 		sessionRoute(http.MethodGet, apiPath(literal("users"), literal("me"), literal("exam-activity")),
-			currentUserContextSessionCodes("request.invalid", "exam.attempt.unavailable"), module.examActivity),
+			[]string{"request.invalid", "exam.attempt.unavailable", "exam.attempt.invalid", "exam.delivery.metadata_capacity"}, module.examActivity),
 		principalRoute(http.MethodGet, user, userProfileReadCodes("request.invalid", "resource.not_found"), module.get),
 		principalRoute(http.MethodPatch, user, userProfileMutationCodes("request.invalid", "resource.not_found", "user.invalid", "user.conflict"), module.update),
 		strongRecentSessionRoute(http.MethodPut, email, userProfileMutationCodes("request.invalid", "resource.not_found", "user.invalid", "user.conflict", "authentication.account_recovery.unavailable"), module.changeEmail),
 		strongRecentSessionRoute(http.MethodPost, appendRoutePath(email, literal("verify")), userProfileMutationCodes("request.invalid", "resource.not_found", "user.conflict", "authentication.account_recovery.unavailable"), module.verifyEmail),
-		protocolRoute("profile-picture-download", RouteProtocolBinaryDownload, AuthPrincipalRequired, http.MethodGet, picture, userProfilePrincipalCodes("service.busy", "request.invalid", "resource.not_found", "profile_picture.unavailable"), module.downloadPicture),
-		protocolRoute("profile-picture-upload", RouteProtocolStreamingUpload, AuthPrincipalRequired, http.MethodPut, picture, userProfilePrincipalMutationCodes("service.busy", "request.invalid", "resource.not_found", "profile_picture.invalid", "profile_picture.unavailable", "user.conflict"), module.uploadPicture),
-		principalRoute(http.MethodDelete, picture, userProfilePrincipalMutationCodes("request.invalid", "resource.not_found", "profile_picture.unavailable", "user.conflict"), module.removePicture),
+		protocolRoute("profile-picture-download", RouteProtocolBinaryDownload, AuthPrincipalRequired, http.MethodGet, picture, []string{"authorization.denied", "authorization.request.invalid", "authorization.unavailable", "service.busy", "request.invalid", "resource.not_found", "profile_picture.unavailable", "administration.unavailable"}, module.downloadPicture),
+		protocolRoute("profile-picture-upload", RouteProtocolStreamingUpload, AuthPrincipalRequired, http.MethodPut, picture, []string{"authorization.denied", "authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "service.busy", "request.invalid", "resource.not_found", "profile_picture.invalid", "profile_picture.unavailable", "user.conflict", "administration.unavailable"}, module.uploadPicture),
+		principalRoute(http.MethodDelete, picture, []string{"authorization.denied", "authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "resource.not_found", "profile_picture.unavailable", "user.conflict", "administration.unavailable"}, module.removePicture),
 	)
 }
 

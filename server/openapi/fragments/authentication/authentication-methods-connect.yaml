@@ -18,12 +18,6 @@ paths:
         - Authentication
       x-proctor-auth: strong_recent_session_required
       x-proctor-error-codes:
-        - authentication.required
-        - authentication.token_invalid
-        - authentication.credential_ambiguous
-        - authentication.csrf.invalid
-        - authentication.strong_required
-        - authentication.reauthentication_required
         - request.invalid
         - authentication.external.provider_not_found
         - authentication.external.unavailable
@@ -31,10 +25,20 @@ paths:
         - authentication.rate_limit_unavailable
         - authentication.internal
         - audit.unavailable
+        - authentication.desktop_authorization.invalid
+        - authentication.external.account_not_linked
+        - authentication.external.rejected
+        - authentication.external.request.invalid
+        - authentication.required
+        - authentication.token_invalid
+        - authentication.credential_ambiguous
         - authentication.dpop.invalid
         - authentication.dpop.replayed
         - authentication.dpop.use_nonce
         - authentication.dpop.unavailable
+        - authentication.csrf.invalid
+        - authentication.strong_required
+        - authentication.reauthentication_required
       x-proctor-idempotency: none
       security:
         - bearerAuth: []

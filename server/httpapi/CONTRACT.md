@@ -51,7 +51,15 @@ Use the Academic Unit slice as the conceptual pattern for later capabilities:
   authentication requirement and method (credential extraction, DPoP,
   CSRF on unsafe methods, strong and recent assurance, and the public
   browser-request refusal), and catalog compilation rejects a resource table
-  that repeats one of them;
+  that repeats one of them. `TestRouteErrorTablesMatchReachableCodes` holds
+  every table to what its operation can return, computed by
+  `internal/errorflow` over the production program: a declared code nothing
+  reachable can mint is an over-declaration, and a code whose error value
+  certainly flows to the operation's return (minted, a callee's, a Store
+  table's or concealment's `Unavailable`) but is undeclared would reach the
+  client as `server.internal`. Codes a Store failure kind selects need not be
+  declared, `*.internal` codes are server faults either way, and a route
+  without an idempotency requirement never produces `idempotency.*`;
 - name every code `<domain>[.<subdomain>].<condition>` with lowercase,
   dot-separated `snake_case` segments, putting a qualifier before the
   condition word (`revision_conflict`, `content_invalid`). The HTTP status is

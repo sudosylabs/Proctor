@@ -24,16 +24,15 @@ paths:
         - Authentication
       x-proctor-auth: refresh_credential_required
       x-proctor-error-codes:
-        - authentication.required
         - authentication.token_invalid
-        - authentication.credential_ambiguous
-        - authentication.csrf.invalid
-        - authentication.session.invalid
         - authentication.internal
         - authentication.dpop.invalid
         - authentication.dpop.replayed
         - authentication.dpop.use_nonce
         - authentication.dpop.unavailable
+        - authentication.required
+        - authentication.credential_ambiguous
+        - authentication.csrf.invalid
       x-proctor-idempotency: none
       security:
         - refreshBearerAuth: []

@@ -44,7 +44,7 @@ func systemResourceWithApplication(
 		"system",
 		publicRoute(http.MethodGet, rootPath(literal("health"), literal("live")), []string{healthNotLiveCode}, module.liveness),
 		publicRoute(http.MethodGet, rootPath(literal("health"), literal("ready")), []string{healthNotReadyCode}, module.readiness),
-		publicRoute(http.MethodGet, apiPath(literal("system"), literal("ping")), []string{"request.invalid"}, module.ping),
+		publicRoute(http.MethodGet, apiPath(literal("system"), literal("ping")), []string{"request.invalid", "desktop_compatibility_policy.revision_conflict", "desktop_compatibility_policy.unavailable"}, module.ping),
 		publicRoute(http.MethodGet, apiPath(literal("system"), literal("version")), nil, module.version),
 	)
 }

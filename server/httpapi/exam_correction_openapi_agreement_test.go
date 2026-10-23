@@ -26,13 +26,13 @@ func TestExamSittingCorrectionOpenAPIAgreesWithRuntime(t *testing.T) {
 			{
 				Key: "POST " + stages, Auth: AuthPrincipalRequired, Idempotency: IdempotencyRequired,
 				SuccessStatus: "201", SuccessRef: "#/components/responses/ExamSittingCorrectionResourceStageCreated", SuccessSchema: "ExamSittingCorrectionResourceStageResponse",
-				PublicErrorCodes: examSittingCorrectionContractCodes("service.busy", "exam.sitting.correction.content_invalid", "exam.sitting.correction.stage_conflict"),
+				PublicErrorCodes: []string{"authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "resource.not_found", "exam.sitting.correction.invalid", "exam.sitting.correction.conflict", "exam.sitting.correction.unavailable", "exam.archived", "exam.sitting.revision_conflict", "exam.sitting.state_conflict", "exam.sitting.deadline_reached", "service.busy", "exam.sitting.correction.content_invalid", "exam.sitting.correction.stage_conflict", "idempotency.key_required", "idempotency.key_invalid", "idempotency.conflict", "idempotency.in_progress"},
 			},
 			{
 				Key: "POST " + corrections, Auth: AuthPrincipalRequired, Idempotency: IdempotencyRequired,
 				RequestBodyRef: "#/components/requestBodies/ApplyExamSittingCorrection", RequestSchema: "ApplyExamSittingCorrectionRequest",
 				SuccessStatus: "201", SuccessRef: "#/components/responses/ExamSittingCorrectionCreated", SuccessSchema: "ExamSittingCorrectionResponse",
-				PublicErrorCodes: examSittingCorrectionContractCodes("exam.sitting.correction.no_changes", "exam.sitting.correction.manifest_conflict", "exam.sitting.correction.stage_conflict", "exam.resource.limit"),
+				PublicErrorCodes: []string{"authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "resource.not_found", "exam.sitting.correction.invalid", "exam.sitting.correction.conflict", "exam.sitting.correction.unavailable", "exam.archived", "exam.sitting.revision_conflict", "exam.sitting.state_conflict", "exam.sitting.deadline_reached", "exam.sitting.correction.no_changes", "exam.sitting.correction.manifest_conflict", "exam.sitting.correction.stage_conflict", "exam.resource.limit", "idempotency.key_required", "idempotency.key_invalid", "idempotency.conflict", "idempotency.in_progress"},
 			},
 		},
 		Schemas: []openAPIAgreementSchema{

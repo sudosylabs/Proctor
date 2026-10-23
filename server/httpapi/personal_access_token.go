@@ -80,11 +80,11 @@ func personalAccessTokenResource(tokens PersonalAccessTokens) apiResource {
 	item := apiPath(literal("users"), literal("me"), literal("tokens"), canonicalID("personal_access_token_id"))
 	return newResource(
 		"personal-access-tokens",
-		recentSessionRoute(http.MethodPost, collection, personalAccessTokenRecentMutationCodes("request.invalid", "resource.not_found", "personal_access_token.invalid", "personal_access_token.maximum_reached", "personal_access_token.unavailable", "audit.unavailable"), module.create),
-		sessionRoute(http.MethodGet, collection, personalAccessTokenSessionCodes("personal_access_token.unavailable"), module.list),
-		sessionRoute(http.MethodPost, appendRoutePath(item, literal("disable")), personalAccessTokenSessionMutationCodes("request.invalid", "resource.not_found", "personal_access_token.unavailable", "audit.unavailable"), module.disable),
-		recentSessionRoute(http.MethodPost, appendRoutePath(item, literal("enable")), personalAccessTokenRecentMutationCodes("request.invalid", "resource.not_found", "personal_access_token.maximum_reached", "personal_access_token.unavailable", "audit.unavailable"), module.enable),
-		sessionRoute(http.MethodDelete, item, personalAccessTokenSessionMutationCodes("request.invalid", "resource.not_found", "personal_access_token.unavailable", "audit.unavailable"), module.revoke),
+		recentSessionRoute(http.MethodPost, collection, []string{"request.invalid", "resource.not_found", "personal_access_token.invalid", "personal_access_token.maximum_reached", "personal_access_token.unavailable", "audit.unavailable", "authentication.session_required"}, module.create),
+		sessionRoute(http.MethodGet, collection, []string{"personal_access_token.unavailable", "authentication.reauthentication_required", "authentication.session_required", "request.invalid"}, module.list),
+		sessionRoute(http.MethodPost, appendRoutePath(item, literal("disable")), []string{"request.invalid", "resource.not_found", "personal_access_token.unavailable", "audit.unavailable", "authentication.reauthentication_required", "authentication.session_required", "personal_access_token.invalid"}, module.disable),
+		recentSessionRoute(http.MethodPost, appendRoutePath(item, literal("enable")), []string{"request.invalid", "resource.not_found", "personal_access_token.maximum_reached", "personal_access_token.unavailable", "audit.unavailable", "authentication.session_required", "personal_access_token.invalid"}, module.enable),
+		sessionRoute(http.MethodDelete, item, []string{"request.invalid", "resource.not_found", "personal_access_token.unavailable", "audit.unavailable", "authentication.reauthentication_required", "authentication.session_required", "personal_access_token.invalid"}, module.revoke),
 	)
 }
 
@@ -99,10 +99,6 @@ func personalAccessTokenSessionCodes(extra ...string) []string {
 
 func personalAccessTokenSessionMutationCodes(extra ...string) []string {
 	return personalAccessTokenSessionCodes(extra...)
-}
-
-func personalAccessTokenRecentMutationCodes(extra ...string) []string {
-	return personalAccessTokenSessionMutationCodes(extra...)
 }
 
 func (m personalAccessTokenResourceModule) disable(request operationRequest) (operationResult, error) {

@@ -22,17 +22,15 @@ paths:
       x-proctor-auth: principal_required
       x-proctor-idempotency: none
       x-proctor-error-codes:
-        - authentication.required
-        - authentication.token_invalid
-        - authentication.credential_ambiguous
-        - authorization.denied
         - authorization.request.invalid
         - authorization.unavailable
         - request.invalid
         - resource.not_found
         - exam.resource.invalid
         - exam.resource.unavailable
-        - administration.unavailable
+        - authentication.required
+        - authentication.token_invalid
+        - authentication.credential_ambiguous
         - authentication.dpop.invalid
         - authentication.dpop.replayed
         - authentication.dpop.use_nonce
@@ -76,12 +74,6 @@ paths:
       x-proctor-auth: principal_required
       x-proctor-idempotency: required
       x-proctor-error-codes:
-        - service.busy
-        - authentication.required
-        - authentication.token_invalid
-        - authentication.credential_ambiguous
-        - authentication.csrf.invalid
-        - authorization.denied
         - authorization.request.invalid
         - authorization.unavailable
         - audit.unavailable
@@ -92,19 +84,23 @@ paths:
         - exam.resource.invalid
         - exam.resource.conflict
         - exam.resource.unavailable
-        - exam.resource.content_invalid
-        - exam.resource.limit
-        - exam.resource.upload_invalid
-        - exam.resource.revision_conflict
         - idempotency.key_required
         - idempotency.key_invalid
         - idempotency.conflict
         - idempotency.in_progress
-        - administration.unavailable
+        - service.busy
+        - exam.resource.content_invalid
+        - exam.resource.limit
+        - exam.resource.upload_invalid
+        - exam.resource.revision_conflict
+        - authentication.required
+        - authentication.token_invalid
+        - authentication.credential_ambiguous
         - authentication.dpop.invalid
         - authentication.dpop.replayed
         - authentication.dpop.use_nonce
         - authentication.dpop.unavailable
+        - authentication.csrf.invalid
       security:
         - bearerAuth: []
         - dpopAuth: []
@@ -154,11 +150,6 @@ paths:
       x-proctor-auth: principal_required
       x-proctor-idempotency: required
       x-proctor-error-codes:
-        - authentication.required
-        - authentication.token_invalid
-        - authentication.credential_ambiguous
-        - authentication.csrf.invalid
-        - authorization.denied
         - authorization.request.invalid
         - authorization.unavailable
         - audit.unavailable
@@ -169,17 +160,20 @@ paths:
         - exam.resource.invalid
         - exam.resource.conflict
         - exam.resource.unavailable
-        - exam.resource.no_changes
-        - exam.resource.order_invalid
         - idempotency.key_required
         - idempotency.key_invalid
         - idempotency.conflict
         - idempotency.in_progress
-        - administration.unavailable
+        - exam.resource.no_changes
+        - exam.resource.order_invalid
+        - authentication.required
+        - authentication.token_invalid
+        - authentication.credential_ambiguous
         - authentication.dpop.invalid
         - authentication.dpop.replayed
         - authentication.dpop.use_nonce
         - authentication.dpop.unavailable
+        - authentication.csrf.invalid
       security:
         - bearerAuth: []
         - dpopAuth: []
@@ -220,11 +214,6 @@ paths:
       x-proctor-auth: principal_required
       x-proctor-idempotency: required
       x-proctor-error-codes:
-        - authentication.required
-        - authentication.token_invalid
-        - authentication.credential_ambiguous
-        - authentication.csrf.invalid
-        - authorization.denied
         - authorization.request.invalid
         - authorization.unavailable
         - audit.unavailable
@@ -235,17 +224,20 @@ paths:
         - exam.resource.invalid
         - exam.resource.conflict
         - exam.resource.unavailable
-        - exam.resource.no_changes
-        - exam.resource.revision_conflict
         - idempotency.key_required
         - idempotency.key_invalid
         - idempotency.conflict
         - idempotency.in_progress
-        - administration.unavailable
+        - exam.resource.no_changes
+        - exam.resource.revision_conflict
+        - authentication.required
+        - authentication.token_invalid
+        - authentication.credential_ambiguous
         - authentication.dpop.invalid
         - authentication.dpop.replayed
         - authentication.dpop.use_nonce
         - authentication.dpop.unavailable
+        - authentication.csrf.invalid
       security:
         - bearerAuth: []
         - dpopAuth: []
@@ -282,11 +274,6 @@ paths:
       x-proctor-auth: principal_required
       x-proctor-idempotency: required
       x-proctor-error-codes:
-        - authentication.required
-        - authentication.token_invalid
-        - authentication.credential_ambiguous
-        - authentication.csrf.invalid
-        - authorization.denied
         - authorization.request.invalid
         - authorization.unavailable
         - audit.unavailable
@@ -297,16 +284,19 @@ paths:
         - exam.resource.invalid
         - exam.resource.conflict
         - exam.resource.unavailable
-        - exam.resource.revision_conflict
         - idempotency.key_required
         - idempotency.key_invalid
         - idempotency.conflict
         - idempotency.in_progress
-        - administration.unavailable
+        - exam.resource.revision_conflict
+        - authentication.required
+        - authentication.token_invalid
+        - authentication.credential_ambiguous
         - authentication.dpop.invalid
         - authentication.dpop.replayed
         - authentication.dpop.use_nonce
         - authentication.dpop.unavailable
+        - authentication.csrf.invalid
       security:
         - bearerAuth: []
         - dpopAuth: []
@@ -347,17 +337,15 @@ paths:
       x-proctor-auth: principal_required
       x-proctor-idempotency: none
       x-proctor-error-codes:
-        - authentication.required
-        - authentication.token_invalid
-        - authentication.credential_ambiguous
-        - authorization.denied
         - authorization.request.invalid
         - authorization.unavailable
         - request.invalid
         - resource.not_found
         - exam.resource.invalid
         - exam.resource.unavailable
-        - administration.unavailable
+        - authentication.required
+        - authentication.token_invalid
+        - authentication.credential_ambiguous
         - authentication.dpop.invalid
         - authentication.dpop.replayed
         - authentication.dpop.use_nonce
@@ -410,12 +398,6 @@ paths:
       x-proctor-auth: principal_required
       x-proctor-idempotency: required
       x-proctor-error-codes:
-        - service.busy
-        - authentication.required
-        - authentication.token_invalid
-        - authentication.credential_ambiguous
-        - authentication.csrf.invalid
-        - authorization.denied
         - authorization.request.invalid
         - authorization.unavailable
         - audit.unavailable
@@ -426,18 +408,22 @@ paths:
         - exam.resource.invalid
         - exam.resource.conflict
         - exam.resource.unavailable
-        - exam.resource.content_invalid
-        - exam.resource.upload_invalid
-        - exam.resource.revision_conflict
         - idempotency.key_required
         - idempotency.key_invalid
         - idempotency.conflict
         - idempotency.in_progress
-        - administration.unavailable
+        - service.busy
+        - exam.resource.content_invalid
+        - exam.resource.upload_invalid
+        - exam.resource.revision_conflict
+        - authentication.required
+        - authentication.token_invalid
+        - authentication.credential_ambiguous
         - authentication.dpop.invalid
         - authentication.dpop.replayed
         - authentication.dpop.use_nonce
         - authentication.dpop.unavailable
+        - authentication.csrf.invalid
       security:
         - bearerAuth: []
         - dpopAuth: []

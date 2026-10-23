@@ -21,24 +21,11 @@ paths:
       x-proctor-auth: session_required
       x-proctor-idempotency: none
       x-proctor-error-codes:
-        - authentication.required
-        - authentication.token_invalid
-        - authentication.credential_ambiguous
-        - authorization.denied
-        - authorization.request.invalid
-        - authorization.unavailable
-        - audit.unavailable
-        - administration.unavailable
-        - authentication.dpop.invalid
-        - authentication.dpop.replayed
-        - authentication.dpop.use_nonce
-        - authentication.dpop.unavailable
+        - exam.delivery.control_rate_limited
         - request.invalid
         - resource.not_found
         - exam.attempt.invalid
-        - exam.attempt.not_found
         - exam.attempt.registered_desktop_required
-        - exam.attempt.continuity_invalid
         - exam.attempt.connection_closed
         - exam.attempt.connection_lost
         - exam.attempt.sitting_not_open
@@ -48,10 +35,16 @@ paths:
         - exam.delivery.sequence_limit
         - exam.delivery.detail_budget_exhausted
         - exam.delivery.metadata_capacity
-        - exam.delivery.control_rate_limited
         - exam.delivery.summary_rate_limited
         - idempotency.conflict
         - idempotency.in_progress
+        - authentication.required
+        - authentication.token_invalid
+        - authentication.credential_ambiguous
+        - authentication.dpop.invalid
+        - authentication.dpop.replayed
+        - authentication.dpop.use_nonce
+        - authentication.dpop.unavailable
       security:
         - bearerAuth: []
         - dpopAuth: []
@@ -104,25 +97,12 @@ paths:
       x-proctor-auth: session_required
       x-proctor-idempotency: required
       x-proctor-error-codes:
-        - authentication.required
-        - authentication.token_invalid
-        - authentication.credential_ambiguous
-        - authentication.csrf.invalid
-        - authorization.denied
-        - authorization.request.invalid
-        - authorization.unavailable
         - audit.unavailable
-        - administration.unavailable
-        - authentication.dpop.invalid
-        - authentication.dpop.replayed
-        - authentication.dpop.use_nonce
-        - authentication.dpop.unavailable
+        - exam.delivery.control_rate_limited
         - request.invalid
         - resource.not_found
         - exam.attempt.invalid
-        - exam.attempt.not_found
         - exam.attempt.registered_desktop_required
-        - exam.attempt.continuity_invalid
         - exam.attempt.connection_closed
         - exam.attempt.connection_lost
         - exam.attempt.sitting_not_open
@@ -132,12 +112,19 @@ paths:
         - exam.delivery.sequence_limit
         - exam.delivery.detail_budget_exhausted
         - exam.delivery.metadata_capacity
-        - exam.delivery.control_rate_limited
         - exam.delivery.summary_rate_limited
         - idempotency.conflict
         - idempotency.in_progress
         - idempotency.key_required
         - idempotency.key_invalid
+        - authentication.required
+        - authentication.token_invalid
+        - authentication.credential_ambiguous
+        - authentication.dpop.invalid
+        - authentication.dpop.replayed
+        - authentication.dpop.use_nonce
+        - authentication.dpop.unavailable
+        - authentication.csrf.invalid
       security:
         - bearerAuth: []
         - dpopAuth: []

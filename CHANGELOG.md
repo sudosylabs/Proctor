@@ -15,6 +15,14 @@ module when a change is not server-only. No module has been released yet.
 
 ### Changed
 
+- Server: every route's public error list now matches what its operation can
+  return, checked against the code by a static analysis. Around 200 routes
+  dropped codes they could never return (shared academic families on Exam
+  and Attempt routes, `authorization.denied` and concealed Attempt codes
+  behind concealment, unrelated delivery codes) and gained codes they could
+  return but answered as `server.internal`. An authorization decision whose
+  audit cannot be recorded now fails with `authorization.unavailable` instead
+  of `audit.unavailable` (**breaking**).
 - Server: every collection answers `{"items": [...], "next_cursor": "..."}`
   and pages with `limit` (default 50, at most 200) and `cursor`. Academic
   Units, children, Programmes, Programme Levels, Academic Periods, Classes,

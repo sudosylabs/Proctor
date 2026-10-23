@@ -22,17 +22,18 @@ paths:
       x-proctor-auth: principal_required
       x-proctor-idempotency: none
       x-proctor-error-codes:
-        - authentication.required
-        - authentication.token_invalid
-        - authentication.credential_ambiguous
-        - authorization.denied
         - authorization.request.invalid
         - authorization.unavailable
         - request.invalid
         - resource.not_found
         - exam.attempt.invalid
         - exam.attempt.unavailable
-        - administration.unavailable
+        - exam.delivery.metadata_capacity
+        - exam.sitting.invalid
+        - exam.sitting.unavailable
+        - authentication.required
+        - authentication.token_invalid
+        - authentication.credential_ambiguous
         - authentication.dpop.invalid
         - authentication.dpop.replayed
         - authentication.dpop.use_nonce
@@ -86,6 +87,8 @@ paths:
           $ref: '#/components/responses/InternalError'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
+        "409":
+          $ref: '#/components/responses/Conflict'
   /api/v1/exams/{exam_id}/sittings/{exam_sitting_id}/attempts/{exam_attempt_id}:
     parameters:
       - $ref: '#/components/parameters/ExamID'
@@ -103,17 +106,19 @@ paths:
       x-proctor-auth: principal_required
       x-proctor-idempotency: none
       x-proctor-error-codes:
-        - authentication.required
-        - authentication.token_invalid
-        - authentication.credential_ambiguous
-        - authorization.denied
         - authorization.request.invalid
         - authorization.unavailable
         - request.invalid
         - resource.not_found
         - exam.attempt.invalid
         - exam.attempt.unavailable
-        - administration.unavailable
+        - audit.unavailable
+        - exam.delivery.metadata_capacity
+        - exam.sitting.invalid
+        - exam.sitting.unavailable
+        - authentication.required
+        - authentication.token_invalid
+        - authentication.credential_ambiguous
         - authentication.dpop.invalid
         - authentication.dpop.replayed
         - authentication.dpop.use_nonce
@@ -137,6 +142,8 @@ paths:
           $ref: '#/components/responses/InternalError'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
+        "409":
+          $ref: '#/components/responses/Conflict'
   /api/v1/exams/{exam_id}/sittings/{exam_sitting_id}/attempts/{exam_attempt_id}/browser-activity:
     parameters:
       - $ref: '#/components/parameters/ExamID'
@@ -156,17 +163,20 @@ paths:
       x-proctor-auth: principal_required
       x-proctor-idempotency: none
       x-proctor-error-codes:
-        - authentication.required
-        - authentication.token_invalid
-        - authentication.credential_ambiguous
-        - authorization.denied
         - authorization.request.invalid
         - authorization.unavailable
         - request.invalid
         - resource.not_found
         - exam.attempt.invalid
         - exam.attempt.unavailable
-        - administration.unavailable
+        - audit.unavailable
+        - exam.delivery.metadata_capacity
+        - exam.sitting.invalid
+        - exam.sitting.not_found
+        - exam.sitting.unavailable
+        - authentication.required
+        - authentication.token_invalid
+        - authentication.credential_ambiguous
         - authentication.dpop.invalid
         - authentication.dpop.replayed
         - authentication.dpop.use_nonce
@@ -208,6 +218,8 @@ paths:
           $ref: '#/components/responses/InternalError'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
+        "409":
+          $ref: '#/components/responses/Conflict'
   /api/v1/exams/{exam_id}/sittings/{exam_sitting_id}/attempts/{exam_attempt_id}/reallow:
     parameters:
       - $ref: '#/components/parameters/ExamID'
@@ -225,11 +237,6 @@ paths:
       x-proctor-auth: principal_required
       x-proctor-idempotency: required
       x-proctor-error-codes:
-        - authentication.required
-        - authentication.token_invalid
-        - authentication.credential_ambiguous
-        - authentication.csrf.invalid
-        - authorization.denied
         - authorization.request.invalid
         - authorization.unavailable
         - audit.unavailable
@@ -246,11 +253,17 @@ paths:
         - idempotency.key_invalid
         - idempotency.conflict
         - idempotency.in_progress
-        - administration.unavailable
+        - exam.delivery.metadata_capacity
+        - exam.sitting.invalid
+        - exam.sitting.unavailable
+        - authentication.required
+        - authentication.token_invalid
+        - authentication.credential_ambiguous
         - authentication.dpop.invalid
         - authentication.dpop.replayed
         - authentication.dpop.use_nonce
         - authentication.dpop.unavailable
+        - authentication.csrf.invalid
       security:
         - bearerAuth: []
         - dpopAuth: []
@@ -300,11 +313,6 @@ paths:
       x-proctor-auth: principal_required
       x-proctor-idempotency: required
       x-proctor-error-codes:
-        - authentication.required
-        - authentication.token_invalid
-        - authentication.credential_ambiguous
-        - authentication.csrf.invalid
-        - authorization.denied
         - authorization.request.invalid
         - authorization.unavailable
         - audit.unavailable
@@ -321,11 +329,17 @@ paths:
         - idempotency.key_invalid
         - idempotency.conflict
         - idempotency.in_progress
-        - administration.unavailable
+        - exam.delivery.metadata_capacity
+        - exam.sitting.invalid
+        - exam.sitting.unavailable
+        - authentication.required
+        - authentication.token_invalid
+        - authentication.credential_ambiguous
         - authentication.dpop.invalid
         - authentication.dpop.replayed
         - authentication.dpop.use_nonce
         - authentication.dpop.unavailable
+        - authentication.csrf.invalid
       security:
         - bearerAuth: []
         - dpopAuth: []

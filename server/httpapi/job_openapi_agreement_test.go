@@ -45,27 +45,27 @@ func TestJobOperationsOpenAPIAgreesWithRuntime(t *testing.T) {
 			{
 				Key: "GET /api/v1/jobs", Auth: AuthPrincipalRequired,
 				SuccessStatus: "200", SuccessRef: "#/components/responses/JobListOK", SuccessSchema: "JobListResponse",
-				PublicErrorCodes: principalContractCodes("audit.unavailable", "job.query.invalid", "job.unavailable", "request.invalid"),
+				PublicErrorCodes: []string{"authorization.denied", "authorization.request.invalid", "authorization.unavailable", "job.query.invalid", "job.unavailable", "request.invalid", "resource.not_found"},
 			},
 			{
 				Key: "GET /api/v1/jobs/{job_id}", Auth: AuthPrincipalRequired,
 				SuccessStatus: "200", SuccessRef: "#/components/responses/JobOK", SuccessSchema: "JobResponse",
-				PublicErrorCodes: principalContractCodes("audit.unavailable", "resource.not_found", "job.unavailable"),
+				PublicErrorCodes: []string{"authorization.denied", "authorization.request.invalid", "authorization.unavailable", "resource.not_found", "job.unavailable", "request.invalid"},
 			},
 			{
 				Key: "GET /api/v1/jobs/{job_id}/attempts", Auth: AuthPrincipalRequired,
 				SuccessStatus: "200", SuccessRef: "#/components/responses/JobAttemptListOK", SuccessSchema: "JobAttemptListResponse",
-				PublicErrorCodes: principalContractCodes("audit.unavailable", "job.query.invalid", "request.invalid", "resource.not_found", "job.unavailable"),
+				PublicErrorCodes: []string{"authorization.denied", "authorization.request.invalid", "authorization.unavailable", "job.query.invalid", "request.invalid", "resource.not_found", "job.unavailable"},
 			},
 			{
 				Key: "POST /api/v1/jobs/{job_id}/cancel", Auth: AuthPrincipalRequired,
 				SuccessStatus: "200", SuccessRef: "#/components/responses/JobOK", SuccessSchema: "JobResponse",
-				PublicErrorCodes: principalMutationContractCodes("resource.not_found", "job.cancel.unsupported", "job.conflict", "job.unavailable"),
+				PublicErrorCodes: []string{"authorization.denied", "authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "resource.not_found", "job.cancel.unsupported", "job.conflict", "job.unavailable", "request.invalid"},
 			},
 			{
 				Key: "POST /api/v1/jobs/{job_id}/retry", Auth: AuthPrincipalRequired,
 				SuccessStatus: "200", SuccessRef: "#/components/responses/JobOK", SuccessSchema: "JobResponse",
-				PublicErrorCodes: principalMutationContractCodes("resource.not_found", "job.retry.unsupported", "job.conflict", "job.unavailable"),
+				PublicErrorCodes: []string{"authorization.denied", "authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "resource.not_found", "job.retry.unsupported", "job.conflict", "job.unavailable", "request.invalid"},
 			},
 		},
 		Schemas: []openAPIAgreementSchema{

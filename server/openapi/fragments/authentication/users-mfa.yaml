@@ -16,11 +16,12 @@ paths:
         - Authentication
       x-proctor-auth: mfa_recovery_session_required
       x-proctor-error-codes:
+        - authentication.mfa.unavailable
+        - authentication.reauthentication_required
+        - authentication.session_required
         - authentication.required
         - authentication.token_invalid
         - authentication.credential_ambiguous
-        - authentication.mfa.disabled
-        - authentication.mfa.unavailable
         - authentication.dpop.invalid
         - authentication.dpop.replayed
         - authentication.dpop.use_nonce
@@ -37,6 +38,8 @@ paths:
           $ref: '#/components/responses/BadRequest'
         "401":
           $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
         "501":
           $ref: '#/components/responses/NotImplemented'
         "503":
@@ -58,21 +61,22 @@ paths:
         - Authentication
       x-proctor-auth: recent_mfa_recovery_session_required
       x-proctor-error-codes:
-        - authentication.required
-        - authentication.token_invalid
-        - authentication.credential_ambiguous
-        - authentication.csrf.invalid
-        - authentication.reauthentication_required
         - authentication.mfa.disabled
         - authentication.mfa.not_found
         - authentication.mfa.conflict
         - authentication.mfa.unavailable
         - authentication.internal
         - audit.unavailable
+        - authentication.session_required
+        - authentication.required
+        - authentication.token_invalid
+        - authentication.credential_ambiguous
         - authentication.dpop.invalid
         - authentication.dpop.replayed
         - authentication.dpop.use_nonce
         - authentication.dpop.unavailable
+        - authentication.csrf.invalid
+        - authentication.reauthentication_required
       x-proctor-idempotency: none
       security:
         - bearerAuth: []
@@ -108,11 +112,6 @@ paths:
         - Authentication
       x-proctor-auth: recent_mfa_recovery_session_required
       x-proctor-error-codes:
-        - authentication.required
-        - authentication.token_invalid
-        - authentication.credential_ambiguous
-        - authentication.csrf.invalid
-        - authentication.reauthentication_required
         - request.invalid
         - authentication.mfa.code_invalid
         - authentication.rate_limited
@@ -123,10 +122,16 @@ paths:
         - authentication.mfa.unavailable
         - authentication.internal
         - audit.unavailable
+        - authentication.session_required
+        - authentication.required
+        - authentication.token_invalid
+        - authentication.credential_ambiguous
         - authentication.dpop.invalid
         - authentication.dpop.replayed
         - authentication.dpop.use_nonce
         - authentication.dpop.unavailable
+        - authentication.csrf.invalid
+        - authentication.reauthentication_required
       x-proctor-idempotency: none
       security:
         - bearerAuth: []
@@ -166,10 +171,6 @@ paths:
         - Authentication
       x-proctor-auth: session_required
       x-proctor-error-codes:
-        - authentication.required
-        - authentication.token_invalid
-        - authentication.credential_ambiguous
-        - authentication.csrf.invalid
         - request.invalid
         - authentication.mfa.code_invalid
         - authentication.rate_limited
@@ -180,10 +181,16 @@ paths:
         - authentication.mfa.unavailable
         - authentication.internal
         - audit.unavailable
+        - authentication.reauthentication_required
+        - authentication.session_required
+        - authentication.required
+        - authentication.token_invalid
+        - authentication.credential_ambiguous
         - authentication.dpop.invalid
         - authentication.dpop.replayed
         - authentication.dpop.use_nonce
         - authentication.dpop.unavailable
+        - authentication.csrf.invalid
       x-proctor-idempotency: none
       security:
         - bearerAuth: []
@@ -231,22 +238,23 @@ paths:
               --header 'Accept: application/json'
       x-proctor-auth: strong_recent_session_required
       x-proctor-error-codes:
-        - authentication.required
-        - authentication.token_invalid
-        - authentication.credential_ambiguous
-        - authentication.csrf.invalid
-        - authentication.strong_required
-        - authentication.reauthentication_required
         - authentication.mfa.disabled
         - authentication.mfa.not_found
         - authentication.mfa.conflict
         - authentication.mfa.unavailable
         - authentication.internal
         - audit.unavailable
+        - authentication.session_required
+        - authentication.required
+        - authentication.token_invalid
+        - authentication.credential_ambiguous
         - authentication.dpop.invalid
         - authentication.dpop.replayed
         - authentication.dpop.use_nonce
         - authentication.dpop.unavailable
+        - authentication.csrf.invalid
+        - authentication.strong_required
+        - authentication.reauthentication_required
       x-proctor-idempotency: none
       security:
         - bearerAuth: []
@@ -289,21 +297,22 @@ paths:
         - Authentication
       x-proctor-auth: strong_recent_session_required
       x-proctor-error-codes:
-        - authentication.required
-        - authentication.token_invalid
-        - authentication.credential_ambiguous
-        - authentication.csrf.invalid
-        - authentication.strong_required
-        - authentication.reauthentication_required
         - authentication.mfa.disabled
         - authentication.mfa.not_found
         - authentication.mfa.conflict
         - authentication.mfa.unavailable
         - audit.unavailable
+        - authentication.session_required
+        - authentication.required
+        - authentication.token_invalid
+        - authentication.credential_ambiguous
         - authentication.dpop.invalid
         - authentication.dpop.replayed
         - authentication.dpop.use_nonce
         - authentication.dpop.unavailable
+        - authentication.csrf.invalid
+        - authentication.strong_required
+        - authentication.reauthentication_required
       x-proctor-idempotency: none
       security:
         - bearerAuth: []

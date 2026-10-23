@@ -765,65 +765,32 @@ func examAttemptResource(application ExamAttemptApplication) apiResource {
 	managerSubmissionContent := appendRoutePath(managerSubmission, literal("files"), canonicalID("attempt_workspace_entry_id"), literal("content"))
 	reallow := appendRoutePath(managerMember, literal("reallow"))
 	suspend := appendRoutePath(managerMember, literal("suspend"))
-	managerErrors := academicReadErrorCodes("request.invalid", "resource.not_found", "exam.attempt.invalid", "exam.attempt.unavailable")
-	reallowErrors := academicMutationErrorCodes("request.invalid", "resource.not_found", "exam.attempt.invalid",
-		"exam.attempt.revision_conflict", "exam.attempt.suspension_conflict", "exam.attempt.state_conflict",
-		"exam.attempt.sitting_not_open", "exam.attempt.conflict", "exam.attempt.unavailable",
-		"idempotency.key_required", "idempotency.key_invalid", "idempotency.conflict", "idempotency.in_progress")
-	suspendErrors := academicMutationErrorCodes("request.invalid", "resource.not_found", "exam.attempt.invalid",
-		"exam.attempt.revision_conflict", "exam.attempt.state_conflict", "exam.attempt.sitting_not_open",
-		"exam.attempt.connection_lost", "exam.attempt.conflict", "exam.attempt.unavailable",
-		"idempotency.key_required", "idempotency.key_invalid", "idempotency.conflict", "idempotency.in_progress")
-	managerEndErrors := academicMutationErrorCodes("request.invalid", "resource.not_found",
-		"exam.attempt.invalid", "exam.attempt.revision_conflict", "exam.attempt.state_conflict",
-		"exam.attempt.sitting_not_open", "exam.attempt.management_authority_conflict", "exam.attempt.conflict",
-		"exam.attempt.unavailable", "idempotency.key_required", "idempotency.key_invalid", "idempotency.conflict",
-		"idempotency.in_progress")
-	candidateErrors := personalAccessTokenSessionCodes("request.invalid", "resource.not_found", "exam.attempt.invalid",
-		"exam.attempt.sitting_not_open", "exam.attempt.state_conflict", "exam.attempt.unavailable")
-	directoryMutationErrors := candidateWorkspaceMutationErrors("exam.attempt.workspace.path_conflict",
-		"exam.attempt.workspace.entry_conflict", "exam.attempt.workspace.entry_limit")
-	createFileMutationErrors := candidateWorkspaceMutationErrors("exam.attempt.workspace.path_conflict",
-		"exam.attempt.workspace.entry_conflict", "exam.attempt.workspace.entry_limit", "exam.attempt.workspace.size_limit",
-		"exam.attempt.workspace.object_conflict")
-	moveMutationErrors := candidateWorkspaceMutationErrors("exam.attempt.workspace.path_conflict", "exam.attempt.workspace.entry_conflict")
-	replaceMutationErrors := candidateWorkspaceMutationErrors("exam.attempt.workspace.path_conflict", "exam.attempt.workspace.entry_conflict",
-		"exam.attempt.workspace.content_conflict", "exam.attempt.workspace.size_limit", "exam.attempt.workspace.object_conflict")
-	deleteMutationErrors := candidateWorkspaceMutationErrors("exam.attempt.workspace.path_conflict", "exam.attempt.workspace.entry_conflict",
-		"exam.attempt.workspace.content_conflict", "exam.attempt.workspace.directory_not_empty", "exam.attempt.workspace.cursor_conflict")
-	submissionErrors := candidateWorkspaceMutationErrors("exam.attempt.workspace.cursor_conflict", "exam.attempt.focus_loss_conflict",
-		"exam.attempt.revision_conflict", "exam.attempt.correction_conflict", "exam.attempt.browser_activity_conflict",
-		"exam.attempt.connection_lost")
-	correctionAcknowledgementErrors := personalAccessTokenSessionMutationCodes("audit.unavailable", "request.invalid", "resource.not_found", "exam.attempt.invalid",
-		"exam.attempt.revision_conflict", "exam.attempt.correction_conflict", "exam.attempt.state_conflict",
-		"exam.attempt.sitting_not_open", "exam.attempt.connection_closed", "exam.attempt.unavailable",
-		"idempotency.key_required", "idempotency.key_invalid", "idempotency.conflict", "idempotency.in_progress")
 	return newResource("exam-attempts",
-		principalRoute(http.MethodGet, managerCollection, managerErrors, module.listManaged),
-		principalRoute(http.MethodGet, candidateStatuses, managerErrors, module.listCandidateStatuses),
-		principalRoute(http.MethodGet, managerMember, managerErrors, module.getManaged),
-		principalRoute(http.MethodGet, managerBrowserActivity, managerErrors, module.listBrowserActivity),
-		idempotentPrincipalRoute(IdempotencyRequired, http.MethodPost, managerEnd, managerEndErrors, module.endByManager),
-		idempotentPrincipalRoute(IdempotencyRequired, http.MethodPost, reallow, reallowErrors, module.reallow),
-		idempotentPrincipalRoute(IdempotencyRequired, http.MethodPost, suspend, suspendErrors, module.suspend),
-		sessionRoute(http.MethodGet, presentation, candidateErrors, module.presentation),
-		sessionRoute(http.MethodGet, workspace, candidateErrors, module.workspace),
-		sessionRoute(http.MethodGet, workspaceChanges, candidateErrors, module.workspaceChanges),
-		idempotentSessionRoute(IdempotencyRequired, http.MethodPost, workspaceDirectories, directoryMutationErrors, module.createWorkspaceDirectory),
+		principalRoute(http.MethodGet, managerCollection, []string{"authorization.request.invalid", "authorization.unavailable", "request.invalid", "resource.not_found", "exam.attempt.invalid", "exam.attempt.unavailable", "exam.delivery.metadata_capacity", "exam.sitting.invalid", "exam.sitting.unavailable"}, module.listManaged),
+		principalRoute(http.MethodGet, candidateStatuses, []string{"authorization.request.invalid", "authorization.unavailable", "request.invalid", "resource.not_found", "exam.attempt.invalid", "exam.attempt.unavailable", "exam.delivery.metadata_capacity", "exam.sitting.invalid", "exam.sitting.unavailable"}, module.listCandidateStatuses),
+		principalRoute(http.MethodGet, managerMember, []string{"authorization.request.invalid", "authorization.unavailable", "request.invalid", "resource.not_found", "exam.attempt.invalid", "exam.attempt.unavailable", "audit.unavailable", "exam.delivery.metadata_capacity", "exam.sitting.invalid", "exam.sitting.unavailable"}, module.getManaged),
+		principalRoute(http.MethodGet, managerBrowserActivity, []string{"authorization.request.invalid", "authorization.unavailable", "request.invalid", "resource.not_found", "exam.attempt.invalid", "exam.attempt.unavailable", "audit.unavailable", "exam.delivery.metadata_capacity", "exam.sitting.invalid", "exam.sitting.not_found", "exam.sitting.unavailable"}, module.listBrowserActivity),
+		idempotentPrincipalRoute(IdempotencyRequired, http.MethodPost, managerEnd, []string{"authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "resource.not_found", "exam.attempt.invalid", "exam.attempt.revision_conflict", "exam.attempt.state_conflict", "exam.attempt.sitting_not_open", "exam.attempt.management_authority_conflict", "exam.attempt.conflict", "exam.attempt.unavailable", "idempotency.key_required", "idempotency.key_invalid", "idempotency.conflict", "idempotency.in_progress", "exam.delivery.metadata_capacity", "exam.sitting.invalid", "exam.sitting.unavailable"}, module.endByManager),
+		idempotentPrincipalRoute(IdempotencyRequired, http.MethodPost, reallow, []string{"authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "resource.not_found", "exam.attempt.invalid", "exam.attempt.revision_conflict", "exam.attempt.suspension_conflict", "exam.attempt.state_conflict", "exam.attempt.sitting_not_open", "exam.attempt.conflict", "exam.attempt.unavailable", "idempotency.key_required", "idempotency.key_invalid", "idempotency.conflict", "idempotency.in_progress", "exam.delivery.metadata_capacity", "exam.sitting.invalid", "exam.sitting.unavailable"}, module.reallow),
+		idempotentPrincipalRoute(IdempotencyRequired, http.MethodPost, suspend, []string{"authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "resource.not_found", "exam.attempt.invalid", "exam.attempt.revision_conflict", "exam.attempt.state_conflict", "exam.attempt.sitting_not_open", "exam.attempt.connection_lost", "exam.attempt.conflict", "exam.attempt.unavailable", "idempotency.key_required", "idempotency.key_invalid", "idempotency.conflict", "idempotency.in_progress", "exam.delivery.metadata_capacity", "exam.sitting.invalid", "exam.sitting.unavailable"}, module.suspend),
+		sessionRoute(http.MethodGet, presentation, []string{"request.invalid", "resource.not_found", "exam.attempt.invalid", "exam.attempt.sitting_not_open", "exam.attempt.state_conflict", "exam.attempt.unavailable", "exam.attempt.registered_desktop_required", "exam.delivery.metadata_capacity"}, module.presentation),
+		sessionRoute(http.MethodGet, workspace, []string{"request.invalid", "resource.not_found", "exam.attempt.invalid", "exam.attempt.sitting_not_open", "exam.attempt.state_conflict", "exam.attempt.unavailable", "exam.attempt.registered_desktop_required", "exam.delivery.metadata_capacity"}, module.workspace),
+		sessionRoute(http.MethodGet, workspaceChanges, []string{"request.invalid", "resource.not_found", "exam.attempt.invalid", "exam.attempt.sitting_not_open", "exam.attempt.state_conflict", "exam.attempt.unavailable", "exam.attempt.registered_desktop_required", "exam.delivery.metadata_capacity"}, module.workspaceChanges),
+		idempotentSessionRoute(IdempotencyRequired, http.MethodPost, workspaceDirectories, []string{"audit.unavailable", "request.invalid", "resource.not_found", "exam.attempt.invalid", "exam.attempt.sitting_not_open", "exam.attempt.state_conflict", "exam.attempt.connection_closed", "exam.attempt.conflict", "exam.attempt.unavailable", "idempotency.key_required", "idempotency.key_invalid", "idempotency.conflict", "idempotency.in_progress", "exam.attempt.workspace.path_conflict", "exam.attempt.workspace.entry_conflict", "exam.attempt.workspace.entry_limit", "exam.attempt.registered_desktop_required", "exam.delivery.metadata_capacity"}, module.createWorkspaceDirectory),
 		idempotentProtocolRoute(IdempotencyRequired, model.AttemptWorkspaceMaximumRequestBytes, "candidate-exam-workspace-file-upload",
-			RouteProtocolStreamingUpload, AuthSessionRequired, http.MethodPost, workspaceFiles, createFileMutationErrors, module.createWorkspaceFile),
-		idempotentSessionRoute(IdempotencyRequired, http.MethodPatch, workspaceEntry, moveMutationErrors, module.moveWorkspaceEntry),
+			RouteProtocolStreamingUpload, AuthSessionRequired, http.MethodPost, workspaceFiles, []string{"audit.unavailable", "request.invalid", "resource.not_found", "exam.attempt.invalid", "exam.attempt.sitting_not_open", "exam.attempt.state_conflict", "exam.attempt.connection_closed", "exam.attempt.conflict", "exam.attempt.unavailable", "idempotency.key_required", "idempotency.key_invalid", "idempotency.conflict", "idempotency.in_progress", "exam.attempt.workspace.path_conflict", "exam.attempt.workspace.entry_conflict", "exam.attempt.workspace.entry_limit", "exam.attempt.workspace.size_limit", "exam.attempt.workspace.object_conflict", "exam.attempt.registered_desktop_required", "exam.delivery.metadata_capacity"}, module.createWorkspaceFile),
+		idempotentSessionRoute(IdempotencyRequired, http.MethodPatch, workspaceEntry, []string{"audit.unavailable", "request.invalid", "resource.not_found", "exam.attempt.invalid", "exam.attempt.sitting_not_open", "exam.attempt.state_conflict", "exam.attempt.connection_closed", "exam.attempt.conflict", "exam.attempt.unavailable", "idempotency.key_required", "idempotency.key_invalid", "idempotency.conflict", "idempotency.in_progress", "exam.attempt.workspace.path_conflict", "exam.attempt.workspace.entry_conflict", "exam.attempt.registered_desktop_required", "exam.delivery.metadata_capacity"}, module.moveWorkspaceEntry),
 		idempotentProtocolRoute(IdempotencyRequired, model.AttemptWorkspaceMaximumRequestBytes, "candidate-exam-workspace-file-replacement",
-			RouteProtocolStreamingUpload, AuthSessionRequired, http.MethodPut, workspaceContent, replaceMutationErrors, module.replaceWorkspaceFile),
-		idempotentSessionRoute(IdempotencyRequired, http.MethodDelete, workspaceEntry, deleteMutationErrors, module.deleteWorkspaceEntry),
-		protocolRoute("candidate-exam-resource-content", RouteProtocolBinaryDownload, AuthSessionRequired, http.MethodGet, resourceContent, candidateErrors, module.openResource),
-		protocolRoute("candidate-exam-workspace-content", RouteProtocolBinaryDownload, AuthSessionRequired, http.MethodGet, workspaceContent, candidateErrors, module.openWorkspaceFile),
-		idempotentSessionRoute(IdempotencyRequired, http.MethodPost, candidateSubmissions, submissionErrors, module.submit),
-		idempotentSessionRoute(IdempotencyRequired, http.MethodPut, correctionAcknowledgement, correctionAcknowledgementErrors, module.acknowledgeCorrection),
-		principalRoute(http.MethodGet, managerSubmission, managerErrors, module.getSubmission),
-		principalRoute(http.MethodGet, managerSubmissionManifest, managerErrors, module.listSubmissionManifest),
+			RouteProtocolStreamingUpload, AuthSessionRequired, http.MethodPut, workspaceContent, []string{"audit.unavailable", "request.invalid", "resource.not_found", "exam.attempt.invalid", "exam.attempt.sitting_not_open", "exam.attempt.state_conflict", "exam.attempt.connection_closed", "exam.attempt.conflict", "exam.attempt.unavailable", "idempotency.key_required", "idempotency.key_invalid", "idempotency.conflict", "idempotency.in_progress", "exam.attempt.workspace.path_conflict", "exam.attempt.workspace.entry_conflict", "exam.attempt.workspace.content_conflict", "exam.attempt.workspace.size_limit", "exam.attempt.workspace.object_conflict", "exam.attempt.registered_desktop_required", "exam.delivery.metadata_capacity"}, module.replaceWorkspaceFile),
+		idempotentSessionRoute(IdempotencyRequired, http.MethodDelete, workspaceEntry, []string{"audit.unavailable", "request.invalid", "resource.not_found", "exam.attempt.invalid", "exam.attempt.sitting_not_open", "exam.attempt.state_conflict", "exam.attempt.connection_closed", "exam.attempt.conflict", "exam.attempt.unavailable", "idempotency.key_required", "idempotency.key_invalid", "idempotency.conflict", "idempotency.in_progress", "exam.attempt.workspace.path_conflict", "exam.attempt.workspace.entry_conflict", "exam.attempt.workspace.content_conflict", "exam.attempt.workspace.directory_not_empty", "exam.attempt.workspace.cursor_conflict", "exam.attempt.registered_desktop_required", "exam.delivery.metadata_capacity"}, module.deleteWorkspaceEntry),
+		protocolRoute("candidate-exam-resource-content", RouteProtocolBinaryDownload, AuthSessionRequired, http.MethodGet, resourceContent, []string{"request.invalid", "resource.not_found", "exam.attempt.invalid", "exam.attempt.sitting_not_open", "exam.attempt.state_conflict", "exam.attempt.unavailable", "exam.attempt.registered_desktop_required", "exam.delivery.metadata_capacity"}, module.openResource),
+		protocolRoute("candidate-exam-workspace-content", RouteProtocolBinaryDownload, AuthSessionRequired, http.MethodGet, workspaceContent, []string{"request.invalid", "resource.not_found", "exam.attempt.invalid", "exam.attempt.sitting_not_open", "exam.attempt.state_conflict", "exam.attempt.unavailable", "exam.attempt.registered_desktop_required", "exam.delivery.metadata_capacity"}, module.openWorkspaceFile),
+		idempotentSessionRoute(IdempotencyRequired, http.MethodPost, candidateSubmissions, []string{"audit.unavailable", "request.invalid", "resource.not_found", "exam.attempt.invalid", "exam.attempt.sitting_not_open", "exam.attempt.state_conflict", "exam.attempt.connection_closed", "exam.attempt.conflict", "exam.attempt.unavailable", "idempotency.key_required", "idempotency.key_invalid", "idempotency.conflict", "idempotency.in_progress", "exam.attempt.workspace.cursor_conflict", "exam.attempt.focus_loss_conflict", "exam.attempt.revision_conflict", "exam.attempt.correction_conflict", "exam.attempt.browser_activity_conflict", "exam.attempt.connection_lost", "exam.attempt.registered_desktop_required", "exam.delivery.metadata_capacity"}, module.submit),
+		idempotentSessionRoute(IdempotencyRequired, http.MethodPut, correctionAcknowledgement, []string{"request.invalid", "resource.not_found", "exam.attempt.invalid", "exam.attempt.revision_conflict", "exam.attempt.correction_conflict", "exam.attempt.state_conflict", "exam.attempt.sitting_not_open", "exam.attempt.connection_closed", "exam.attempt.unavailable", "idempotency.key_required", "idempotency.key_invalid", "idempotency.conflict", "idempotency.in_progress", "authorization.unavailable", "exam.attempt.registered_desktop_required", "exam.delivery.metadata_capacity"}, module.acknowledgeCorrection),
+		principalRoute(http.MethodGet, managerSubmission, []string{"authorization.request.invalid", "authorization.unavailable", "request.invalid", "resource.not_found", "exam.attempt.invalid", "exam.attempt.unavailable", "exam.delivery.metadata_capacity", "exam.sitting.invalid", "exam.sitting.unavailable"}, module.getSubmission),
+		principalRoute(http.MethodGet, managerSubmissionManifest, []string{"authorization.request.invalid", "authorization.unavailable", "request.invalid", "resource.not_found", "exam.attempt.invalid", "exam.attempt.unavailable", "exam.delivery.metadata_capacity", "exam.sitting.invalid", "exam.sitting.unavailable"}, module.listSubmissionManifest),
 		protocolRoute("exam-submission-file-content", RouteProtocolBinaryDownload, AuthPrincipalRequired, http.MethodGet,
-			managerSubmissionContent, managerErrors, module.openSubmissionFile),
+			managerSubmissionContent, []string{"authorization.request.invalid", "authorization.unavailable", "request.invalid", "resource.not_found", "exam.attempt.invalid", "exam.attempt.unavailable", "exam.delivery.metadata_capacity", "exam.sitting.invalid", "exam.sitting.unavailable"}, module.openSubmissionFile),
 	)
 }
 
@@ -971,14 +938,6 @@ func sittingCandidateStatusCursorSpec() opaqueCursorSpec[sittingCandidateStatusC
 			}
 			return nil
 		}}
-}
-
-func candidateWorkspaceMutationErrors(specific ...string) []string {
-	common := []string{"audit.unavailable", "request.invalid", "resource.not_found", "exam.attempt.invalid",
-		"exam.attempt.sitting_not_open", "exam.attempt.state_conflict", "exam.attempt.connection_closed",
-		"exam.attempt.conflict", "exam.attempt.unavailable", "idempotency.key_required", "idempotency.key_invalid",
-		"idempotency.conflict", "idempotency.in_progress"}
-	return personalAccessTokenSessionMutationCodes(append(common, specific...)...)
 }
 
 func idempotentSessionRoute(requirement IdempotencyRequirement, method string, path routePath, errorCodes []string, operation operation) routeDefinition {

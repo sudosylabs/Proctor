@@ -17,10 +17,6 @@ paths:
       x-proctor-auth: principal_required
       x-proctor-idempotency: none
       x-proctor-error-codes:
-        - authentication.required
-        - authentication.token_invalid
-        - authentication.credential_ambiguous
-        - authentication.csrf.invalid
         - authorization.denied
         - authorization.request.invalid
         - authorization.unavailable
@@ -30,14 +26,21 @@ paths:
         - student_progression.target_conflict
         - student_progression.lineage_conflict
         - student_progression.effective_date_conflict
-        - student_progression.roster_too_large
         - student_progression.conflict
         - student_progression.unavailable
         - administration.unavailable
+        - authentication.mfa.unavailable
+        - invitation.unavailable
+        - onboarding_import.file_invalid
+        - onboarding_import.unavailable
+        - authentication.required
+        - authentication.token_invalid
+        - authentication.credential_ambiguous
         - authentication.dpop.invalid
         - authentication.dpop.replayed
         - authentication.dpop.use_nonce
         - authentication.dpop.unavailable
+        - authentication.csrf.invalid
       security:
         - bearerAuth: []
         - dpopAuth: []
@@ -75,16 +78,18 @@ paths:
       x-proctor-auth: principal_required
       x-proctor-idempotency: none
       x-proctor-error-codes:
-        - authentication.required
-        - authentication.token_invalid
-        - authentication.credential_ambiguous
         - authorization.denied
         - authorization.request.invalid
         - authorization.unavailable
         - request.invalid
         - resource.not_found
-        - administration.unavailable
         - student_progression.unavailable
+        - invitation.unavailable
+        - onboarding_import.unavailable
+        - student_progression.conflict
+        - authentication.required
+        - authentication.token_invalid
+        - authentication.credential_ambiguous
         - authentication.dpop.invalid
         - authentication.dpop.replayed
         - authentication.dpop.use_nonce
@@ -104,6 +109,8 @@ paths:
           $ref: '#/components/responses/Forbidden'
         "404":
           $ref: '#/components/responses/NotFound'
+        "409":
+          $ref: '#/components/responses/Conflict'
         "500":
           $ref: '#/components/responses/InternalError'
         "503":

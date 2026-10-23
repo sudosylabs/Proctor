@@ -153,36 +153,8 @@ func examSittingCorrectionResource(application ExamSittingCorrectionApplication)
 	corrections := apiPath(literal("exams"), canonicalID("exam_id"), literal("sittings"), canonicalID("exam_sitting_id"), literal("corrections"))
 	return newResource(
 		"exam-sitting-corrections",
-		idempotentProtocolRoute(IdempotencyRequired, examSittingCorrectionUploadBodyLimit, "exam-sitting-correction-resource-stage", RouteProtocolStreamingUpload, AuthPrincipalRequired, http.MethodPost, stages, examSittingCorrectionStageErrorCodes(), module.stage),
-		idempotentPrincipalRoute(IdempotencyRequired, http.MethodPost, corrections, examSittingCorrectionApplyErrorCodes(), module.apply),
-	)
-}
-
-func examSittingCorrectionMutationErrorCodes(specific ...string) []string {
-	common := []string{
-		"request.invalid", "resource.not_found", "exam.sitting.correction.invalid",
-		"exam.sitting.correction.conflict", "exam.sitting.correction.unavailable",
-		"exam.archived", "exam.sitting.revision_conflict", "exam.sitting.state_conflict", "exam.sitting.deadline_reached",
-	}
-	common = append(common, specific...)
-	return academicMutationErrorCodes(append(common,
-		"idempotency.key_required", "idempotency.key_invalid", "idempotency.conflict", "idempotency.in_progress")...)
-}
-
-func examSittingCorrectionStageErrorCodes() []string {
-	return examSittingCorrectionMutationErrorCodes(
-		"service.busy",
-		"exam.sitting.correction.content_invalid",
-		"exam.sitting.correction.stage_conflict",
-	)
-}
-
-func examSittingCorrectionApplyErrorCodes() []string {
-	return examSittingCorrectionMutationErrorCodes(
-		"exam.sitting.correction.no_changes",
-		"exam.sitting.correction.manifest_conflict",
-		"exam.sitting.correction.stage_conflict",
-		"exam.resource.limit",
+		idempotentProtocolRoute(IdempotencyRequired, examSittingCorrectionUploadBodyLimit, "exam-sitting-correction-resource-stage", RouteProtocolStreamingUpload, AuthPrincipalRequired, http.MethodPost, stages, []string{"authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "resource.not_found", "exam.sitting.correction.invalid", "exam.sitting.correction.conflict", "exam.sitting.correction.unavailable", "exam.archived", "exam.sitting.revision_conflict", "exam.sitting.state_conflict", "exam.sitting.deadline_reached", "service.busy", "exam.sitting.correction.content_invalid", "exam.sitting.correction.stage_conflict", "idempotency.key_required", "idempotency.key_invalid", "idempotency.conflict", "idempotency.in_progress"}, module.stage),
+		idempotentPrincipalRoute(IdempotencyRequired, http.MethodPost, corrections, []string{"authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "resource.not_found", "exam.sitting.correction.invalid", "exam.sitting.correction.conflict", "exam.sitting.correction.unavailable", "exam.archived", "exam.sitting.revision_conflict", "exam.sitting.state_conflict", "exam.sitting.deadline_reached", "exam.sitting.correction.no_changes", "exam.sitting.correction.manifest_conflict", "exam.sitting.correction.stage_conflict", "exam.resource.limit", "idempotency.key_required", "idempotency.key_invalid", "idempotency.conflict", "idempotency.in_progress"}, module.apply),
 	)
 }
 

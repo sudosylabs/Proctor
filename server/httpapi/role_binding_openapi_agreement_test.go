@@ -23,26 +23,18 @@ func TestRoleBindingOpenAPIAgreesWithRuntime(t *testing.T) {
 			{
 				Key: "GET /api/v1/role-bindings", Auth: AuthPrincipalRequired,
 				SuccessStatus: "200", SuccessRef: "#/components/responses/RoleBindingListOK", SuccessSchema: "RoleBindingListResponse",
-				PublicErrorCodes: principalContractCodes("request.invalid", "administration.unavailable"),
+				PublicErrorCodes: []string{"authorization.denied", "authorization.request.invalid", "authorization.unavailable", "request.invalid", "administration.unavailable", "resource.not_found"},
 			},
 			{
 				Key: "POST /api/v1/role-bindings", Auth: AuthStrongRecentSessionRequired,
 				RequestBodyRef: "#/components/requestBodies/CreateRoleBinding", RequestSchema: "CreateRoleBindingRequest",
 				SuccessStatus: "201", SuccessRef: "#/components/responses/RoleBindingCreated", SuccessSchema: "RoleBindingResponse",
-				PublicErrorCodes: strongRecentSessionMutationErrorCodes(
-					"authorization.denied", "authorization.request.invalid", "authorization.unavailable", "audit.unavailable",
-					"request.invalid", "resource.not_found", "role_binding.invalid", "role_binding.conflict",
-					"role_binding.system_admin_scope_invalid", "administration.unavailable",
-				),
+				PublicErrorCodes: []string{"authorization.denied", "authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "resource.not_found", "role_binding.invalid", "role_binding.conflict", "role_binding.system_admin_scope_invalid", "administration.unavailable", "mail.unavailable"},
 			},
 			{
 				Key: "DELETE /api/v1/role-bindings/{role_binding_id}", Auth: AuthStrongRecentSessionRequired,
 				SuccessStatus: "200", SuccessRef: "#/components/responses/RoleBindingEnded", SuccessSchema: "RoleBindingResponse",
-				PublicErrorCodes: strongRecentSessionMutationErrorCodes(
-					"authorization.denied", "authorization.request.invalid", "authorization.unavailable", "audit.unavailable",
-					"request.invalid", "resource.not_found", "role_binding.conflict",
-					"role_binding.last_system_admin", "administration.unavailable",
-				),
+				PublicErrorCodes: []string{"authorization.denied", "authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "resource.not_found", "role_binding.conflict", "role_binding.last_system_admin", "administration.unavailable", "mail.unavailable"},
 			},
 		},
 		Schemas: []openAPIAgreementSchema{

@@ -19,15 +19,17 @@ paths:
       x-proctor-auth: session_required
       x-proctor-idempotency: none
       x-proctor-error-codes:
-        - authentication.required
-        - authentication.token_invalid
-        - authentication.credential_ambiguous
         - request.invalid
         - resource.not_found
         - exam.attempt.invalid
         - exam.attempt.sitting_not_open
         - exam.attempt.state_conflict
         - exam.attempt.unavailable
+        - exam.attempt.registered_desktop_required
+        - exam.delivery.metadata_capacity
+        - authentication.required
+        - authentication.token_invalid
+        - authentication.credential_ambiguous
         - authentication.dpop.invalid
         - authentication.dpop.replayed
         - authentication.dpop.use_nonce
@@ -54,6 +56,8 @@ paths:
           $ref: '#/components/responses/BadRequest'
         "401":
           $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
         "404":
           $ref: '#/components/responses/NotFound'
         "409":

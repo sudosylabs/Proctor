@@ -20,21 +20,12 @@ import (
 
 func TestAccessPolicyOpenAPIAgreesWithRuntime(t *testing.T) {
 	t.Parallel()
-	preflightCodes := principalContractCodes(
-		"authentication.csrf.invalid", "authentication.strong_required", "authentication.reauthentication_required",
-		"request.invalid", "access_policy.invalid", "access_policy.revision_conflict", "access_policy.unavailable",
-	)
-	replaceCodes := principalMutationContractCodes(
-		"authentication.strong_required", "authentication.reauthentication_required",
-		"idempotency.key_required", "idempotency.key_invalid", "idempotency.conflict", "idempotency.in_progress",
-		"request.invalid", "access_policy.invalid", "access_policy.revision_conflict", "access_policy.blocked", "access_policy.unavailable",
-	)
 	suite := openAPIAgreementSuite{
 		Operations: []openAPIAgreementOperation{
-			{Key: "GET /api/v1/discovery", Auth: AuthPublic, SuccessStatus: "200", SuccessRef: "#/components/responses/PublicAccessDiscoveryOK", SuccessSchema: "PublicAccessDiscoveryResponse", PublicErrorCodes: []string{"access_policy.unavailable"}},
-			{Key: "GET /api/v1/access-policy", Auth: AuthPrincipalRequired, SuccessStatus: "200", SuccessRef: "#/components/responses/AccessPolicyOK", SuccessSchema: "AccessPolicyResponse", PublicErrorCodes: principalContractCodes("access_policy.unavailable")},
-			{Key: "POST /api/v1/access-policy/preflight", Auth: AuthStrongRecentSessionRequired, RequestBodyRef: "#/components/requestBodies/PreflightAccessPolicy", RequestSchema: "AccessPolicySettingsRequest", SuccessStatus: "200", SuccessRef: "#/components/responses/AccessPolicyPreflightOK", SuccessSchema: "AccessPolicyPreflightResponse", PublicErrorCodes: preflightCodes},
-			{Key: "PUT /api/v1/access-policy", Auth: AuthStrongRecentSessionRequired, Idempotency: IdempotencyRequired, RequestBodyRef: "#/components/requestBodies/ReplaceAccessPolicy", RequestSchema: "AccessPolicySettingsRequest", SuccessStatus: "200", SuccessRef: "#/components/responses/AccessPolicyOK", SuccessSchema: "AccessPolicyResponse", PublicErrorCodes: replaceCodes},
+			{Key: "GET /api/v1/discovery", Auth: AuthPublic, SuccessStatus: "200", SuccessRef: "#/components/responses/PublicAccessDiscoveryOK", SuccessSchema: "PublicAccessDiscoveryResponse", PublicErrorCodes: []string{"access_policy.unavailable", "access_policy.blocked", "access_policy.revision_conflict"}},
+			{Key: "GET /api/v1/access-policy", Auth: AuthPrincipalRequired, SuccessStatus: "200", SuccessRef: "#/components/responses/AccessPolicyOK", SuccessSchema: "AccessPolicyResponse", PublicErrorCodes: []string{"authorization.denied", "authorization.request.invalid", "authorization.unavailable", "access_policy.unavailable", "access_policy.blocked", "access_policy.revision_conflict", "resource.not_found"}},
+			{Key: "POST /api/v1/access-policy/preflight", Auth: AuthStrongRecentSessionRequired, RequestBodyRef: "#/components/requestBodies/PreflightAccessPolicy", RequestSchema: "AccessPolicySettingsRequest", SuccessStatus: "200", SuccessRef: "#/components/responses/AccessPolicyPreflightOK", SuccessSchema: "AccessPolicyPreflightResponse", PublicErrorCodes: []string{"authorization.denied", "authorization.request.invalid", "authorization.unavailable", "request.invalid", "access_policy.invalid", "access_policy.revision_conflict", "access_policy.unavailable", "access_policy.blocked", "resource.not_found"}},
+			{Key: "PUT /api/v1/access-policy", Auth: AuthStrongRecentSessionRequired, Idempotency: IdempotencyRequired, RequestBodyRef: "#/components/requestBodies/ReplaceAccessPolicy", RequestSchema: "AccessPolicySettingsRequest", SuccessStatus: "200", SuccessRef: "#/components/responses/AccessPolicyOK", SuccessSchema: "AccessPolicyResponse", PublicErrorCodes: []string{"authorization.denied", "authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "idempotency.key_required", "idempotency.key_invalid", "idempotency.conflict", "idempotency.in_progress", "request.invalid", "access_policy.invalid", "access_policy.revision_conflict", "access_policy.blocked", "access_policy.unavailable", "resource.not_found"}},
 		},
 		Schemas: []openAPIAgreementSchema{
 			{Name: "AccessPolicySettingsRequest", DTO: reflect.TypeOf(accessPolicySettingsRequest{}), Required: []string{"expected_revision", "revoke_existing_sessions", "local_login_enabled", "public_registration_enabled", "invitation_admission_enabled", "invitation_local_credential_enabled", "desktop_authorization_enabled", "provider_admissions"}, NonNullable: []string{"revoke_existing_sessions", "local_login_enabled", "public_registration_enabled", "invitation_admission_enabled", "invitation_local_credential_enabled", "desktop_authorization_enabled", "provider_admissions"}},

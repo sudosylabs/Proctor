@@ -29,11 +29,7 @@ func TestBootstrapOpenAPIAgreesWithRuntime(t *testing.T) {
 				Key: "POST /api/v1/bootstrap", Auth: AuthPublic,
 				RequestBodyRef: "#/components/requestBodies/BootstrapInstallation", RequestSchema: "BootstrapInstallationRequest",
 				SuccessStatus: "201", SuccessRef: "#/components/responses/InstallationBootstrapCreated", SuccessSchema: "InstallationBootstrapResult",
-				PublicErrorCodes: []string{
-					"request.invalid", "installation.already_initialized", "installation.unavailable",
-					"installation.bootstrap_denied",
-					"authentication.password.invalid", "service.busy", "authentication.rate_limited",
-				},
+				PublicErrorCodes: []string{"request.invalid", "installation.already_initialized", "installation.unavailable", "installation.bootstrap_denied", "authentication.password.invalid", "service.busy", "authentication.rate_limited", "administration.unavailable"},
 			},
 		},
 		Schemas: []openAPIAgreementSchema{

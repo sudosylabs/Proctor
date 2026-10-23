@@ -80,17 +80,16 @@ type onboardingImportRowResponse struct {
 
 func onboardingImportResource(imports OnboardingImportApplication) apiResource {
 	module := onboardingImportModule{imports: imports}
-	codes := academicRelationshipMutationErrorCodes("onboarding_import.conflict", "onboarding_import.file_invalid", "onboarding_import.unavailable")
 	return newResource("onboarding-imports",
 		idempotentProtocolRoute(IdempotencyNone, store.OnboardingImportMaximumBytes, "onboarding-import-csv", RouteProtocolStreamingUpload, AuthPrincipalRequired,
-			http.MethodPost, apiPath(literal("onboarding-imports")), codes, module.upload),
+			http.MethodPost, apiPath(literal("onboarding-imports")), []string{"authorization.denied", "authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "resource.not_found", "onboarding_import.conflict", "onboarding_import.file_invalid", "onboarding_import.unavailable", "administration.unavailable", "authentication.mfa.unavailable", "invitation.role_not_delegable", "invitation.unavailable", "student_progression.conflict", "student_progression.unavailable"}, module.upload),
 		principalRoute(http.MethodGet, apiPath(literal("onboarding-imports"), canonicalID("onboarding_import_id")),
-			append(academicRelationshipReadErrorCodes(), "onboarding_import.unavailable"), module.get),
+			[]string{"authorization.denied", "authorization.request.invalid", "authorization.unavailable", "request.invalid", "resource.not_found", "onboarding_import.unavailable", "invitation.unavailable"}, module.get),
 		idempotentPrincipalRoute(IdempotencyRequired, http.MethodPost, apiPath(literal("onboarding-imports"), canonicalID("onboarding_import_id"), literal("commit")),
-			append(codes, "idempotency.key_required", "idempotency.key_invalid"), module.commit),
-		principalRoute(http.MethodPost, apiPath(literal("onboarding-imports"), canonicalID("onboarding_import_id"), literal("cancel")), codes, module.cancel),
+			[]string{"authorization.denied", "authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "resource.not_found", "onboarding_import.conflict", "onboarding_import.file_invalid", "onboarding_import.unavailable", "administration.unavailable", "idempotency.key_required", "idempotency.key_invalid", "authentication.mfa.unavailable", "invitation.unavailable", "student_progression.conflict", "student_progression.unavailable"}, module.commit),
+		principalRoute(http.MethodPost, apiPath(literal("onboarding-imports"), canonicalID("onboarding_import_id"), literal("cancel")), []string{"authorization.denied", "authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "resource.not_found", "onboarding_import.conflict", "onboarding_import.file_invalid", "onboarding_import.unavailable", "invitation.unavailable", "student_progression.conflict", "student_progression.unavailable"}, module.cancel),
 		protocolRoute("onboarding-import-report", RouteProtocolBinaryDownload, AuthPrincipalRequired, http.MethodGet,
-			apiPath(literal("onboarding-imports"), canonicalID("onboarding_import_id"), literal("report")), append(academicRelationshipReadErrorCodes(), "onboarding_import.conflict", "onboarding_import.unavailable"), module.report),
+			apiPath(literal("onboarding-imports"), canonicalID("onboarding_import_id"), literal("report")), []string{"authorization.denied", "authorization.request.invalid", "authorization.unavailable", "request.invalid", "resource.not_found", "onboarding_import.conflict", "onboarding_import.unavailable", "invitation.unavailable"}, module.report),
 	)
 }
 

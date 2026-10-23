@@ -85,15 +85,15 @@ func jobResource(jobs JobOperationsApplication) apiResource {
 	return newResource(
 		"jobs",
 		principalRoute(http.MethodGet, apiPath(literal("jobs")),
-			operatorReadErrorCodes("audit.unavailable", "job.query.invalid", "job.unavailable", "request.invalid"), module.list),
+			[]string{"authorization.denied", "authorization.request.invalid", "authorization.unavailable", "job.query.invalid", "job.unavailable", "request.invalid", "resource.not_found"}, module.list),
 		principalRoute(http.MethodGet, apiPath(literal("jobs"), canonicalID("job_id")),
-			operatorReadErrorCodes("audit.unavailable", "resource.not_found", "job.unavailable"), module.get),
+			[]string{"authorization.denied", "authorization.request.invalid", "authorization.unavailable", "resource.not_found", "job.unavailable", "request.invalid"}, module.get),
 		principalRoute(http.MethodGet, apiPath(literal("jobs"), canonicalID("job_id"), literal("attempts")),
-			operatorReadErrorCodes("audit.unavailable", "job.query.invalid", "request.invalid", "resource.not_found", "job.unavailable"), module.listAttempts),
+			[]string{"authorization.denied", "authorization.request.invalid", "authorization.unavailable", "job.query.invalid", "request.invalid", "resource.not_found", "job.unavailable"}, module.listAttempts),
 		principalRoute(http.MethodPost, apiPath(literal("jobs"), canonicalID("job_id"), literal("cancel")),
-			operatorMutationErrorCodes("resource.not_found", "job.cancel.unsupported", "job.conflict", "job.unavailable"), module.cancel),
+			[]string{"authorization.denied", "authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "resource.not_found", "job.cancel.unsupported", "job.conflict", "job.unavailable", "request.invalid"}, module.cancel),
 		principalRoute(http.MethodPost, apiPath(literal("jobs"), canonicalID("job_id"), literal("retry")),
-			operatorMutationErrorCodes("resource.not_found", "job.retry.unsupported", "job.conflict", "job.unavailable"), module.retry),
+			[]string{"authorization.denied", "authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "resource.not_found", "job.retry.unsupported", "job.conflict", "job.unavailable", "request.invalid"}, module.retry),
 	)
 }
 

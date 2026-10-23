@@ -19,26 +19,26 @@ paths:
       x-proctor-auth: principal_required
       x-proctor-idempotency: none
       x-proctor-error-codes:
-        - authentication.required
-        - authentication.token_invalid
-        - authentication.credential_ambiguous
-        - authentication.csrf.invalid
         - authorization.denied
         - authorization.request.invalid
         - authorization.unavailable
         - audit.unavailable
         - request.invalid
         - resource.not_found
-        - administration.unavailable
         - invitation.invalid
         - invitation.role_not_delegable
         - invitation.conflict
         - invitation.mail_unavailable
         - invitation.unavailable
+        - onboarding_batch.duplicate
+        - authentication.required
+        - authentication.token_invalid
+        - authentication.credential_ambiguous
         - authentication.dpop.invalid
         - authentication.dpop.replayed
         - authentication.dpop.use_nonce
         - authentication.dpop.unavailable
+        - authentication.csrf.invalid
       security:
         - bearerAuth: []
         - dpopAuth: []
@@ -91,10 +91,6 @@ paths:
       x-proctor-auth: principal_required
       x-proctor-idempotency: none
       x-proctor-error-codes:
-        - authentication.required
-        - authentication.token_invalid
-        - authentication.credential_ambiguous
-        - authentication.csrf.invalid
         - authorization.denied
         - authorization.request.invalid
         - authorization.unavailable
@@ -106,11 +102,15 @@ paths:
         - invitation.conflict
         - invitation.mail_unavailable
         - invitation.unavailable
-        - administration.unavailable
+        - onboarding_batch.duplicate
+        - authentication.required
+        - authentication.token_invalid
+        - authentication.credential_ambiguous
         - authentication.dpop.invalid
         - authentication.dpop.replayed
         - authentication.dpop.use_nonce
         - authentication.dpop.unavailable
+        - authentication.csrf.invalid
       security:
         - bearerAuth: []
         - dpopAuth: []

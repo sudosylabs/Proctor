@@ -17,24 +17,25 @@ paths:
       x-proctor-auth: strong_recent_session_required
       x-proctor-idempotency: none
       x-proctor-error-codes:
-        - authentication.required
-        - authentication.token_invalid
-        - authentication.credential_ambiguous
         - authorization.denied
         - authorization.request.invalid
         - authorization.unavailable
-        - authentication.csrf.invalid
         - audit.unavailable
-        - authentication.strong_required
-        - authentication.reauthentication_required
         - request.invalid
         - mail.rekey.invalid
         - mail.rekey.conflict
         - mail.unavailable
+        - resource.not_found
+        - authentication.required
+        - authentication.token_invalid
+        - authentication.credential_ambiguous
         - authentication.dpop.invalid
         - authentication.dpop.replayed
         - authentication.dpop.use_nonce
         - authentication.dpop.unavailable
+        - authentication.csrf.invalid
+        - authentication.strong_required
+        - authentication.reauthentication_required
       security:
         - bearerAuth: []
         - dpopAuth: []
@@ -51,6 +52,8 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         "403":
           $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
         "409":
           $ref: '#/components/responses/Conflict'
         "500":

@@ -60,25 +60,13 @@ func mfaResource(mfa MFA) apiResource {
 	base := apiPath(literal("users"), literal("me"), literal("mfa"))
 	return newResource(
 		"multi-factor-authentication",
-		mfaRecoverySessionRoute(http.MethodGet, base, personalAccessTokenSessionCodes("authentication.mfa.disabled", "authentication.mfa.unavailable"), module.status),
-		recentMFARecoverySessionRoute(http.MethodPost, appendRoutePath(base, literal("setup")), mfaRecentMutationCodes("authentication.mfa.disabled", "authentication.mfa.not_found", "authentication.mfa.conflict", "authentication.mfa.unavailable", "authentication.internal", "audit.unavailable"), module.setup),
-		recentMFARecoverySessionRoute(http.MethodPost, appendRoutePath(base, literal("activate")), mfaRecentMutationCodes("request.invalid", "authentication.mfa.code_invalid", "authentication.rate_limited", "authentication.rate_limit_unavailable", "authentication.mfa.disabled", "authentication.mfa.not_found", "authentication.mfa.conflict", "authentication.mfa.unavailable", "authentication.internal", "audit.unavailable"), module.activate),
-		sessionRoute(http.MethodPost, appendRoutePath(base, literal("challenge")), mfaSessionMutationCodes("request.invalid", "authentication.mfa.code_invalid", "authentication.rate_limited", "authentication.rate_limit_unavailable", "authentication.mfa.disabled", "authentication.mfa.not_found", "authentication.mfa.conflict", "authentication.mfa.unavailable", "authentication.internal", "audit.unavailable"), module.challenge),
-		strongRecentSessionRoute(http.MethodPost, appendRoutePath(base, literal("recovery-codes"), literal("regenerate")), mfaStrongRecentMutationCodes("authentication.mfa.disabled", "authentication.mfa.not_found", "authentication.mfa.conflict", "authentication.mfa.unavailable", "authentication.internal", "audit.unavailable"), module.regenerateRecoveryCodes),
-		strongRecentSessionRoute(http.MethodPost, appendRoutePath(base, literal("disable")), mfaStrongRecentMutationCodes("authentication.mfa.disabled", "authentication.mfa.not_found", "authentication.mfa.conflict", "authentication.mfa.unavailable", "audit.unavailable"), module.disable),
+		mfaRecoverySessionRoute(http.MethodGet, base, []string{"authentication.mfa.unavailable", "authentication.reauthentication_required", "authentication.session_required"}, module.status),
+		recentMFARecoverySessionRoute(http.MethodPost, appendRoutePath(base, literal("setup")), []string{"authentication.mfa.disabled", "authentication.mfa.not_found", "authentication.mfa.conflict", "authentication.mfa.unavailable", "authentication.internal", "audit.unavailable", "authentication.session_required"}, module.setup),
+		recentMFARecoverySessionRoute(http.MethodPost, appendRoutePath(base, literal("activate")), []string{"request.invalid", "authentication.mfa.code_invalid", "authentication.rate_limited", "authentication.rate_limit_unavailable", "authentication.mfa.disabled", "authentication.mfa.not_found", "authentication.mfa.conflict", "authentication.mfa.unavailable", "authentication.internal", "audit.unavailable", "authentication.session_required"}, module.activate),
+		sessionRoute(http.MethodPost, appendRoutePath(base, literal("challenge")), []string{"request.invalid", "authentication.mfa.code_invalid", "authentication.rate_limited", "authentication.rate_limit_unavailable", "authentication.mfa.disabled", "authentication.mfa.not_found", "authentication.mfa.conflict", "authentication.mfa.unavailable", "authentication.internal", "audit.unavailable", "authentication.reauthentication_required", "authentication.session_required"}, module.challenge),
+		strongRecentSessionRoute(http.MethodPost, appendRoutePath(base, literal("recovery-codes"), literal("regenerate")), []string{"authentication.mfa.disabled", "authentication.mfa.not_found", "authentication.mfa.conflict", "authentication.mfa.unavailable", "authentication.internal", "audit.unavailable", "authentication.session_required"}, module.regenerateRecoveryCodes),
+		strongRecentSessionRoute(http.MethodPost, appendRoutePath(base, literal("disable")), []string{"authentication.mfa.disabled", "authentication.mfa.not_found", "authentication.mfa.conflict", "authentication.mfa.unavailable", "audit.unavailable", "authentication.session_required"}, module.disable),
 	)
-}
-
-func mfaSessionMutationCodes(extra ...string) []string {
-	return personalAccessTokenSessionMutationCodes(extra...)
-}
-
-func mfaRecentMutationCodes(extra ...string) []string {
-	return personalAccessTokenRecentMutationCodes(extra...)
-}
-
-func mfaStrongRecentMutationCodes(extra ...string) []string {
-	return mfaRecentMutationCodes(extra...)
 }
 
 func (m mfaResourceModule) status(request operationRequest) (operationResult, error) {

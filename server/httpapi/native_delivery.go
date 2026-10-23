@@ -15,14 +15,6 @@ import (
 	"github.com/sudosylabs/proctor/server/model"
 )
 
-func nativeDeliveryErrorCodes() []string {
-	return academicMutationErrorCodes("exam.delivery.control_rate_limited", "request.invalid", "resource.not_found", "exam.attempt.invalid", "exam.attempt.not_found", "exam.attempt.registered_desktop_required", "exam.attempt.continuity_invalid", "exam.attempt.connection_closed", "exam.attempt.connection_lost", "exam.attempt.sitting_not_open", "exam.attempt.unavailable", "exam.delivery.upload_expired", "exam.delivery.declaration_conflict", "exam.delivery.sequence_limit", "exam.delivery.detail_budget_exhausted", "exam.delivery.metadata_capacity", "exam.delivery.summary_rate_limited", "idempotency.conflict", "idempotency.in_progress")
-}
-
-func nativeDeliveryDeclarationErrorCodes() []string {
-	return append(nativeDeliveryErrorCodes(), "idempotency.key_required", "idempotency.key_invalid")
-}
-
 func nativeDeliveryResource(application ExamAttemptApplication) apiResource {
 	m := examAttemptHTTPModule{application: application}
 	path := func(tail ...pathPart) routePath {
@@ -30,12 +22,12 @@ func nativeDeliveryResource(application ExamAttemptApplication) apiResource {
 		return apiPath(append(parts, tail...)...)
 	}
 	return newResource("native-delivery",
-		boundedNativeDeliveryRoute(262144, idempotentSessionRoute(IdempotencyRequired, http.MethodPost, apiPath(literal("exam-attempts"), canonicalID("exam_attempt_id"), literal("security-batches")), nativeDeliveryAppendErrorCodes(), m.appendNativeDelivery)),
-		sessionRoute(http.MethodGet, path(), nativeDeliveryErrorCodes(), m.nativeDeliveryStatus),
-		sessionRoute(http.MethodGet, path(literal("receipts"), positiveSequence("batch_sequence")), nativeDeliveryErrorCodes(), m.nativeDeliveryReceipt),
-		boundedNativeDeliveryRoute(8192, idempotentSessionRoute(IdempotencyRequired, http.MethodPost, path(literal("gaps")), nativeDeliveryDeclarationErrorCodes(), m.declareNativeDeliveryGaps)),
-		boundedNativeDeliveryRoute(2048, idempotentSessionRoute(IdempotencyRequired, http.MethodPost, path(literal("seal")), nativeDeliveryDeclarationErrorCodes(), m.sealNativeDelivery)),
-		boundedNativeDeliveryRoute(2048, idempotentSessionRoute(IdempotencyRequired, http.MethodPost, path(literal("summary")), nativeDeliveryDeclarationErrorCodes(), m.updateNativeDeliverySummary)))
+		boundedNativeDeliveryRoute(262144, idempotentSessionRoute(IdempotencyRequired, http.MethodPost, apiPath(literal("exam-attempts"), canonicalID("exam_attempt_id"), literal("security-batches")), []string{"audit.unavailable", "request.invalid", "resource.not_found", "exam.attempt.invalid", "exam.attempt.registered_desktop_required", "exam.attempt.connection_closed", "exam.attempt.connection_lost", "exam.attempt.sitting_not_open", "exam.attempt.unavailable", "exam.delivery.upload_expired", "exam.delivery.declaration_conflict", "exam.delivery.sequence_limit", "exam.delivery.detail_budget_exhausted", "exam.delivery.metadata_capacity", "exam.delivery.summary_rate_limited", "idempotency.conflict", "idempotency.in_progress", "idempotency.key_required", "idempotency.key_invalid", "exam.delivery.batch_conflict", "exam.delivery.replay_window_exceeded", "exam.delivery.pending_capacity", "exam.delivery.append_rate_limited"}, m.appendNativeDelivery)),
+		sessionRoute(http.MethodGet, path(), []string{"exam.delivery.control_rate_limited", "request.invalid", "resource.not_found", "exam.attempt.invalid", "exam.attempt.registered_desktop_required", "exam.attempt.connection_closed", "exam.attempt.connection_lost", "exam.attempt.sitting_not_open", "exam.attempt.unavailable", "exam.delivery.upload_expired", "exam.delivery.declaration_conflict", "exam.delivery.sequence_limit", "exam.delivery.detail_budget_exhausted", "exam.delivery.metadata_capacity", "exam.delivery.summary_rate_limited", "idempotency.conflict", "idempotency.in_progress"}, m.nativeDeliveryStatus),
+		sessionRoute(http.MethodGet, path(literal("receipts"), positiveSequence("batch_sequence")), []string{"exam.delivery.control_rate_limited", "request.invalid", "resource.not_found", "exam.attempt.invalid", "exam.attempt.registered_desktop_required", "exam.attempt.connection_closed", "exam.attempt.connection_lost", "exam.attempt.sitting_not_open", "exam.attempt.unavailable", "exam.delivery.upload_expired", "exam.delivery.declaration_conflict", "exam.delivery.sequence_limit", "exam.delivery.detail_budget_exhausted", "exam.delivery.metadata_capacity", "exam.delivery.summary_rate_limited", "idempotency.conflict", "idempotency.in_progress"}, m.nativeDeliveryReceipt),
+		boundedNativeDeliveryRoute(8192, idempotentSessionRoute(IdempotencyRequired, http.MethodPost, path(literal("gaps")), []string{"audit.unavailable", "exam.delivery.control_rate_limited", "request.invalid", "resource.not_found", "exam.attempt.invalid", "exam.attempt.registered_desktop_required", "exam.attempt.connection_closed", "exam.attempt.connection_lost", "exam.attempt.sitting_not_open", "exam.attempt.unavailable", "exam.delivery.upload_expired", "exam.delivery.declaration_conflict", "exam.delivery.sequence_limit", "exam.delivery.detail_budget_exhausted", "exam.delivery.metadata_capacity", "exam.delivery.summary_rate_limited", "idempotency.conflict", "idempotency.in_progress", "idempotency.key_required", "idempotency.key_invalid"}, m.declareNativeDeliveryGaps)),
+		boundedNativeDeliveryRoute(2048, idempotentSessionRoute(IdempotencyRequired, http.MethodPost, path(literal("seal")), []string{"audit.unavailable", "exam.delivery.control_rate_limited", "request.invalid", "resource.not_found", "exam.attempt.invalid", "exam.attempt.registered_desktop_required", "exam.attempt.connection_closed", "exam.attempt.connection_lost", "exam.attempt.sitting_not_open", "exam.attempt.unavailable", "exam.delivery.upload_expired", "exam.delivery.declaration_conflict", "exam.delivery.sequence_limit", "exam.delivery.detail_budget_exhausted", "exam.delivery.metadata_capacity", "exam.delivery.summary_rate_limited", "idempotency.conflict", "idempotency.in_progress", "idempotency.key_required", "idempotency.key_invalid"}, m.sealNativeDelivery)),
+		boundedNativeDeliveryRoute(2048, idempotentSessionRoute(IdempotencyRequired, http.MethodPost, path(literal("summary")), []string{"audit.unavailable", "exam.delivery.control_rate_limited", "request.invalid", "resource.not_found", "exam.attempt.invalid", "exam.attempt.registered_desktop_required", "exam.attempt.connection_closed", "exam.attempt.connection_lost", "exam.attempt.sitting_not_open", "exam.attempt.unavailable", "exam.delivery.upload_expired", "exam.delivery.declaration_conflict", "exam.delivery.sequence_limit", "exam.delivery.detail_budget_exhausted", "exam.delivery.metadata_capacity", "exam.delivery.summary_rate_limited", "idempotency.conflict", "idempotency.in_progress", "idempotency.key_required", "idempotency.key_invalid"}, m.updateNativeDeliverySummary)))
 }
 
 func nativeDeliveryQuery(request operationRequest) (attempt.NativeDeliveryQuery, error) {
@@ -141,9 +133,6 @@ func nativeDeliveryStatusResult(value *model.NativeSecurityStreamStatus) (operat
 	return jsonResult(http.StatusOK, value).withHeaders(noStoreHeaders()), nil
 }
 
-func nativeDeliveryAppendErrorCodes() []string {
-	return append(nativeDeliveryDeclarationErrorCodes(), "exam.delivery.batch_conflict", "exam.delivery.replay_window_exceeded", "exam.delivery.pending_capacity", "exam.delivery.append_rate_limited")
-}
 func (m examAttemptHTTPModule) appendNativeDelivery(request operationRequest) (operationResult, error) {
 	var body model.NativeSecurityBatch
 	if err := request.decodeJSON(&body); err != nil {

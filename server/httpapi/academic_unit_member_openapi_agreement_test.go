@@ -30,12 +30,12 @@ func TestAcademicUnitMemberOpenAPIAgreesWithRuntime(t *testing.T) {
 				Key: "POST /api/v1/academic-units/{academic_unit_id}/members", Auth: AuthPrincipalRequired,
 				RequestBodyRef: "#/components/requestBodies/CreateAcademicUnitMember", RequestSchema: "CreateAcademicUnitMemberRequest",
 				SuccessStatus: "201", SuccessRef: "#/components/responses/AcademicUnitMemberCreated", SuccessSchema: "AcademicUnitMemberResponse",
-				PublicErrorCodes: principalMutationContractCodes("request.invalid", "resource.not_found", "academic_unit_member.invalid", "academic_unit_member.conflict", "administration.unavailable"),
+				PublicErrorCodes: []string{"authorization.denied", "authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "resource.not_found", "academic_unit_member.invalid", "academic_unit_member.conflict", "administration.unavailable", "mail.unavailable"},
 			},
 			{
 				Key: "DELETE /api/v1/academic-unit-members/{academic_unit_member_id}", Auth: AuthPrincipalRequired,
 				SuccessStatus: "200", SuccessRef: "#/components/responses/AcademicUnitMemberEnded", SuccessSchema: "AcademicUnitMemberResponse",
-				PublicErrorCodes: principalMutationContractCodes("request.invalid", "resource.not_found", "academic_unit_member.conflict", "administration.unavailable"),
+				PublicErrorCodes: []string{"authorization.denied", "authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "resource.not_found", "academic_unit_member.conflict", "administration.unavailable", "mail.unavailable"},
 			},
 		},
 		Schemas: []openAPIAgreementSchema{

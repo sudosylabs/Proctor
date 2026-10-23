@@ -354,52 +354,18 @@ func examResource(exams ExamApplication) apiResource {
 	owner := apiPath(literal("exams"), canonicalID("exam_id"), literal("owner"))
 	return newResource(
 		"exams",
-		principalRoute(http.MethodGet, collection, academicReadErrorCodes("request.invalid", "exam.invalid", "exam.unavailable"), module.list),
-		idempotentPrincipalRoute(IdempotencyRequired, http.MethodPost, collection, academicMutationErrorCodes(
-			"request.invalid", "resource.not_found", "exam.invalid", "exam.conflict", "exam.unavailable",
-			"idempotency.key_required", "idempotency.key_invalid", "idempotency.conflict", "idempotency.in_progress",
-		), module.create),
-		principalRoute(http.MethodGet, member, academicReadErrorCodes("request.invalid", "resource.not_found", "exam.unavailable"), module.get),
-		idempotentPrincipalRoute(IdempotencyRequired, http.MethodPatch, draft, academicMutationErrorCodes(
-			"request.invalid", "resource.not_found", "exam.invalid", "exam.archived",
-			"exam.draft.revision_conflict", "exam.draft.no_changes", "exam.unavailable",
-			"idempotency.key_required", "idempotency.key_invalid", "idempotency.conflict", "idempotency.in_progress",
-		), module.editDraftText),
-		idempotentPrincipalRoute(IdempotencyRequired, http.MethodPut, focusLossPolicy, academicMutationErrorCodes(
-			"request.invalid", "resource.not_found", "exam.invalid", "exam.archived",
-			"exam.draft.revision_conflict", "exam.draft.no_changes", "exam.unavailable",
-			"idempotency.key_required", "idempotency.key_invalid", "idempotency.conflict", "idempotency.in_progress",
-		), module.configureDraftFocusLoss),
-		idempotentPrincipalRoute(IdempotencyRequired, http.MethodPut, nativePolicy, academicMutationErrorCodes(
-			"request.invalid", "resource.not_found", "exam.invalid", "exam.archived",
-			"exam.draft.revision_conflict", "exam.draft.no_changes", "exam.unavailable",
-			"idempotency.key_required", "idempotency.key_invalid", "idempotency.conflict", "idempotency.in_progress",
-		), module.configureDraftNativePolicy),
-		idempotentPrincipalRoute(IdempotencyRequired, http.MethodPut, browserPolicy, academicMutationErrorCodes(
-			"request.invalid", "resource.not_found", "exam.invalid", "exam.archived",
-			"exam.draft.revision_conflict", "exam.draft.no_changes", "exam.unavailable",
-			"idempotency.key_required", "idempotency.key_invalid", "idempotency.conflict", "idempotency.in_progress",
-		), module.configureDraftBrowserPolicy),
-		idempotentPrincipalRoute(IdempotencyRequired, http.MethodPost, archive, academicMutationErrorCodes(
-			"request.invalid", "resource.not_found", "exam.invalid", "exam.archived", "exam.revision_conflict", "exam.unavailable",
-			"idempotency.key_required", "idempotency.key_invalid", "idempotency.conflict", "idempotency.in_progress",
-		), module.archive),
-		principalRoute(http.MethodGet, managers, academicReadErrorCodes("request.invalid", "resource.not_found", "exam.invalid", "exam.unavailable"), module.listManagers),
-		idempotentPrincipalRoute(IdempotencyRequired, http.MethodPost, managers, academicMutationErrorCodes(
-			"request.invalid", "resource.not_found", "exam.invalid", "exam.archived", "exam.revision_conflict",
-			"exam.manager.exists", "exam.manager.ineligible", "exam.manager.candidate_conflict", "exam.unavailable",
-			"idempotency.key_required", "idempotency.key_invalid", "idempotency.conflict", "idempotency.in_progress",
-		), module.addManager),
-		idempotentPrincipalRoute(IdempotencyRequired, http.MethodDelete, manager, academicMutationErrorCodes(
-			"request.invalid", "resource.not_found", "exam.invalid", "exam.archived", "exam.revision_conflict",
-			"exam.manager.not_found", "exam.manager.owner_protected", "exam.unavailable",
-			"idempotency.key_required", "idempotency.key_invalid", "idempotency.conflict", "idempotency.in_progress",
-		), module.removeManager),
-		idempotentPrincipalRoute(IdempotencyRequired, http.MethodPut, owner, academicMutationErrorCodes(
-			"request.invalid", "resource.not_found", "exam.invalid", "exam.archived", "exam.revision_conflict",
-			"exam.manager.not_found", "exam.manager.ineligible", "exam.manager.candidate_conflict", "exam.owner.no_changes", "exam.unavailable",
-			"idempotency.key_required", "idempotency.key_invalid", "idempotency.conflict", "idempotency.in_progress",
-		), module.transferOwner),
+		principalRoute(http.MethodGet, collection, []string{"authorization.denied", "authorization.request.invalid", "authorization.unavailable", "request.invalid", "exam.invalid", "exam.unavailable", "resource.not_found"}, module.list),
+		idempotentPrincipalRoute(IdempotencyRequired, http.MethodPost, collection, []string{"authorization.denied", "authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "resource.not_found", "exam.invalid", "exam.conflict", "exam.unavailable", "idempotency.key_required", "idempotency.key_invalid", "idempotency.conflict", "idempotency.in_progress"}, module.create),
+		principalRoute(http.MethodGet, member, []string{"authorization.request.invalid", "authorization.unavailable", "request.invalid", "resource.not_found", "exam.unavailable", "exam.invalid"}, module.get),
+		idempotentPrincipalRoute(IdempotencyRequired, http.MethodPatch, draft, []string{"authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "resource.not_found", "exam.invalid", "exam.archived", "exam.draft.revision_conflict", "exam.draft.no_changes", "exam.unavailable", "idempotency.key_required", "idempotency.key_invalid", "idempotency.conflict", "idempotency.in_progress"}, module.editDraftText),
+		idempotentPrincipalRoute(IdempotencyRequired, http.MethodPut, focusLossPolicy, []string{"authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "resource.not_found", "exam.invalid", "exam.archived", "exam.draft.revision_conflict", "exam.draft.no_changes", "exam.unavailable", "idempotency.key_required", "idempotency.key_invalid", "idempotency.conflict", "idempotency.in_progress"}, module.configureDraftFocusLoss),
+		idempotentPrincipalRoute(IdempotencyRequired, http.MethodPut, nativePolicy, []string{"authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "resource.not_found", "exam.invalid", "exam.archived", "exam.draft.revision_conflict", "exam.draft.no_changes", "exam.unavailable", "idempotency.key_required", "idempotency.key_invalid", "idempotency.conflict", "idempotency.in_progress"}, module.configureDraftNativePolicy),
+		idempotentPrincipalRoute(IdempotencyRequired, http.MethodPut, browserPolicy, []string{"authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "resource.not_found", "exam.invalid", "exam.archived", "exam.draft.revision_conflict", "exam.draft.no_changes", "exam.unavailable", "idempotency.key_required", "idempotency.key_invalid", "idempotency.conflict", "idempotency.in_progress"}, module.configureDraftBrowserPolicy),
+		idempotentPrincipalRoute(IdempotencyRequired, http.MethodPost, archive, []string{"authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "resource.not_found", "exam.invalid", "exam.archived", "exam.revision_conflict", "exam.unavailable", "idempotency.key_required", "idempotency.key_invalid", "idempotency.conflict", "idempotency.in_progress"}, module.archive),
+		principalRoute(http.MethodGet, managers, []string{"authorization.request.invalid", "authorization.unavailable", "request.invalid", "resource.not_found", "exam.invalid", "exam.unavailable"}, module.listManagers),
+		idempotentPrincipalRoute(IdempotencyRequired, http.MethodPost, managers, []string{"authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "resource.not_found", "exam.invalid", "exam.archived", "exam.revision_conflict", "exam.manager.exists", "exam.manager.ineligible", "exam.manager.candidate_conflict", "exam.unavailable", "idempotency.key_required", "idempotency.key_invalid", "idempotency.conflict", "idempotency.in_progress"}, module.addManager),
+		idempotentPrincipalRoute(IdempotencyRequired, http.MethodDelete, manager, []string{"authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "resource.not_found", "exam.invalid", "exam.archived", "exam.revision_conflict", "exam.manager.not_found", "exam.manager.owner_protected", "exam.unavailable", "idempotency.key_required", "idempotency.key_invalid", "idempotency.conflict", "idempotency.in_progress"}, module.removeManager),
+		idempotentPrincipalRoute(IdempotencyRequired, http.MethodPut, owner, []string{"authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "resource.not_found", "exam.invalid", "exam.archived", "exam.revision_conflict", "exam.manager.not_found", "exam.manager.ineligible", "exam.manager.candidate_conflict", "exam.owner.no_changes", "exam.unavailable", "idempotency.key_required", "idempotency.key_invalid", "idempotency.conflict", "idempotency.in_progress"}, module.transferOwner),
 	)
 }
 

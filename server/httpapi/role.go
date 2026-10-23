@@ -72,9 +72,9 @@ func roleResource(roles RoleApplication) apiResource {
 	return newResource(
 		"roles",
 		principalRoute(http.MethodGet, apiPath(literal("roles")),
-			operatorReadErrorCodes("administration.unavailable"), module.list),
+			[]string{"authorization.denied", "authorization.request.invalid", "authorization.unavailable", "administration.unavailable", "request.invalid", "resource.not_found"}, module.list),
 		principalRoute(http.MethodPost, apiPath(literal("roles")),
-			operatorMutationErrorCodes("request.invalid", "role.invalid", "role.conflict", "role.permission.invalid", "administration.unavailable"), module.create),
+			[]string{"authorization.denied", "authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "role.invalid", "role.conflict", "role.permission.invalid", "administration.unavailable", "resource.not_found"}, module.create),
 		principalRoute(http.MethodGet, apiPath(literal("roles"), canonicalID("role_id")),
 			operatorReadErrorCodes("request.invalid", "resource.not_found", "administration.unavailable"), module.get),
 		principalRoute(http.MethodPatch, apiPath(literal("roles"), canonicalID("role_id")),

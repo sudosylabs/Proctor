@@ -91,33 +91,17 @@ func examStarterWorkspaceHTTPResource(application ExamStarterWorkspaceApplicatio
 	files := apiPath(literal("exams"), canonicalID("exam_id"), literal("draft"), literal("starter-workspace"), literal("files"))
 	entry := apiPath(literal("exams"), canonicalID("exam_id"), literal("draft"), literal("starter-workspace"), literal("entries"), canonicalID("starter_workspace_entry_id"))
 	fileContent := apiPath(literal("exams"), canonicalID("exam_id"), literal("draft"), literal("starter-workspace"), literal("files"), canonicalID("starter_workspace_entry_id"), literal("content"))
-	readErrors := academicReadErrorCodes("request.invalid", "resource.not_found", "exam.starter_workspace.invalid", "exam.starter_workspace.unavailable")
-	directoryErrors := examStarterWorkspaceMutationErrors("exam.starter_workspace.path_conflict", "exam.starter_workspace.parent_not_found", "exam.starter_workspace.entry_limit")
-	createFileErrors := examStarterWorkspaceMutationErrors("exam.starter_workspace.path_conflict", "exam.starter_workspace.parent_not_found",
-		"exam.starter_workspace.entry_limit", "exam.starter_workspace.total_size_limit", "exam.starter_workspace.upload_expired", "exam.starter_workspace.object_conflict")
-	moveErrors := examStarterWorkspaceMutationErrors("exam.starter_workspace.path_conflict", "exam.starter_workspace.parent_not_found",
-		"exam.starter_workspace.no_changes", "exam.starter_workspace.move_conflict")
-	replaceErrors := examStarterWorkspaceMutationErrors("exam.starter_workspace.total_size_limit", "exam.starter_workspace.upload_expired",
-		"exam.starter_workspace.object_conflict", "exam.starter_workspace.content_conflict", "exam.starter_workspace.entry_kind")
-	removeErrors := examStarterWorkspaceMutationErrors("exam.starter_workspace.directory_not_empty")
 	return newResource("exam-starter-workspace",
-		principalRoute(http.MethodGet, collection, readErrors, module.list),
-		idempotentPrincipalRoute(IdempotencyRequired, http.MethodPost, directories, directoryErrors, module.createDirectory),
+		principalRoute(http.MethodGet, collection, []string{"authorization.request.invalid", "authorization.unavailable", "request.invalid", "resource.not_found", "exam.starter_workspace.invalid", "exam.starter_workspace.unavailable"}, module.list),
+		idempotentPrincipalRoute(IdempotencyRequired, http.MethodPost, directories, []string{"authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "resource.not_found", "exam.archived", "exam.draft.revision_conflict", "exam.starter_workspace.invalid", "exam.starter_workspace.conflict", "exam.starter_workspace.unavailable", "idempotency.key_required", "idempotency.key_invalid", "idempotency.conflict", "idempotency.in_progress", "exam.starter_workspace.path_conflict", "exam.starter_workspace.parent_not_found", "exam.starter_workspace.entry_limit"}, module.createDirectory),
 		idempotentProtocolRoute(IdempotencyRequired, examStarterWorkspaceUploadBodyLimit, "exam-starter-workspace-file-upload", RouteProtocolStreamingUpload,
-			AuthPrincipalRequired, http.MethodPost, files, createFileErrors, module.createFile),
-		idempotentPrincipalRoute(IdempotencyRequired, http.MethodPatch, entry, moveErrors, module.moveEntry),
+			AuthPrincipalRequired, http.MethodPost, files, []string{"authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "resource.not_found", "exam.archived", "exam.draft.revision_conflict", "exam.starter_workspace.invalid", "exam.starter_workspace.conflict", "exam.starter_workspace.unavailable", "idempotency.key_required", "idempotency.key_invalid", "idempotency.conflict", "idempotency.in_progress", "exam.starter_workspace.path_conflict", "exam.starter_workspace.parent_not_found", "exam.starter_workspace.entry_limit", "exam.starter_workspace.total_size_limit", "exam.starter_workspace.upload_expired", "exam.starter_workspace.object_conflict"}, module.createFile),
+		idempotentPrincipalRoute(IdempotencyRequired, http.MethodPatch, entry, []string{"authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "resource.not_found", "exam.archived", "exam.draft.revision_conflict", "exam.starter_workspace.invalid", "exam.starter_workspace.conflict", "exam.starter_workspace.unavailable", "idempotency.key_required", "idempotency.key_invalid", "idempotency.conflict", "idempotency.in_progress", "exam.starter_workspace.path_conflict", "exam.starter_workspace.parent_not_found", "exam.starter_workspace.no_changes", "exam.starter_workspace.move_conflict"}, module.moveEntry),
 		idempotentProtocolRoute(IdempotencyRequired, examStarterWorkspaceUploadBodyLimit, "exam-starter-workspace-file-replacement", RouteProtocolStreamingUpload,
-			AuthPrincipalRequired, http.MethodPut, fileContent, replaceErrors, module.replaceFile),
-		idempotentPrincipalRoute(IdempotencyRequired, http.MethodDelete, entry, removeErrors, module.removeEntry),
-		protocolRoute("exam-starter-workspace-protected-content", RouteProtocolBinaryDownload, AuthPrincipalRequired, http.MethodGet, fileContent, readErrors, module.openFile),
+			AuthPrincipalRequired, http.MethodPut, fileContent, []string{"authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "resource.not_found", "exam.archived", "exam.draft.revision_conflict", "exam.starter_workspace.invalid", "exam.starter_workspace.conflict", "exam.starter_workspace.unavailable", "idempotency.key_required", "idempotency.key_invalid", "idempotency.conflict", "idempotency.in_progress", "exam.starter_workspace.total_size_limit", "exam.starter_workspace.upload_expired", "exam.starter_workspace.object_conflict", "exam.starter_workspace.content_conflict", "exam.starter_workspace.entry_kind"}, module.replaceFile),
+		idempotentPrincipalRoute(IdempotencyRequired, http.MethodDelete, entry, []string{"authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "resource.not_found", "exam.archived", "exam.draft.revision_conflict", "exam.starter_workspace.invalid", "exam.starter_workspace.conflict", "exam.starter_workspace.unavailable", "idempotency.key_required", "idempotency.key_invalid", "idempotency.conflict", "idempotency.in_progress", "exam.starter_workspace.directory_not_empty"}, module.removeEntry),
+		protocolRoute("exam-starter-workspace-protected-content", RouteProtocolBinaryDownload, AuthPrincipalRequired, http.MethodGet, fileContent, []string{"authorization.request.invalid", "authorization.unavailable", "request.invalid", "resource.not_found", "exam.starter_workspace.invalid", "exam.starter_workspace.unavailable"}, module.openFile),
 	)
-}
-
-func examStarterWorkspaceMutationErrors(specific ...string) []string {
-	common := []string{"request.invalid", "resource.not_found", "exam.archived", "exam.draft.revision_conflict",
-		"exam.starter_workspace.invalid", "exam.starter_workspace.conflict", "exam.starter_workspace.unavailable",
-		"idempotency.key_required", "idempotency.key_invalid", "idempotency.conflict", "idempotency.in_progress"}
-	return academicMutationErrorCodes(append(common, specific...)...)
 }
 
 func (m examStarterWorkspaceHTTPModule) list(request operationRequest) (operationResult, error) {

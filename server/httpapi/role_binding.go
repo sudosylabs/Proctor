@@ -55,17 +55,12 @@ func roleBindingResource(bindings RoleBindingApplication) apiResource {
 	return newResource(
 		"role-bindings",
 		principalRoute(http.MethodGet, apiPath(literal("role-bindings")),
-			operatorReadErrorCodes("request.invalid", "administration.unavailable"), module.list),
+			[]string{"authorization.denied", "authorization.request.invalid", "authorization.unavailable", "request.invalid", "administration.unavailable", "resource.not_found"}, module.list),
 		strongRecentSessionRoute(http.MethodPost, apiPath(literal("role-bindings")),
-			roleBindingMutationErrorCodes("request.invalid", "resource.not_found", "role_binding.invalid", "role_binding.conflict", "role_binding.system_admin_scope_invalid", "administration.unavailable"), module.create),
+			[]string{"authorization.denied", "authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "resource.not_found", "role_binding.invalid", "role_binding.conflict", "role_binding.system_admin_scope_invalid", "administration.unavailable", "mail.unavailable"}, module.create),
 		strongRecentSessionRoute(http.MethodDelete, apiPath(literal("role-bindings"), canonicalID("role_binding_id")),
-			roleBindingMutationErrorCodes("request.invalid", "resource.not_found", "role_binding.conflict", "role_binding.last_system_admin", "administration.unavailable"), module.end),
+			[]string{"authorization.denied", "authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "resource.not_found", "role_binding.conflict", "role_binding.last_system_admin", "administration.unavailable", "mail.unavailable"}, module.end),
 	)
-}
-
-func roleBindingMutationErrorCodes(specific ...string) []string {
-	codes := operatorMutationErrorCodes()
-	return append(codes, specific...)
 }
 
 func (m roleBindingResourceModule) list(request operationRequest) (operationResult, error) {

@@ -16,13 +16,14 @@ paths:
         Returns bounded aggregate delivery and queue health metrics for public allowlisted template categories. Metrics contain no recipient identity, message content, payload identifiers, credentials, or raw provider errors.
       x-proctor-auth: principal_required
       x-proctor-error-codes:
-        - authentication.required
-        - authentication.token_invalid
-        - authentication.credential_ambiguous
         - authorization.denied
         - authorization.request.invalid
         - authorization.unavailable
         - mail.unavailable
+        - resource.not_found
+        - authentication.required
+        - authentication.token_invalid
+        - authentication.credential_ambiguous
         - authentication.dpop.invalid
         - authentication.dpop.replayed
         - authentication.dpop.use_nonce
@@ -41,6 +42,8 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         "403":
           $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
         "500":
           $ref: '#/components/responses/InternalError'
         "503":

@@ -146,11 +146,7 @@ func bootstrapResource(bootstrap BootstrapApplication) apiResource {
 		publicRoute(
 			http.MethodPost,
 			apiPath(literal("bootstrap")),
-			[]string{
-				"request.invalid", "installation.already_initialized", "installation.unavailable",
-				"installation.bootstrap_denied",
-				"authentication.password.invalid", "service.busy", "authentication.rate_limited",
-			},
+			[]string{"request.invalid", "installation.already_initialized", "installation.unavailable", "installation.bootstrap_denied", "authentication.password.invalid", "service.busy", "authentication.rate_limited", "administration.unavailable"},
 			module.install,
 		),
 	)

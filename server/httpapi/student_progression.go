@@ -43,18 +43,15 @@ type studentProgressionCommitRequest struct {
 
 func studentProgressionResource(progressions StudentProgressionApplication) apiResource {
 	module := studentProgressionModule{progressions: progressions}
-	mutationCodes := academicRelationshipMutationErrorCodes("student_progression.target_conflict", "student_progression.lineage_conflict",
-		"student_progression.effective_date_conflict", "student_progression.roster_too_large", "student_progression.conflict", "student_progression.unavailable")
-	readCodes := append(academicRelationshipReadErrorCodes(), "student_progression.unavailable")
 	return newResource("student-progressions",
-		principalRoute(http.MethodPost, apiPath(literal("student-progressions")), mutationCodes, module.dryRun),
-		principalRoute(http.MethodGet, apiPath(literal("student-progressions"), canonicalID("student_progression_id")), readCodes, module.get),
+		principalRoute(http.MethodPost, apiPath(literal("student-progressions")), []string{"authorization.denied", "authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "resource.not_found", "student_progression.target_conflict", "student_progression.lineage_conflict", "student_progression.effective_date_conflict", "student_progression.conflict", "student_progression.unavailable", "administration.unavailable", "authentication.mfa.unavailable", "invitation.unavailable", "onboarding_import.file_invalid", "onboarding_import.unavailable"}, module.dryRun),
+		principalRoute(http.MethodGet, apiPath(literal("student-progressions"), canonicalID("student_progression_id")), []string{"authorization.denied", "authorization.request.invalid", "authorization.unavailable", "request.invalid", "resource.not_found", "student_progression.unavailable", "invitation.unavailable", "onboarding_import.unavailable", "student_progression.conflict"}, module.get),
 		idempotentPrincipalRoute(IdempotencyRequired, http.MethodPost, apiPath(literal("student-progressions"), canonicalID("student_progression_id"), literal("commit")),
-			append(mutationCodes, "idempotency.key_required", "idempotency.key_invalid"), module.commit),
-		principalRoute(http.MethodPost, apiPath(literal("student-progressions"), canonicalID("student_progression_id"), literal("cancel")), mutationCodes, module.cancel),
+			[]string{"authorization.denied", "authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "resource.not_found", "student_progression.conflict", "student_progression.unavailable", "administration.unavailable", "idempotency.key_required", "idempotency.key_invalid", "authentication.mfa.unavailable", "invitation.unavailable", "onboarding_import.file_invalid", "onboarding_import.unavailable"}, module.commit),
+		principalRoute(http.MethodPost, apiPath(literal("student-progressions"), canonicalID("student_progression_id"), literal("cancel")), []string{"authorization.denied", "authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "resource.not_found", "student_progression.conflict", "student_progression.unavailable", "invitation.unavailable", "onboarding_import.file_invalid", "onboarding_import.unavailable"}, module.cancel),
 		protocolRoute("student-progression-report", RouteProtocolBinaryDownload, AuthPrincipalRequired, http.MethodGet,
 			apiPath(literal("student-progressions"), canonicalID("student_progression_id"), literal("report")),
-			append(readCodes, "student_progression.conflict"), module.report),
+			[]string{"authorization.denied", "authorization.request.invalid", "authorization.unavailable", "request.invalid", "resource.not_found", "student_progression.unavailable", "student_progression.conflict"}, module.report),
 	)
 }
 

@@ -172,6 +172,13 @@ var dependencyRules = []dependencyRule{
 		sources: []pathPattern{subtree(serverModule + "/model/internal/idgen")},
 	},
 	{
+		name:    "route error-code analysis for tests",
+		sources: []pathPattern{exact(serverModule + "/internal/errorflow")},
+		thirdParty: only(
+			subtree("golang.org/x/tools/go"),
+		),
+	},
+	{
 		name:    "static TLS key pair files",
 		sources: []pathPattern{exact(serverModule + "/internal/tlscert")},
 	},

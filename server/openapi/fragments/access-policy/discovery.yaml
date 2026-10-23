@@ -24,11 +24,15 @@ paths:
       x-proctor-auth: public
       x-proctor-error-codes:
         - access_policy.unavailable
+        - access_policy.blocked
+        - access_policy.revision_conflict
       security: []
       x-proctor-idempotency: none
       responses:
         "200":
           $ref: '#/components/responses/PublicAccessDiscoveryOK'
+        "409":
+          $ref: '#/components/responses/Conflict'
         "503":
           $ref: '#/components/responses/ServiceUnavailable'
 components:

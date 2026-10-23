@@ -70,21 +70,10 @@ type desktopCompatibilityPolicyResourceModule struct {
 
 func desktopCompatibilityPolicyResource(application DesktopCompatibilityApplication) apiResource {
 	module := desktopCompatibilityPolicyResourceModule{application: application}
-	readErrors := operatorReadErrorCodes("desktop_compatibility_policy.unavailable")
-	mutationErrors := operatorMutationErrorCodes(
-		"idempotency.key_required",
-		"idempotency.key_invalid",
-		"idempotency.conflict",
-		"idempotency.in_progress",
-		"request.invalid",
-		"desktop_compatibility_policy.invalid",
-		"desktop_compatibility_policy.revision_conflict",
-		"desktop_compatibility_policy.unavailable",
-	)
 	replace := strongRecentSessionRoute(
 		http.MethodPut,
 		apiPath(literal("desktop-compatibility-policy")),
-		mutationErrors,
+		[]string{"authorization.denied", "authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "idempotency.key_required", "idempotency.key_invalid", "idempotency.conflict", "idempotency.in_progress", "request.invalid", "desktop_compatibility_policy.invalid", "desktop_compatibility_policy.revision_conflict", "desktop_compatibility_policy.unavailable", "resource.not_found"},
 		module.replace,
 	)
 	replace.idempotency = IdempotencyRequired
@@ -93,7 +82,7 @@ func desktopCompatibilityPolicyResource(application DesktopCompatibilityApplicat
 		principalRoute(
 			http.MethodGet,
 			apiPath(literal("desktop-compatibility-policy")),
-			readErrors,
+			[]string{"authorization.denied", "authorization.request.invalid", "authorization.unavailable", "desktop_compatibility_policy.unavailable", "desktop_compatibility_policy.revision_conflict", "resource.not_found"},
 			module.get,
 		),
 		replace,

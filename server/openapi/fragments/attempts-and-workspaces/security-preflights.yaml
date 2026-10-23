@@ -23,19 +23,8 @@ paths:
       x-proctor-auth: session_required
       x-proctor-idempotency: required
       x-proctor-error-codes:
-        - authentication.required
-        - authentication.token_invalid
-        - authentication.credential_ambiguous
-        - authentication.csrf.invalid
-        - authorization.denied
-        - authorization.request.invalid
-        - authorization.unavailable
         - audit.unavailable
-        - administration.unavailable
-        - authentication.dpop.invalid
-        - authentication.dpop.replayed
-        - authentication.dpop.use_nonce
-        - authentication.dpop.unavailable
+        - exam.delivery.control_rate_limited
         - request.invalid
         - resource.not_found
         - exam.attempt.invalid
@@ -48,7 +37,6 @@ paths:
         - exam.security.preflight_expired
         - exam.security.preflight_superseded
         - exam.security.preflight_consumed
-        - exam.delivery.control_rate_limited
         - exam.security.preflight_rate_limited
         - exam.security.policy_changed
         - exam.security.session_changed
@@ -60,6 +48,15 @@ paths:
         - idempotency.key_invalid
         - idempotency.conflict
         - idempotency.in_progress
+        - exam.delivery.metadata_capacity
+        - authentication.required
+        - authentication.token_invalid
+        - authentication.credential_ambiguous
+        - authentication.dpop.invalid
+        - authentication.dpop.replayed
+        - authentication.dpop.use_nonce
+        - authentication.dpop.unavailable
+        - authentication.csrf.invalid
       security:
         - bearerAuth: []
         - dpopAuth: []
@@ -107,19 +104,8 @@ paths:
       x-proctor-auth: session_required
       x-proctor-idempotency: required
       x-proctor-error-codes:
-        - authentication.required
-        - authentication.token_invalid
-        - authentication.credential_ambiguous
-        - authentication.csrf.invalid
-        - authorization.denied
-        - authorization.request.invalid
-        - authorization.unavailable
         - audit.unavailable
-        - administration.unavailable
-        - authentication.dpop.invalid
-        - authentication.dpop.replayed
-        - authentication.dpop.use_nonce
-        - authentication.dpop.unavailable
+        - exam.delivery.control_rate_limited
         - request.invalid
         - resource.not_found
         - exam.attempt.invalid
@@ -132,7 +118,6 @@ paths:
         - exam.security.preflight_expired
         - exam.security.preflight_superseded
         - exam.security.preflight_consumed
-        - exam.delivery.control_rate_limited
         - exam.security.preflight_rate_limited
         - exam.security.policy_changed
         - exam.security.session_changed
@@ -144,6 +129,15 @@ paths:
         - idempotency.key_invalid
         - idempotency.conflict
         - idempotency.in_progress
+        - exam.delivery.metadata_capacity
+        - authentication.required
+        - authentication.token_invalid
+        - authentication.credential_ambiguous
+        - authentication.dpop.invalid
+        - authentication.dpop.replayed
+        - authentication.dpop.use_nonce
+        - authentication.dpop.unavailable
+        - authentication.csrf.invalid
       security:
         - bearerAuth: []
         - dpopAuth: []
@@ -190,18 +184,7 @@ paths:
       x-proctor-auth: session_required
       x-proctor-idempotency: none
       x-proctor-error-codes:
-        - authentication.required
-        - authentication.token_invalid
-        - authentication.credential_ambiguous
-        - authorization.denied
-        - authorization.request.invalid
-        - authorization.unavailable
-        - audit.unavailable
-        - administration.unavailable
-        - authentication.dpop.invalid
-        - authentication.dpop.replayed
-        - authentication.dpop.use_nonce
-        - authentication.dpop.unavailable
+        - exam.delivery.control_rate_limited
         - request.invalid
         - resource.not_found
         - exam.attempt.invalid
@@ -214,7 +197,6 @@ paths:
         - exam.security.preflight_expired
         - exam.security.preflight_superseded
         - exam.security.preflight_consumed
-        - exam.delivery.control_rate_limited
         - exam.security.preflight_rate_limited
         - exam.security.policy_changed
         - exam.security.session_changed
@@ -222,10 +204,16 @@ paths:
         - exam.security.attempt_not_ready
         - exam.security.catalog_missing
         - exam.security.unsupported_capability
-        - idempotency.key_required
-        - idempotency.key_invalid
         - idempotency.conflict
         - idempotency.in_progress
+        - exam.delivery.metadata_capacity
+        - authentication.required
+        - authentication.token_invalid
+        - authentication.credential_ambiguous
+        - authentication.dpop.invalid
+        - authentication.dpop.replayed
+        - authentication.dpop.use_nonce
+        - authentication.dpop.unavailable
       security:
         - bearerAuth: []
         - dpopAuth: []

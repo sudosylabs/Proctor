@@ -19,10 +19,6 @@ paths:
       x-proctor-auth: session_required
       x-proctor-idempotency: required
       x-proctor-error-codes:
-        - authentication.required
-        - authentication.token_invalid
-        - authentication.credential_ambiguous
-        - authentication.csrf.invalid
         - audit.unavailable
         - request.invalid
         - resource.not_found
@@ -39,10 +35,16 @@ paths:
         - exam.attempt.workspace.path_conflict
         - exam.attempt.workspace.entry_conflict
         - exam.attempt.workspace.entry_limit
+        - exam.attempt.registered_desktop_required
+        - exam.delivery.metadata_capacity
+        - authentication.required
+        - authentication.token_invalid
+        - authentication.credential_ambiguous
         - authentication.dpop.invalid
         - authentication.dpop.replayed
         - authentication.dpop.use_nonce
         - authentication.dpop.unavailable
+        - authentication.csrf.invalid
       security:
         - bearerAuth: []
         - dpopAuth: []

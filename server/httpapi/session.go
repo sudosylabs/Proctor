@@ -44,9 +44,9 @@ func sessionResource(sessions Sessions, cookies browserCookies) apiResource {
 	base := apiPath(literal("users"), literal("me"), literal("sessions"))
 	return newResource(
 		"sessions",
-		sessionRoute(http.MethodGet, base, personalAccessTokenSessionCodes("authentication.internal"), module.list),
-		sessionRoute(http.MethodPost, appendRoutePath(base, literal("revoke")), personalAccessTokenSessionMutationCodes("request.invalid", "session.id.invalid", "session.not_found", "authentication.internal"), module.revoke),
-		sessionRoute(http.MethodPost, appendRoutePath(base, literal("revoke-all")), personalAccessTokenSessionMutationCodes("authentication.internal"), module.revokeAll),
+		sessionRoute(http.MethodGet, base, []string{"authentication.internal", "request.invalid"}, module.list),
+		sessionRoute(http.MethodPost, appendRoutePath(base, literal("revoke")), []string{"request.invalid", "session.id.invalid", "session.not_found", "authentication.internal", "audit.unavailable"}, module.revoke),
+		sessionRoute(http.MethodPost, appendRoutePath(base, literal("revoke-all")), []string{"authentication.internal", "audit.unavailable"}, module.revokeAll),
 	)
 }
 

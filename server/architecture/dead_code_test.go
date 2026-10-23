@@ -26,7 +26,7 @@ import (
 
 // testSupportPackages exist only for tests to import, so nothing in a
 // production binary reaches them.
-var testSupportPackages = []string{"config/configtest", "store/storetest", "testlib"}
+var testSupportPackages = []string{"config/configtest", "internal/errorflow", "store/storetest", "testlib"}
 
 // reachableOnlyFromTests names every production function that no server
 // binary reaches, keyed as <package relative to the module>.<[Receiver.]Name>

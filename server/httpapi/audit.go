@@ -77,7 +77,7 @@ func auditResource(audits AuditListingApplication) apiResource {
 	return newResource(
 		"audits",
 		principalRoute(http.MethodGet, apiPath(literal("audits")),
-			operatorReadErrorCodes("audit.query.invalid", "audit.unavailable", "request.invalid"), module.list),
+			[]string{"authorization.denied", "authorization.request.invalid", "authorization.unavailable", "audit.query.invalid", "audit.unavailable", "request.invalid", "resource.not_found"}, module.list),
 	)
 }
 

@@ -17,6 +17,8 @@ paths:
       x-proctor-auth: public
       x-proctor-error-codes:
         - request.invalid
+        - desktop_compatibility_policy.revision_conflict
+        - desktop_compatibility_policy.unavailable
       security: []
       x-proctor-idempotency: none
       parameters:
@@ -68,6 +70,10 @@ paths:
           $ref: '#/components/responses/SystemPingOK'
         "400":
           $ref: '#/components/responses/BadRequest'
+        "409":
+          $ref: '#/components/responses/Conflict'
+        "503":
+          $ref: '#/components/responses/ServiceUnavailable'
   /api/v1/system/version:
     get:
       operationId: getSystemVersion

@@ -56,21 +56,10 @@ type retentionPolicyResourceModule struct {
 
 func retentionPolicyResource(application RetentionPolicyApplication) apiResource {
 	module := retentionPolicyResourceModule{application: application}
-	readErrors := operatorReadErrorCodes("retention_policy.unavailable")
-	mutationErrors := operatorMutationErrorCodes(
-		"idempotency.key_required",
-		"idempotency.key_invalid",
-		"idempotency.conflict",
-		"idempotency.in_progress",
-		"request.invalid",
-		"retention_policy.invalid",
-		"retention_policy.revision_conflict",
-		"retention_policy.unavailable",
-	)
 	replace := strongRecentSessionRoute(
 		http.MethodPut,
 		apiPath(literal("retention-policy")),
-		mutationErrors,
+		[]string{"authorization.denied", "authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "idempotency.key_required", "idempotency.key_invalid", "idempotency.conflict", "idempotency.in_progress", "request.invalid", "retention_policy.invalid", "retention_policy.revision_conflict", "retention_policy.unavailable", "resource.not_found"},
 		module.replace,
 	)
 	replace.idempotency = IdempotencyRequired
@@ -79,7 +68,7 @@ func retentionPolicyResource(application RetentionPolicyApplication) apiResource
 		principalRoute(
 			http.MethodGet,
 			apiPath(literal("retention-policy")),
-			readErrors,
+			[]string{"authorization.denied", "authorization.request.invalid", "authorization.unavailable", "retention_policy.unavailable", "resource.not_found", "retention_policy.revision_conflict"},
 			module.get,
 		),
 		replace,

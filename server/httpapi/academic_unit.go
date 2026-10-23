@@ -52,12 +52,12 @@ func academicUnitResource(academicUnits AcademicUnitApplication) apiResource {
 	children := apiPath(literal("academic-units"), canonicalID("academic_unit_id"), literal("children"))
 	return newResource(
 		"academic-units",
-		principalRoute(http.MethodGet, collection, academicReadErrorCodes("request.invalid"), module.listRoot),
-		idempotentPrincipalRoute(IdempotencyOptional, http.MethodPost, collection, academicMutationErrorCodes("request.invalid", "academic_unit.invalid", "academic_unit.conflict", "idempotency.key_invalid", "idempotency.conflict", "idempotency.in_progress"), module.createRoot),
-		principalRoute(http.MethodGet, member, academicReadErrorCodes("resource.not_found"), module.get),
+		principalRoute(http.MethodGet, collection, []string{"authorization.denied", "authorization.request.invalid", "authorization.unavailable", "request.invalid", "administration.unavailable", "resource.not_found"}, module.listRoot),
+		idempotentPrincipalRoute(IdempotencyOptional, http.MethodPost, collection, []string{"authorization.denied", "authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "academic_unit.invalid", "academic_unit.conflict", "idempotency.key_invalid", "idempotency.conflict", "idempotency.in_progress", "administration.unavailable", "resource.not_found"}, module.createRoot),
+		principalRoute(http.MethodGet, member, []string{"authorization.denied", "authorization.request.invalid", "authorization.unavailable", "resource.not_found", "administration.unavailable", "request.invalid"}, module.get),
 		principalRoute(http.MethodPatch, member, academicMutationErrorCodes("request.invalid", "resource.not_found", "academic_unit.invalid", "academic_unit.conflict"), module.patch),
 		principalRoute(http.MethodDelete, member, academicMutationErrorCodes("request.invalid", "resource.not_found", "academic_unit.conflict"), module.archive),
-		principalRoute(http.MethodGet, children, academicReadErrorCodes("resource.not_found"), module.listChildren),
+		principalRoute(http.MethodGet, children, []string{"authorization.denied", "authorization.request.invalid", "authorization.unavailable", "resource.not_found", "administration.unavailable", "request.invalid"}, module.listChildren),
 		principalRoute(http.MethodPost, children, academicMutationErrorCodes("request.invalid", "resource.not_found", "academic_unit.invalid", "academic_unit.conflict"), module.createChild),
 	)
 }

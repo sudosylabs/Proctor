@@ -26,6 +26,10 @@ description: Add or change Proctor HTTP routes, handlers, DTOs, credential or as
    `server/httpapi/error_catalog.yaml`, run `make -C server errors-generate`,
    and mint domain codes only in the application. Completion: the catalog
    check passes and no transport code path constructs a domain code.
+   A route's error table lists what its operation can return, no more and no
+   less; when `TestRouteErrorTablesMatchReachableCodes` reports a mismatch,
+   change the table, its OpenAPI `x-proctor-error-codes`, and the agreement
+   contract together. Completion: the route check and OpenAPI agreement pass.
 6. Update route, mapping, Problem Details, OpenAPI agreement, upload/download,
    WebSocket, and concealment tests, then run the focused HTTP/OpenAPI checks
    and `make -C server architecture`.

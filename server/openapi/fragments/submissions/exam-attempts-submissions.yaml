@@ -23,11 +23,6 @@ paths:
       x-proctor-auth: session_required
       x-proctor-idempotency: required
       x-proctor-error-codes:
-        - authentication.required
-        - authentication.token_invalid
-        - authentication.credential_ambiguous
-        - authentication.csrf.invalid
-        - audit.unavailable
         - request.invalid
         - resource.not_found
         - exam.attempt.invalid
@@ -41,10 +36,17 @@ paths:
         - idempotency.key_invalid
         - idempotency.conflict
         - idempotency.in_progress
+        - authorization.unavailable
+        - exam.attempt.registered_desktop_required
+        - exam.delivery.metadata_capacity
+        - authentication.required
+        - authentication.token_invalid
+        - authentication.credential_ambiguous
         - authentication.dpop.invalid
         - authentication.dpop.replayed
         - authentication.dpop.use_nonce
         - authentication.dpop.unavailable
+        - authentication.csrf.invalid
       security:
         - bearerAuth: []
         - dpopAuth: []
@@ -102,10 +104,6 @@ paths:
       x-proctor-auth: session_required
       x-proctor-idempotency: required
       x-proctor-error-codes:
-        - authentication.required
-        - authentication.token_invalid
-        - authentication.credential_ambiguous
-        - authentication.csrf.invalid
         - audit.unavailable
         - request.invalid
         - resource.not_found
@@ -125,10 +123,16 @@ paths:
         - exam.attempt.correction_conflict
         - exam.attempt.browser_activity_conflict
         - exam.attempt.connection_lost
+        - exam.attempt.registered_desktop_required
+        - exam.delivery.metadata_capacity
+        - authentication.required
+        - authentication.token_invalid
+        - authentication.credential_ambiguous
         - authentication.dpop.invalid
         - authentication.dpop.replayed
         - authentication.dpop.use_nonce
         - authentication.dpop.unavailable
+        - authentication.csrf.invalid
       security:
         - bearerAuth: []
         - dpopAuth: []

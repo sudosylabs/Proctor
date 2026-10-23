@@ -23,13 +23,13 @@ func TestRoleOpenAPIAgreesWithRuntime(t *testing.T) {
 			{
 				Key: "GET /api/v1/roles", Auth: AuthPrincipalRequired,
 				SuccessStatus: "200", SuccessRef: "#/components/responses/RoleListOK", SuccessSchema: "RoleListResponse",
-				PublicErrorCodes: principalContractCodes("administration.unavailable"),
+				PublicErrorCodes: []string{"authorization.denied", "authorization.request.invalid", "authorization.unavailable", "administration.unavailable", "request.invalid", "resource.not_found"},
 			},
 			{
 				Key: "POST /api/v1/roles", Auth: AuthPrincipalRequired,
 				RequestBodyRef: "#/components/requestBodies/CreateRole", RequestSchema: "CreateRoleRequest",
 				SuccessStatus: "201", SuccessRef: "#/components/responses/RoleCreated", SuccessSchema: "RoleResponse",
-				PublicErrorCodes: principalMutationContractCodes("request.invalid", "role.invalid", "role.conflict", "role.permission.invalid", "administration.unavailable"),
+				PublicErrorCodes: []string{"authorization.denied", "authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "role.invalid", "role.conflict", "role.permission.invalid", "administration.unavailable", "resource.not_found"},
 			},
 			{
 				Key: "GET /api/v1/roles/{role_id}", Auth: AuthPrincipalRequired,

@@ -20,18 +20,6 @@ import (
 
 func TestDesktopCompatibilityOpenAPIAgreesWithRuntime(t *testing.T) {
 	t.Parallel()
-	replaceCodes := principalMutationContractCodes(
-		"authentication.strong_required",
-		"authentication.reauthentication_required",
-		"idempotency.key_required",
-		"idempotency.key_invalid",
-		"idempotency.conflict",
-		"idempotency.in_progress",
-		"request.invalid",
-		"desktop_compatibility_policy.invalid",
-		"desktop_compatibility_policy.revision_conflict",
-		"desktop_compatibility_policy.unavailable",
-	)
 	suite := openAPIAgreementSuite{
 		Operations: []openAPIAgreementOperation{
 			{
@@ -40,7 +28,7 @@ func TestDesktopCompatibilityOpenAPIAgreesWithRuntime(t *testing.T) {
 				SuccessStatus:    "200",
 				SuccessRef:       "#/components/responses/SystemPingOK",
 				SuccessSchema:    "SystemPingResponse",
-				PublicErrorCodes: []string{"request.invalid"},
+				PublicErrorCodes: []string{"request.invalid", "desktop_compatibility_policy.revision_conflict", "desktop_compatibility_policy.unavailable"},
 			},
 			{
 				Key:              "GET /api/v1/desktop-compatibility-policy",
@@ -48,7 +36,7 @@ func TestDesktopCompatibilityOpenAPIAgreesWithRuntime(t *testing.T) {
 				SuccessStatus:    "200",
 				SuccessRef:       "#/components/responses/DesktopCompatibilityPolicyOK",
 				SuccessSchema:    "DesktopCompatibilityPolicyResponse",
-				PublicErrorCodes: principalContractCodes("desktop_compatibility_policy.unavailable"),
+				PublicErrorCodes: []string{"authorization.denied", "authorization.request.invalid", "authorization.unavailable", "desktop_compatibility_policy.unavailable", "desktop_compatibility_policy.revision_conflict", "resource.not_found"},
 			},
 			{
 				Key:              "PUT /api/v1/desktop-compatibility-policy",
@@ -59,7 +47,7 @@ func TestDesktopCompatibilityOpenAPIAgreesWithRuntime(t *testing.T) {
 				SuccessStatus:    "200",
 				SuccessRef:       "#/components/responses/DesktopCompatibilityPolicyOK",
 				SuccessSchema:    "DesktopCompatibilityPolicyResponse",
-				PublicErrorCodes: replaceCodes,
+				PublicErrorCodes: []string{"authorization.denied", "authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "idempotency.key_required", "idempotency.key_invalid", "idempotency.conflict", "idempotency.in_progress", "request.invalid", "desktop_compatibility_policy.invalid", "desktop_compatibility_policy.revision_conflict", "desktop_compatibility_policy.unavailable", "resource.not_found"},
 			},
 		},
 		Schemas: []openAPIAgreementSchema{
