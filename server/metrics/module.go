@@ -145,95 +145,14 @@ type Module struct {
 func New(settings config.Metrics, build BuildInfo, sources Sources) (*Module, error) {
 	registry := prometheus.NewRegistry()
 	module := &Module{settings: settings, registry: registry, errorLog: sources.ErrorLog, failures: make(chan error, 1), closeDone: make(chan struct{})}
-	module.workActive = prometheus.NewGaugeVec(prometheus.GaugeOpts{Namespace: "proctor", Subsystem: "work", Name: "active", Help: "Expensive operations currently admitted on this node."}, []string{"pool"})
-	module.workRejected = prometheus.NewCounterVec(prometheus.CounterOpts{Namespace: "proctor", Subsystem: "work", Name: "rejected_total", Help: "Expensive operations refused because their node-local pool was full."}, []string{"pool"})
-	module.workDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{Namespace: "proctor", Subsystem: "work", Name: "duration_seconds", Help: "Duration of admitted expensive operations, including failed operations.", Buckets: prometheus.DefBuckets}, []string{"pool"})
-	for _, pool := range []string{"password", "file_content"} {
-		module.workActive.WithLabelValues(pool)
-		module.workRejected.WithLabelValues(pool)
-		module.workDuration.WithLabelValues(pool)
-	}
-	module.httpRequests = prometheus.NewCounterVec(prometheus.CounterOpts{Namespace: "proctor", Subsystem: "http", Name: "requests_total", Help: "Completed public HTTP requests."}, []string{"route", "method", "status_class"})
-	module.httpDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{Namespace: "proctor", Subsystem: "http", Name: "request_duration_seconds", Help: "Public HTTP request duration.", Buckets: prometheus.DefBuckets}, []string{"route", "method"})
-	module.httpInFlight = prometheus.NewGauge(prometheus.GaugeOpts{Namespace: "proctor", Subsystem: "http", Name: "in_flight_requests", Help: "Public HTTP requests currently executing."})
-	module.httpRequestBytes = prometheus.NewHistogramVec(prometheus.HistogramOpts{Namespace: "proctor", Subsystem: "http", Name: "request_size_bytes", Help: "Public HTTP request body bytes consumed by handlers.", Buckets: prometheus.ExponentialBuckets(256, 4, 9)}, []string{"route", "method"})
-	module.httpResponseBytes = prometheus.NewHistogramVec(prometheus.HistogramOpts{Namespace: "proctor", Subsystem: "http", Name: "response_size_bytes", Help: "Public HTTP response body size.", Buckets: prometheus.ExponentialBuckets(256, 4, 9)}, []string{"route", "method"})
-	module.storeDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{Namespace: "proctor", Subsystem: "store", Name: "operation_duration_seconds", Help: "Authoritative store operation duration.", Buckets: prometheus.DefBuckets}, []string{"operation", "outcome"})
-	module.storeCache = prometheus.NewCounterVec(prometheus.CounterOpts{Namespace: "proctor", Subsystem: "store_cache", Name: "requests_total", Help: "Process-local store cache decisions."}, []string{"operation", "outcome"})
-	module.storeRetries = prometheus.NewCounterVec(prometheus.CounterOpts{Namespace: "proctor", Subsystem: "store", Name: "retries_total", Help: "Aggregate authoritative-store retry decisions."}, []string{"outcome"})
-	module.websocketConnections = prometheus.NewGauge(prometheus.GaugeOpts{Namespace: "proctor", Subsystem: "websocket", Name: "connections", Help: "WebSocket connections attached to this node."})
-	module.websocketTransitions = prometheus.NewCounterVec(prometheus.CounterOpts{Namespace: "proctor", Subsystem: "websocket", Name: "transitions_total", Help: "WebSocket connection transitions."}, []string{"transition", "outcome"})
-	module.websocketBackpressure = prometheus.NewCounter(prometheus.CounterOpts{Namespace: "proctor", Subsystem: "websocket", Name: "backpressure_disconnects_total", Help: "WebSocket connections closed by outbound backpressure."})
-	module.websocketMessages = prometheus.NewCounterVec(prometheus.CounterOpts{Namespace: "proctor", Subsystem: "websocket", Name: "messages_total", Help: "WebSocket messages processed by direction, kind, and outcome."}, []string{"direction", "kind", "outcome"})
-	module.websocketMessageBytes = prometheus.NewCounterVec(prometheus.CounterOpts{Namespace: "proctor", Subsystem: "websocket", Name: "message_bytes_total", Help: "Approximate WebSocket payload bytes processed."}, []string{"direction", "kind"})
-	module.websocketBroadcasts = prometheus.NewCounterVec(prometheus.CounterOpts{Namespace: "proctor", Subsystem: "websocket", Name: "broadcasts_total", Help: "Local WebSocket publications by bounded event class and outcome."}, []string{"event", "outcome"})
-	module.websocketFanout = prometheus.NewHistogram(prometheus.HistogramOpts{Namespace: "proctor", Subsystem: "websocket", Name: "broadcast_recipients", Help: "Connections selected by a local WebSocket publication.", Buckets: prometheus.ExponentialBuckets(1, 2, 12)})
-	module.websocketReplays = prometheus.NewCounterVec(prometheus.CounterOpts{Namespace: "proctor", Subsystem: "websocket", Name: "replays_total", Help: "WebSocket resume attempts by outcome."}, []string{"outcome"})
-	module.websocketReplayEvents = prometheus.NewHistogram(prometheus.HistogramOpts{Namespace: "proctor", Subsystem: "websocket", Name: "replay_events", Help: "Events restored by successful WebSocket resumes.", Buckets: prometheus.ExponentialBuckets(1, 2, 8)})
-	module.websocketSubscriptions = prometheus.NewGauge(prometheus.GaugeOpts{Namespace: "proctor", Subsystem: "websocket", Name: "subscriptions", Help: "Active WebSocket subscriptions on this node."})
-	module.clusterOperations = prometheus.NewCounterVec(prometheus.CounterOpts{Namespace: "proctor", Subsystem: "cluster", Name: "operations_total", Help: "Cluster transport operations."}, []string{"operation", "event", "outcome"})
-	module.clusterDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{Namespace: "proctor", Subsystem: "cluster", Name: "operation_duration_seconds", Help: "Cluster transport operation duration.", Buckets: prometheus.DefBuckets}, []string{"operation", "event"})
-	module.clusterMessages = prometheus.NewCounterVec(prometheus.CounterOpts{Namespace: "proctor", Subsystem: "cluster", Name: "messages_total", Help: "Cluster messages by direction, registered event, and outcome."}, []string{"direction", "event", "outcome"})
-	module.clusterMessageBytes = prometheus.NewCounterVec(prometheus.CounterOpts{Namespace: "proctor", Subsystem: "cluster", Name: "message_bytes_total", Help: "Cluster wire bytes by direction and registered event."}, []string{"direction", "event"})
-	module.clusterMembership = prometheus.NewCounterVec(prometheus.CounterOpts{Namespace: "proctor", Subsystem: "cluster", Name: "membership_events_total", Help: "Memberlist membership transitions."}, []string{"event"})
-	module.clusterDiscovery = prometheus.NewCounterVec(prometheus.CounterOpts{Namespace: "proctor", Subsystem: "cluster", Name: "discovery_operations_total", Help: "Cluster discovery and rejoin work by operation and outcome."}, []string{"operation", "outcome"})
-	module.clusterAdmission = prometheus.NewCounterVec(prometheus.CounterOpts{Namespace: "proctor", Subsystem: "cluster", Name: "admission_rejections_total", Help: "Rejected cluster peers by bounded reason."}, []string{"reason"})
-	module.clusterFanout = prometheus.NewHistogram(prometheus.HistogramOpts{Namespace: "proctor", Subsystem: "cluster", Name: "broadcast_recipients", Help: "Peer nodes selected by cluster broadcasts.", Buckets: prometheus.ExponentialBuckets(1, 2, 10)})
-	module.jobExecutions = prometheus.NewCounterVec(prometheus.CounterOpts{Namespace: "proctor", Subsystem: "jobs", Name: "executions_total", Help: "Durable Job executions completed on this node."}, []string{"type", "outcome"})
-	module.jobDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{Namespace: "proctor", Subsystem: "jobs", Name: "execution_duration_seconds", Help: "Durable Job handler execution duration.", Buckets: prometheus.DefBuckets}, []string{"type", "outcome"})
-	module.jobsActive = prometheus.NewGaugeVec(prometheus.GaugeOpts{Namespace: "proctor", Subsystem: "jobs", Name: "active", Help: "Durable Job handlers currently executing."}, []string{"type"})
-	module.jobActivities = prometheus.NewCounterVec(prometheus.CounterOpts{Namespace: "proctor", Subsystem: "jobs", Name: "activities_total", Help: "Durable Job runtime, recurrence, and periodic-task activity."}, []string{"kind", "name", "operation", "outcome"})
-	module.jobActivityDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{Namespace: "proctor", Subsystem: "jobs", Name: "activity_duration_seconds", Help: "Durable Job runtime, recurrence, and periodic-task duration.", Buckets: prometheus.DefBuckets}, []string{"kind", "name", "operation"})
-	module.jobQueueLatency = prometheus.NewHistogramVec(prometheus.HistogramOpts{Namespace: "proctor", Subsystem: "jobs", Name: "queue_latency_seconds", Help: "Time a durable Job was available before being claimed.", Buckets: prometheus.ExponentialBuckets(0.25, 2, 16)}, []string{"type"})
-	module.vfsOperations = operationCounter("vfs", "VFS backend operations.", []string{"backend", "operation", "outcome"})
-	module.vfsDuration = operationDuration("vfs", "VFS backend operation duration.", []string{"backend", "operation"})
-	module.vfsBytes = prometheus.NewCounterVec(prometheus.CounterOpts{Namespace: "proctor", Subsystem: "vfs", Name: "bytes_total", Help: "VFS payload bytes transferred."}, []string{"backend", "direction"})
-	module.vfsObjectSize = prometheus.NewHistogramVec(prometheus.HistogramOpts{Namespace: "proctor", Subsystem: "vfs", Name: "object_size_bytes", Help: "VFS object sizes returned by successful operations.", Buckets: prometheus.ExponentialBuckets(256, 4, 10)}, []string{"backend", "operation"})
-	module.vfsListEntries = prometheus.NewHistogramVec(prometheus.HistogramOpts{Namespace: "proctor", Subsystem: "vfs", Name: "list_entries", Help: "Entries returned by VFS list pages.", Buckets: prometheus.ExponentialBuckets(1, 2, 14)}, []string{"backend"})
-	module.vfsStreams = prometheus.NewCounterVec(prometheus.CounterOpts{Namespace: "proctor", Subsystem: "vfs", Name: "streams_total", Help: "VFS read streams by terminal outcome."}, []string{"backend", "outcome"})
-	module.cacheOperations = operationCounter("cache", "Shared cache backend operations.", []string{"backend", "operation", "outcome"})
-	module.cacheDuration = operationDuration("cache", "Shared cache backend operation duration.", []string{"backend", "operation"})
-	module.cacheBytes = prometheus.NewCounterVec(prometheus.CounterOpts{Namespace: "proctor", Subsystem: "cache", Name: "bytes_total", Help: "Shared-cache payload bytes transferred."}, []string{"backend", "direction"})
-	module.redisOperations = operationCounter("redis", "Redis cache operations.", []string{"operation", "outcome"})
-	module.redisDuration = operationDuration("redis", "Redis cache operation duration.", []string{"operation"})
-	module.smtpOperations = operationCounter("smtp", "SMTP transport operations.", []string{"operation", "outcome"})
-	module.smtpDuration = operationDuration("smtp", "SMTP transport operation duration.", []string{"operation"})
-	module.smtpMessages = prometheus.NewCounterVec(prometheus.CounterOpts{Namespace: "proctor", Subsystem: "smtp", Name: "messages_total", Help: "SMTP submission attempts by portable outcome."}, []string{"outcome"})
-	module.smtpRecipients = prometheus.NewCounterVec(prometheus.CounterOpts{Namespace: "proctor", Subsystem: "smtp", Name: "recipients_total", Help: "Aggregate SMTP envelope recipients by portable outcome."}, []string{"outcome"})
-	module.smtpBytes = prometheus.NewCounterVec(prometheus.CounterOpts{Namespace: "proctor", Subsystem: "smtp", Name: "message_bytes_total", Help: "Aggregate pre-composition SMTP message payload bytes by portable outcome."}, []string{"outcome"})
-	module.mailDeliveries = prometheus.NewCounterVec(prometheus.CounterOpts{Namespace: "proctor", Subsystem: "mail", Name: "deliveries_total", Help: "Durable mail delivery transitions by bounded template, state, and public outcome."}, []string{"template", "state", "outcome"})
-	module.mailAttempts = prometheus.NewCounterVec(prometheus.CounterOpts{Namespace: "proctor", Subsystem: "mail", Name: "attempts_total", Help: "Aggregate durable mail delivery attempts."}, []string{"template", "state"})
-	module.mailProcessingLatency = prometheus.NewHistogramVec(prometheus.HistogramOpts{Namespace: "proctor", Subsystem: "mail", Name: "processing_latency_seconds", Help: "Durable mail processing latency.", Buckets: prometheus.ExponentialBuckets(0.25, 2, 18)}, []string{"template", "state"})
-	module.mailQueueCount = prometheus.NewGaugeVec(prometheus.GaugeOpts{Namespace: "proctor", Subsystem: "mail", Name: "queue", Help: "Durable mail queue entries by template and state."}, []string{"template", "state"})
-	module.mailQueueOldest = prometheus.NewGaugeVec(prometheus.GaugeOpts{Namespace: "proctor", Subsystem: "mail", Name: "queue_oldest_age_seconds", Help: "Age of the oldest durable mail queue entry."}, []string{"template", "state"})
-	module.mailQueueTruncated = prometheus.NewGauge(prometheus.GaugeOpts{Namespace: "proctor", Subsystem: "mail", Name: "queue_snapshot_truncated", Help: "Whether the current durable mail queue snapshot reached its row bound."})
-	module.mailHealth = prometheus.NewGaugeVec(prometheus.GaugeOpts{Namespace: "proctor", Subsystem: "mail", Name: "health", Help: "Current bounded mail health state (one active code has value 1)."}, []string{"code"})
-	module.applicationEvents = prometheus.NewCounterVec(prometheus.CounterOpts{Namespace: "proctor", Subsystem: "application", Name: "events_total", Help: "Named bounded application outcomes."}, []string{"subsystem", "event", "outcome"})
-	registry.MustRegister(
-		collectors.NewGoCollector(), collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}),
-		prometheus.NewGaugeFunc(prometheus.GaugeOpts{Namespace: "proctor", Name: "ready", Help: "Whether this node is ready to serve public traffic."}, func() float64 {
-			if module.ready.Load() {
-				return 1
-			}
-			return 0
-		}),
-		prometheus.NewGaugeFunc(prometheus.GaugeOpts{Namespace: "proctor", Name: "build_info", Help: "Build information.", ConstLabels: prometheus.Labels{"version": build.Version, "commit": build.Commit, "go_version": build.GoVersion}}, func() float64 { return 1 }),
-		module.httpRequests, module.httpDuration, module.httpInFlight, module.httpRequestBytes, module.httpResponseBytes,
-		module.storeDuration, module.storeCache, module.storeRetries,
-		module.websocketConnections, module.websocketTransitions, module.websocketBackpressure,
-		module.websocketMessages, module.websocketMessageBytes, module.websocketBroadcasts, module.websocketFanout,
-		module.websocketReplays, module.websocketReplayEvents, module.websocketSubscriptions,
-		module.clusterOperations, module.clusterDuration, module.clusterMessages, module.clusterMessageBytes,
-		module.clusterMembership, module.clusterDiscovery, module.clusterAdmission, module.clusterFanout,
-		prometheus.NewGaugeFunc(prometheus.GaugeOpts{Namespace: "proctor", Subsystem: "cluster", Name: "peers", Help: "Known peer nodes, excluding this node."}, module.currentClusterPeers),
-		module.jobExecutions, module.jobDuration, module.jobsActive, module.jobActivities, module.jobActivityDuration, module.jobQueueLatency,
-		module.vfsOperations, module.vfsDuration, module.vfsBytes, module.vfsObjectSize, module.vfsListEntries, module.vfsStreams,
-		module.cacheOperations, module.cacheDuration, module.cacheBytes,
-		module.redisOperations, module.redisDuration,
-		module.smtpOperations, module.smtpDuration, module.smtpMessages, module.smtpRecipients, module.smtpBytes,
-		module.mailDeliveries, module.mailAttempts, module.mailProcessingLatency, module.mailQueueCount, module.mailQueueOldest, module.mailQueueTruncated, module.mailHealth,
-		module.applicationEvents, module.workActive, module.workRejected, module.workDuration,
-	)
+	module.newWorkCollectors()
+	module.newHTTPCollectors()
+	module.newStoreAndWebSocketCollectors()
+	module.newClusterCollectors()
+	module.newJobCollectors()
+	module.newStorageCollectors()
+	module.newMailCollectors()
+	module.registerCollectors(registry, build)
 	if sources.Database != nil {
 		registerDatabaseCollectors(registry, sources.Database)
 	}
@@ -248,6 +167,127 @@ func New(settings config.Metrics, build BuildInfo, sources Sources) (*Module, er
 	})
 	module.handler = module.authorize(module.routes(promhttp.InstrumentMetricHandler(registry, scrapeHandler)))
 	return module, nil
+}
+
+// newWorkCollectors creates the expensive-work pool collectors and pre-creates each pool's series.
+func (m *Module) newWorkCollectors() {
+	m.workActive = prometheus.NewGaugeVec(prometheus.GaugeOpts{Namespace: "proctor", Subsystem: "work", Name: "active", Help: "Expensive operations currently admitted on this node."}, []string{"pool"})
+	m.workRejected = prometheus.NewCounterVec(prometheus.CounterOpts{Namespace: "proctor", Subsystem: "work", Name: "rejected_total", Help: "Expensive operations refused because their node-local pool was full."}, []string{"pool"})
+	m.workDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{Namespace: "proctor", Subsystem: "work", Name: "duration_seconds", Help: "Duration of admitted expensive operations, including failed operations.", Buckets: prometheus.DefBuckets}, []string{"pool"})
+	for _, pool := range []string{"password", "file_content"} {
+		m.workActive.WithLabelValues(pool)
+		m.workRejected.WithLabelValues(pool)
+		m.workDuration.WithLabelValues(pool)
+	}
+}
+
+// newHTTPCollectors creates the public HTTP request collectors.
+func (m *Module) newHTTPCollectors() {
+	m.httpRequests = prometheus.NewCounterVec(prometheus.CounterOpts{Namespace: "proctor", Subsystem: "http", Name: "requests_total", Help: "Completed public HTTP requests."}, []string{"route", "method", "status_class"})
+	m.httpDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{Namespace: "proctor", Subsystem: "http", Name: "request_duration_seconds", Help: "Public HTTP request duration.", Buckets: prometheus.DefBuckets}, []string{"route", "method"})
+	m.httpInFlight = prometheus.NewGauge(prometheus.GaugeOpts{Namespace: "proctor", Subsystem: "http", Name: "in_flight_requests", Help: "Public HTTP requests currently executing."})
+	m.httpRequestBytes = prometheus.NewHistogramVec(prometheus.HistogramOpts{Namespace: "proctor", Subsystem: "http", Name: "request_size_bytes", Help: "Public HTTP request body bytes consumed by handlers.", Buckets: prometheus.ExponentialBuckets(256, 4, 9)}, []string{"route", "method"})
+	m.httpResponseBytes = prometheus.NewHistogramVec(prometheus.HistogramOpts{Namespace: "proctor", Subsystem: "http", Name: "response_size_bytes", Help: "Public HTTP response body size.", Buckets: prometheus.ExponentialBuckets(256, 4, 9)}, []string{"route", "method"})
+}
+
+// newStoreAndWebSocketCollectors creates the authoritative store, store cache and WebSocket collectors.
+func (m *Module) newStoreAndWebSocketCollectors() {
+	m.storeDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{Namespace: "proctor", Subsystem: "store", Name: "operation_duration_seconds", Help: "Authoritative store operation duration.", Buckets: prometheus.DefBuckets}, []string{"operation", "outcome"})
+	m.storeCache = prometheus.NewCounterVec(prometheus.CounterOpts{Namespace: "proctor", Subsystem: "store_cache", Name: "requests_total", Help: "Process-local store cache decisions."}, []string{"operation", "outcome"})
+	m.storeRetries = prometheus.NewCounterVec(prometheus.CounterOpts{Namespace: "proctor", Subsystem: "store", Name: "retries_total", Help: "Aggregate authoritative-store retry decisions."}, []string{"outcome"})
+	m.websocketConnections = prometheus.NewGauge(prometheus.GaugeOpts{Namespace: "proctor", Subsystem: "websocket", Name: "connections", Help: "WebSocket connections attached to this node."})
+	m.websocketTransitions = prometheus.NewCounterVec(prometheus.CounterOpts{Namespace: "proctor", Subsystem: "websocket", Name: "transitions_total", Help: "WebSocket connection transitions."}, []string{"transition", "outcome"})
+	m.websocketBackpressure = prometheus.NewCounter(prometheus.CounterOpts{Namespace: "proctor", Subsystem: "websocket", Name: "backpressure_disconnects_total", Help: "WebSocket connections closed by outbound backpressure."})
+	m.websocketMessages = prometheus.NewCounterVec(prometheus.CounterOpts{Namespace: "proctor", Subsystem: "websocket", Name: "messages_total", Help: "WebSocket messages processed by direction, kind, and outcome."}, []string{"direction", "kind", "outcome"})
+	m.websocketMessageBytes = prometheus.NewCounterVec(prometheus.CounterOpts{Namespace: "proctor", Subsystem: "websocket", Name: "message_bytes_total", Help: "Approximate WebSocket payload bytes processed."}, []string{"direction", "kind"})
+	m.websocketBroadcasts = prometheus.NewCounterVec(prometheus.CounterOpts{Namespace: "proctor", Subsystem: "websocket", Name: "broadcasts_total", Help: "Local WebSocket publications by bounded event class and outcome."}, []string{"event", "outcome"})
+	m.websocketFanout = prometheus.NewHistogram(prometheus.HistogramOpts{Namespace: "proctor", Subsystem: "websocket", Name: "broadcast_recipients", Help: "Connections selected by a local WebSocket publication.", Buckets: prometheus.ExponentialBuckets(1, 2, 12)})
+	m.websocketReplays = prometheus.NewCounterVec(prometheus.CounterOpts{Namespace: "proctor", Subsystem: "websocket", Name: "replays_total", Help: "WebSocket resume attempts by outcome."}, []string{"outcome"})
+	m.websocketReplayEvents = prometheus.NewHistogram(prometheus.HistogramOpts{Namespace: "proctor", Subsystem: "websocket", Name: "replay_events", Help: "Events restored by successful WebSocket resumes.", Buckets: prometheus.ExponentialBuckets(1, 2, 8)})
+	m.websocketSubscriptions = prometheus.NewGauge(prometheus.GaugeOpts{Namespace: "proctor", Subsystem: "websocket", Name: "subscriptions", Help: "Active WebSocket subscriptions on this node."})
+}
+
+// newClusterCollectors creates the cluster transport, membership, discovery and admission collectors.
+func (m *Module) newClusterCollectors() {
+	m.clusterOperations = prometheus.NewCounterVec(prometheus.CounterOpts{Namespace: "proctor", Subsystem: "cluster", Name: "operations_total", Help: "Cluster transport operations."}, []string{"operation", "event", "outcome"})
+	m.clusterDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{Namespace: "proctor", Subsystem: "cluster", Name: "operation_duration_seconds", Help: "Cluster transport operation duration.", Buckets: prometheus.DefBuckets}, []string{"operation", "event"})
+	m.clusterMessages = prometheus.NewCounterVec(prometheus.CounterOpts{Namespace: "proctor", Subsystem: "cluster", Name: "messages_total", Help: "Cluster messages by direction, registered event, and outcome."}, []string{"direction", "event", "outcome"})
+	m.clusterMessageBytes = prometheus.NewCounterVec(prometheus.CounterOpts{Namespace: "proctor", Subsystem: "cluster", Name: "message_bytes_total", Help: "Cluster wire bytes by direction and registered event."}, []string{"direction", "event"})
+	m.clusterMembership = prometheus.NewCounterVec(prometheus.CounterOpts{Namespace: "proctor", Subsystem: "cluster", Name: "membership_events_total", Help: "Memberlist membership transitions."}, []string{"event"})
+	m.clusterDiscovery = prometheus.NewCounterVec(prometheus.CounterOpts{Namespace: "proctor", Subsystem: "cluster", Name: "discovery_operations_total", Help: "Cluster discovery and rejoin work by operation and outcome."}, []string{"operation", "outcome"})
+	m.clusterAdmission = prometheus.NewCounterVec(prometheus.CounterOpts{Namespace: "proctor", Subsystem: "cluster", Name: "admission_rejections_total", Help: "Rejected cluster peers by bounded reason."}, []string{"reason"})
+	m.clusterFanout = prometheus.NewHistogram(prometheus.HistogramOpts{Namespace: "proctor", Subsystem: "cluster", Name: "broadcast_recipients", Help: "Peer nodes selected by cluster broadcasts.", Buckets: prometheus.ExponentialBuckets(1, 2, 10)})
+}
+
+// newJobCollectors creates the durable Job execution, activity and queue collectors.
+func (m *Module) newJobCollectors() {
+	m.jobExecutions = prometheus.NewCounterVec(prometheus.CounterOpts{Namespace: "proctor", Subsystem: "jobs", Name: "executions_total", Help: "Durable Job executions completed on this node."}, []string{"type", "outcome"})
+	m.jobDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{Namespace: "proctor", Subsystem: "jobs", Name: "execution_duration_seconds", Help: "Durable Job handler execution duration.", Buckets: prometheus.DefBuckets}, []string{"type", "outcome"})
+	m.jobsActive = prometheus.NewGaugeVec(prometheus.GaugeOpts{Namespace: "proctor", Subsystem: "jobs", Name: "active", Help: "Durable Job handlers currently executing."}, []string{"type"})
+	m.jobActivities = prometheus.NewCounterVec(prometheus.CounterOpts{Namespace: "proctor", Subsystem: "jobs", Name: "activities_total", Help: "Durable Job runtime, recurrence, and periodic-task activity."}, []string{"kind", "name", "operation", "outcome"})
+	m.jobActivityDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{Namespace: "proctor", Subsystem: "jobs", Name: "activity_duration_seconds", Help: "Durable Job runtime, recurrence, and periodic-task duration.", Buckets: prometheus.DefBuckets}, []string{"kind", "name", "operation"})
+	m.jobQueueLatency = prometheus.NewHistogramVec(prometheus.HistogramOpts{Namespace: "proctor", Subsystem: "jobs", Name: "queue_latency_seconds", Help: "Time a durable Job was available before being claimed.", Buckets: prometheus.ExponentialBuckets(0.25, 2, 16)}, []string{"type"})
+}
+
+// newStorageCollectors creates the VFS, shared cache and Redis collectors.
+func (m *Module) newStorageCollectors() {
+	m.vfsOperations = operationCounter("vfs", "VFS backend operations.", []string{"backend", "operation", "outcome"})
+	m.vfsDuration = operationDuration("vfs", "VFS backend operation duration.", []string{"backend", "operation"})
+	m.vfsBytes = prometheus.NewCounterVec(prometheus.CounterOpts{Namespace: "proctor", Subsystem: "vfs", Name: "bytes_total", Help: "VFS payload bytes transferred."}, []string{"backend", "direction"})
+	m.vfsObjectSize = prometheus.NewHistogramVec(prometheus.HistogramOpts{Namespace: "proctor", Subsystem: "vfs", Name: "object_size_bytes", Help: "VFS object sizes returned by successful operations.", Buckets: prometheus.ExponentialBuckets(256, 4, 10)}, []string{"backend", "operation"})
+	m.vfsListEntries = prometheus.NewHistogramVec(prometheus.HistogramOpts{Namespace: "proctor", Subsystem: "vfs", Name: "list_entries", Help: "Entries returned by VFS list pages.", Buckets: prometheus.ExponentialBuckets(1, 2, 14)}, []string{"backend"})
+	m.vfsStreams = prometheus.NewCounterVec(prometheus.CounterOpts{Namespace: "proctor", Subsystem: "vfs", Name: "streams_total", Help: "VFS read streams by terminal outcome."}, []string{"backend", "outcome"})
+	m.cacheOperations = operationCounter("cache", "Shared cache backend operations.", []string{"backend", "operation", "outcome"})
+	m.cacheDuration = operationDuration("cache", "Shared cache backend operation duration.", []string{"backend", "operation"})
+	m.cacheBytes = prometheus.NewCounterVec(prometheus.CounterOpts{Namespace: "proctor", Subsystem: "cache", Name: "bytes_total", Help: "Shared-cache payload bytes transferred."}, []string{"backend", "direction"})
+	m.redisOperations = operationCounter("redis", "Redis cache operations.", []string{"operation", "outcome"})
+	m.redisDuration = operationDuration("redis", "Redis cache operation duration.", []string{"operation"})
+}
+
+// newMailCollectors creates the SMTP, durable mail and application event collectors.
+func (m *Module) newMailCollectors() {
+	m.smtpOperations = operationCounter("smtp", "SMTP transport operations.", []string{"operation", "outcome"})
+	m.smtpDuration = operationDuration("smtp", "SMTP transport operation duration.", []string{"operation"})
+	m.smtpMessages = prometheus.NewCounterVec(prometheus.CounterOpts{Namespace: "proctor", Subsystem: "smtp", Name: "messages_total", Help: "SMTP submission attempts by portable outcome."}, []string{"outcome"})
+	m.smtpRecipients = prometheus.NewCounterVec(prometheus.CounterOpts{Namespace: "proctor", Subsystem: "smtp", Name: "recipients_total", Help: "Aggregate SMTP envelope recipients by portable outcome."}, []string{"outcome"})
+	m.smtpBytes = prometheus.NewCounterVec(prometheus.CounterOpts{Namespace: "proctor", Subsystem: "smtp", Name: "message_bytes_total", Help: "Aggregate pre-composition SMTP message payload bytes by portable outcome."}, []string{"outcome"})
+	m.mailDeliveries = prometheus.NewCounterVec(prometheus.CounterOpts{Namespace: "proctor", Subsystem: "mail", Name: "deliveries_total", Help: "Durable mail delivery transitions by bounded template, state, and public outcome."}, []string{"template", "state", "outcome"})
+	m.mailAttempts = prometheus.NewCounterVec(prometheus.CounterOpts{Namespace: "proctor", Subsystem: "mail", Name: "attempts_total", Help: "Aggregate durable mail delivery attempts."}, []string{"template", "state"})
+	m.mailProcessingLatency = prometheus.NewHistogramVec(prometheus.HistogramOpts{Namespace: "proctor", Subsystem: "mail", Name: "processing_latency_seconds", Help: "Durable mail processing latency.", Buckets: prometheus.ExponentialBuckets(0.25, 2, 18)}, []string{"template", "state"})
+	m.mailQueueCount = prometheus.NewGaugeVec(prometheus.GaugeOpts{Namespace: "proctor", Subsystem: "mail", Name: "queue", Help: "Durable mail queue entries by template and state."}, []string{"template", "state"})
+	m.mailQueueOldest = prometheus.NewGaugeVec(prometheus.GaugeOpts{Namespace: "proctor", Subsystem: "mail", Name: "queue_oldest_age_seconds", Help: "Age of the oldest durable mail queue entry."}, []string{"template", "state"})
+	m.mailQueueTruncated = prometheus.NewGauge(prometheus.GaugeOpts{Namespace: "proctor", Subsystem: "mail", Name: "queue_snapshot_truncated", Help: "Whether the current durable mail queue snapshot reached its row bound."})
+	m.mailHealth = prometheus.NewGaugeVec(prometheus.GaugeOpts{Namespace: "proctor", Subsystem: "mail", Name: "health", Help: "Current bounded mail health state (one active code has value 1)."}, []string{"code"})
+	m.applicationEvents = prometheus.NewCounterVec(prometheus.CounterOpts{Namespace: "proctor", Subsystem: "application", Name: "events_total", Help: "Named bounded application outcomes."}, []string{"subsystem", "event", "outcome"})
+}
+
+// registerCollectors registers the runtime, readiness, build and subsystem collectors in their fixed order.
+func (m *Module) registerCollectors(registry *prometheus.Registry, build BuildInfo) {
+	registry.MustRegister(
+		collectors.NewGoCollector(), collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}),
+		prometheus.NewGaugeFunc(prometheus.GaugeOpts{Namespace: "proctor", Name: "ready", Help: "Whether this node is ready to serve public traffic."}, func() float64 {
+			if m.ready.Load() {
+				return 1
+			}
+			return 0
+		}),
+		prometheus.NewGaugeFunc(prometheus.GaugeOpts{Namespace: "proctor", Name: "build_info", Help: "Build information.", ConstLabels: prometheus.Labels{"version": build.Version, "commit": build.Commit, "go_version": build.GoVersion}}, func() float64 { return 1 }),
+		m.httpRequests, m.httpDuration, m.httpInFlight, m.httpRequestBytes, m.httpResponseBytes,
+		m.storeDuration, m.storeCache, m.storeRetries,
+		m.websocketConnections, m.websocketTransitions, m.websocketBackpressure,
+		m.websocketMessages, m.websocketMessageBytes, m.websocketBroadcasts, m.websocketFanout,
+		m.websocketReplays, m.websocketReplayEvents, m.websocketSubscriptions,
+		m.clusterOperations, m.clusterDuration, m.clusterMessages, m.clusterMessageBytes,
+		m.clusterMembership, m.clusterDiscovery, m.clusterAdmission, m.clusterFanout,
+		prometheus.NewGaugeFunc(prometheus.GaugeOpts{Namespace: "proctor", Subsystem: "cluster", Name: "peers", Help: "Known peer nodes, excluding this node."}, m.currentClusterPeers),
+		m.jobExecutions, m.jobDuration, m.jobsActive, m.jobActivities, m.jobActivityDuration, m.jobQueueLatency,
+		m.vfsOperations, m.vfsDuration, m.vfsBytes, m.vfsObjectSize, m.vfsListEntries, m.vfsStreams,
+		m.cacheOperations, m.cacheDuration, m.cacheBytes,
+		m.redisOperations, m.redisDuration,
+		m.smtpOperations, m.smtpDuration, m.smtpMessages, m.smtpRecipients, m.smtpBytes,
+		m.mailDeliveries, m.mailAttempts, m.mailProcessingLatency, m.mailQueueCount, m.mailQueueOldest, m.mailQueueTruncated, m.mailHealth,
+		m.applicationEvents, m.workActive, m.workRejected, m.workDuration,
+	)
 }
 
 func (m *Module) Enabled() bool { return m != nil && m.settings.Enabled }
