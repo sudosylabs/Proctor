@@ -416,7 +416,10 @@ func (m examResourceModule) list(request operationRequest) (operationResult, err
 	for _, item := range page.Items {
 		response.Items = append(response.Items, examSummaryResponseFromApplication(item))
 	}
-	if len(page.Items) == query.Limit {
+	if page.HasMore && len(page.Items) == 0 {
+		return operationResult{}, unpresentableResult(errors.New("exam page made no progress"))
+	}
+	if page.HasMore {
 		last := page.Items[len(page.Items)-1]
 		response.NextCursor, err = encodeExamCatalogCursor(examCatalogCursor{UpdatedAt: model.FormatRFC3339(last.UpdatedAt), ExamID: last.ID.String()})
 		if err != nil {
@@ -622,7 +625,10 @@ func (m examResourceModule) listManagers(request operationRequest) (operationRes
 	for _, item := range page.Items {
 		response.Items = append(response.Items, examManagerResponseFromSummary(item))
 	}
-	if len(page.Items) == query.Limit {
+	if page.HasMore && len(page.Items) == 0 {
+		return operationResult{}, unpresentableResult(errors.New("exam manager page made no progress"))
+	}
+	if page.HasMore {
 		last := page.Items[len(page.Items)-1].Manager
 		response.NextCursor, err = encodeExamManagerCursor(examManagerCursor{GrantedAt: model.FormatRFC3339(last.GrantedAt), UserID: last.UserID.String()})
 		if err != nil {

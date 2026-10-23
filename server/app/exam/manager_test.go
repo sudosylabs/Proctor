@@ -38,8 +38,21 @@ func TestListManagersUsesManageAuthorizationAndBoundedCursor(t *testing.T) {
 	require.Equal(t, model.ActionExamManage, fixture.authorizer.action, "authorization/page = %s/%#v", fixture.authorizer.action, page)
 	require.Len(t, page.Items, 1, "authorization/page = %s/%#v", fixture.authorizer.action, page)
 	require.Equal(t, target, page.Items[0].Manager.UserID, "authorization/page = %s/%#v", fixture.authorizer.action, page)
-	require.Equal(t, 20, fixture.persistence.managerListOptions.Limit)
+	require.Equal(t, 21, fixture.persistence.managerListOptions.Limit, "the read probes one past the page")
 	require.Equal(t, fixture.examID, fixture.persistence.managerListOptions.ExamID)
+	require.False(t, page.HasMore)
+
+	fixture.persistence.managerSummaries = append(fixture.persistence.managerSummaries, store.ExamManagerSummary{Manager: model.ExamManager{
+		ExamID: fixture.examID, UserID: model.NewUserID(), GrantedByUserID: fixture.userID, GrantedAt: grantedAt.Add(-time.Second),
+	}})
+	page, err = fixture.service.ListExamManagers(context.Background(), fixture.invocation, ListManagersQuery{ExamID: fixture.examID, Limit: 2})
+	require.NoError(t, err)
+	require.Len(t, page.Items, 2)
+	require.False(t, page.HasMore, "an exactly full final page has no successor")
+	page, err = fixture.service.ListExamManagers(context.Background(), fixture.invocation, ListManagersQuery{ExamID: fixture.examID, Limit: 1})
+	require.NoError(t, err)
+	require.Len(t, page.Items, 1)
+	require.True(t, page.HasMore)
 }
 
 func TestAddManagerChecksEligibilityBeforeAuditedAtomicMutation(t *testing.T) {

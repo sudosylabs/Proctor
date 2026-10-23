@@ -70,7 +70,20 @@ func TestEngineProjectsOnlySafeOperatorFields(t *testing.T) {
 	}
 	require.Len(t, persistence.listOptions.Types, 1)
 	require.Equal(t, record.Type, persistence.listOptions.Types[0])
-	require.Equal(t, 20, persistence.listOptions.Limit)
+	require.Equal(t, 21, persistence.listOptions.Limit, "the read probes one past the page")
+	require.False(t, page.HasMore)
+
+	second, err := model.NewJob(model.NewJobID(), record.Type, json.RawMessage(`{}`), "second", record.CreatedAt, record.CreatedAt, 8)
+	require.NoError(t, err)
+	persistence.list = []*model.Job{record, second}
+	page, err = engine.List(context.Background(), ListQuery{Limit: 2})
+	require.NoError(t, err)
+	require.Len(t, page.Items, 2)
+	require.False(t, page.HasMore, "an exactly full final page has no successor")
+	page, err = engine.List(context.Background(), ListQuery{Limit: 1})
+	require.NoError(t, err)
+	require.Len(t, page.Items, 1)
+	require.True(t, page.HasMore)
 }
 
 func TestEngineProjectsSafeAttemptsAndPreservesCursor(t *testing.T) {
@@ -87,11 +100,24 @@ func TestEngineProjectsSafeAttemptsAndPreservesCursor(t *testing.T) {
 	require.Len(t, page.Items, 1, "Attempts() = %#v, options=%#v", page, persistence.attemptOptions)
 	require.Equal(t, attempt.ID, page.Items[0].ID, "Attempts() = %#v, options=%#v", page, persistence.attemptOptions)
 	require.Equal(t, 4, persistence.attemptOptions.BeforeNumber, "Attempts() = %#v, options=%#v", page, persistence.attemptOptions)
-	require.Equal(t, 20, persistence.attemptOptions.Limit, "Attempts() = %#v, options=%#v", page, persistence.attemptOptions)
+	require.Equal(t, 21, persistence.attemptOptions.Limit, "the read probes one past the page; Attempts() = %#v, options=%#v", page, persistence.attemptOptions)
+	require.False(t, page.HasMore)
 	encoded, err := json.Marshal(page)
 	require.NoError(t, err)
 	require.NotContains(t, string(encoded), "private-node")
 	require.NotContains(t, string(encoded), strings.Repeat("a", 64))
+
+	earlier := attempt
+	earlier.ID, earlier.Number = model.NewJobAttemptID(), 2
+	persistence.attempts = []model.JobAttempt{attempt, earlier}
+	page, err = engine.Attempts(context.Background(), AttemptListQuery{JobID: record.ID, Limit: 2})
+	require.NoError(t, err)
+	require.Len(t, page.Items, 2)
+	require.False(t, page.HasMore, "an exactly full final page has no successor")
+	page, err = engine.Attempts(context.Background(), AttemptListQuery{JobID: record.ID, Limit: 1})
+	require.NoError(t, err)
+	require.Len(t, page.Items, 1)
+	require.True(t, page.HasMore)
 }
 
 func TestEnginePreparesAndAppliesDescriptorGovernedControls(t *testing.T) {

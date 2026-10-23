@@ -114,8 +114,9 @@ type SessionPageQuery struct {
 	Limit           int
 }
 
-// MaximumSessionPageSize bounds one Session page.
-const MaximumSessionPageSize = 200
+// MaximumSessionPageSize bounds one Session read: a page of at most 200
+// Sessions and the probe row that says another page follows.
+const MaximumSessionPageSize = 201
 
 // MaximumSessionPurgeBatch bounds one Session or credential purge pass.
 const MaximumSessionPurgeBatch = 1000

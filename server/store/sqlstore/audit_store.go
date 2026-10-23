@@ -228,7 +228,7 @@ func (s SQLAuditStore) List(
 	ctx context.Context,
 	options store.AuditListOptions,
 ) ([]*model.AuditEvent, error) {
-	if options.Limit < 1 || options.Limit > 200 {
+	if options.Limit < 1 || options.Limit > 201 {
 		return nil, store.NewErrInvalidInput("audit_event", "limit", options.Limit)
 	}
 	if len(options.Visibility.AcademicUnitRootIDs) > 256 ||

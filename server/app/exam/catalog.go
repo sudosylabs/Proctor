@@ -32,8 +32,11 @@ type ListQuery struct {
 	Limit           int
 }
 
+// CatalogPage is one page of visible Exams; HasMore reports that another
+// page follows the last item.
 type CatalogPage struct {
-	Items []store.ExamSummary
+	Items   []store.ExamSummary
+	HasMore bool
 }
 
 type ArchiveCommand struct {
@@ -86,14 +89,15 @@ func (a *Authoring) ListExams(ctx context.Context, invocation invocation.Invocat
 	items, err := a.deps.Persistence.List(ctx, store.ExamListOptions{AcademicUnitID: query.AcademicUnitID,
 		Query: strings.TrimSpace(query.Query), ArchiveFilter: query.ArchiveFilter, BeforeUpdatedAt: query.BeforeUpdatedAt,
 		SittingStates: states, EndsAfter: model.TimeUTC(query.EndsAfter), StartsBefore: model.TimeUTC(query.StartsBefore),
-		BeforeExamID: query.BeforeExamID, Limit: query.Limit, Visibility: visibility})
+		BeforeExamID: query.BeforeExamID, Limit: query.Limit + 1, Visibility: visibility})
 	if err != nil {
 		return CatalogPage{}, examStoreErrors.Translate(err)
 	}
-	if items == nil {
-		items = []store.ExamSummary{}
+	page := CatalogPage{Items: items[:min(len(items), query.Limit)], HasMore: len(items) > query.Limit}
+	if page.Items == nil {
+		page.Items = []store.ExamSummary{}
 	}
-	return CatalogPage{Items: items}, nil
+	return page, nil
 }
 
 // ArchiveExam idempotently archives an Exam, fenced by ExpectedExamRevision.

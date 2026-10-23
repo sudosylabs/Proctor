@@ -123,13 +123,16 @@ func (m userAdministrationResourceModule) listSessions(request operationRequest)
 		query.BeforeCreatedAt, _ = model.ParseRFC3339(cursor.CreatedAt)
 		query.BeforeID = model.SessionID(cursor.ID)
 	}
-	sessions, listErr := m.sessions.ListUserSessions(request.context, request.invocation(), query)
+	page, listErr := m.sessions.ListUserSessions(request.context, request.invocation(), query)
 	if listErr != nil {
 		return operationResult{}, listErr
 	}
-	response := sessionAdministrationListResponse{Items: sessionResponsesFromModels(request.request, sessions)}
-	if len(sessions) == query.Limit {
-		last := sessions[len(sessions)-1]
+	response := sessionAdministrationListResponse{Items: sessionResponsesFromModels(request.request, page.Items)}
+	if page.HasMore && len(page.Items) == 0 {
+		return operationResult{}, unpresentableResult(errors.New("session page made no progress"))
+	}
+	if page.HasMore {
+		last := page.Items[len(page.Items)-1]
 		var err error
 		response.NextCursor, err = encodeOpaqueCursor(sessionCursor{
 			CreatedAt: model.FormatRFC3339(last.CreatedAt), ID: last.ID.String(),

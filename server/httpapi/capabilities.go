@@ -32,7 +32,7 @@ type AccountStateApplication interface {
 }
 
 type SessionAdministrationApplication interface {
-	ListUserSessions(context.Context, invocation.Invocation, app.ListUserSessionsQuery) ([]*model.Session, error)
+	ListUserSessions(context.Context, invocation.Invocation, app.ListUserSessionsQuery) (app.Page[*model.Session], error)
 	RevokeUserSession(context.Context, invocation.Invocation, app.RevokeUserSessionCommand) error
 	RevokeUserSessions(context.Context, invocation.Invocation, app.RevokeUserSessionsCommand) error
 }
@@ -158,7 +158,7 @@ type MFA interface {
 }
 
 type AuditListingApplication interface {
-	ListAuditEvents(context.Context, invocation.Invocation, app.ListAuditEventsQuery) ([]*model.AuditEvent, error)
+	ListAuditEvents(context.Context, invocation.Invocation, app.ListAuditEventsQuery) (app.Page[*model.AuditEvent], error)
 }
 
 type BootstrapApplication interface {

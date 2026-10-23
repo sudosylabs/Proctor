@@ -64,15 +64,15 @@ func TestAcademicAuditListingPassesScopeToPersistenceAndRedactsSecurityMetadata(
 	got, err := service.ListAuditEvents(context.Background(), invocation.Invocation{}, ListAuditEventsQuery{Limit: 10})
 	require.NoError(t, err)
 	require.Equal(t, []model.AcademicUnitID{model.AcademicUnitID(rootID)}, persistence.input.Visibility.AcademicUnitRootIDs)
-	require.Len(t, got, 1)
-	require.Equal(t, event.ActorID, got[0].ActorID)
-	require.False(t, got[0].SessionID.IsValid())
-	require.Empty(t, got[0].RequestID)
-	require.Empty(t, got[0].NodeID)
-	require.Empty(t, got[0].ClientType)
-	require.Empty(t, got[0].AuthMethod)
-	require.Empty(t, got[0].IPAddress)
-	require.Empty(t, got[0].UserAgent)
+	require.Len(t, got.Items, 1)
+	require.Equal(t, event.ActorID, got.Items[0].ActorID)
+	require.False(t, got.Items[0].SessionID.IsValid())
+	require.Empty(t, got.Items[0].RequestID)
+	require.Empty(t, got.Items[0].NodeID)
+	require.Empty(t, got.Items[0].ClientType)
+	require.Empty(t, got.Items[0].AuthMethod)
+	require.Empty(t, got.Items[0].IPAddress)
+	require.Empty(t, got.Items[0].UserAgent)
 	require.False(t, event.SessionID.IsZero(), "academic audit projection mutated persistence result")
 	require.NotEmpty(t, event.IPAddress, "academic audit projection mutated persistence result")
 }
@@ -101,9 +101,9 @@ func TestInstitutionAcademicAuditListingRetainsAcademicOnlyConstraint(t *testing
 	require.True(t, persistence.input.Visibility.AcademicInstitutionWide)
 	require.False(t, persistence.input.Visibility.InstitutionWide)
 	require.Equal(t, []string{string(model.ActionAcademicUnitManage)}, persistence.input.Visibility.AllowedActions)
-	require.Len(t, got, 1)
-	require.False(t, got[0].SessionID.IsValid())
-	require.Empty(t, got[0].IPAddress)
+	require.Len(t, got.Items, 1)
+	require.False(t, got.Items[0].SessionID.IsValid())
+	require.Empty(t, got.Items[0].IPAddress)
 }
 
 func TestAuditListingAuthorizesOnceThenReads(t *testing.T) {
@@ -116,8 +116,8 @@ func TestAuditListingAuthorizesOnceThenReads(t *testing.T) {
 	}})
 	got, err := service.ListAuditEvents(context.Background(), invocation.Invocation{}, ListAuditEventsQuery{Limit: 10, ActorID: model.NewUserID()})
 	require.NoError(t, err)
-	require.Len(t, got, 1, "result/input = %#v / %#v", got, persistence.input)
-	require.Equal(t, 10, persistence.input.Limit, "result/input = %#v / %#v", got, persistence.input)
+	require.Len(t, got.Items, 1, "result/input = %#v / %#v", got, persistence.input)
+	require.Equal(t, 11, persistence.input.Limit, "the read probes one past the page; result/input = %#v / %#v", got, persistence.input)
 	// Contract: authorization precedes the read.
 	require.Equal(t, []string{"authorize-view", "list-audits"}, events)
 }
@@ -143,4 +143,30 @@ func TestAuditListingRejectsInvalidQuery(t *testing.T) {
 	require.True(t, apperror.Is(err, "audit.query.invalid"), "error = %v", err)
 	want := []string{"authorize-view"}
 	require.Equal(t, want, events, "events")
+}
+
+func TestAuditListingReportsMoreOnlyWhenTheProbeRowExists(t *testing.T) {
+	t.Parallel()
+	events := []string{}
+	rows := []*model.AuditEvent{
+		{ID: model.NewAuditEventID(), CreatedAt: model.TimeFromMillis(300)},
+		{ID: model.NewAuditEventID(), CreatedAt: model.TimeFromMillis(200)},
+		{ID: model.NewAuditEventID(), CreatedAt: model.TimeFromMillis(100)},
+	}
+	persistence := &auditListingStoreFake{events: &events}
+	service := newAuditListingService(auditListingServiceDependencies{Audits: persistence, Authorization: &auditListingAuthorizerFake{
+		events: &events, scope: store.AuditVisibilityScope{InstitutionWide: true},
+	}})
+
+	persistence.list = rows[:2]
+	full, err := service.ListAuditEvents(context.Background(), invocation.Invocation{}, ListAuditEventsQuery{Limit: 2})
+	require.NoError(t, err)
+	require.Equal(t, rows[:2], full.Items)
+	require.False(t, full.HasMore, "an exactly full final page has no successor")
+
+	persistence.list = rows
+	more, err := service.ListAuditEvents(context.Background(), invocation.Invocation{}, ListAuditEventsQuery{Limit: 2})
+	require.NoError(t, err)
+	require.Equal(t, rows[:2], more.Items)
+	require.True(t, more.HasMore)
 }

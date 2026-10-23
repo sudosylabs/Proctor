@@ -170,7 +170,7 @@ func (s SQLMailStore) GetDelivery(ctx context.Context, id model.MailDeliveryID) 
 }
 
 func (s SQLMailStore) ListDeliveries(ctx context.Context, options store.MailDeliveryListOptions) ([]*model.MailDelivery, error) {
-	if options.Limit < 1 || options.Limit > 200 || len(options.States) > 6 || len(options.TemplateKeys) > 64 ||
+	if options.Limit < 1 || options.Limit > 201 || len(options.States) > 6 || len(options.TemplateKeys) > 64 ||
 		(options.BeforeCreatedAt.IsZero() != options.BeforeID.IsZero()) ||
 		(!options.BeforeID.IsZero() && !options.BeforeID.IsValid()) ||
 		(!options.CreatedAfter.IsZero() && !options.CreatedBefore.IsZero() && !options.CreatedAfter.Before(options.CreatedBefore)) {

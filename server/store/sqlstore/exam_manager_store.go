@@ -43,7 +43,7 @@ type examManagerDocument struct {
 func (examManagerOutcome) outcomeDocument() {}
 
 func (s SQLExamAuthoringStore) ListManagers(ctx context.Context, options store.ExamManagerListOptions) ([]store.ExamManagerSummary, error) {
-	if !options.ExamID.IsValid() || options.Limit < 1 || options.Limit > 200 ||
+	if !options.ExamID.IsValid() || options.Limit < 1 || options.Limit > 201 ||
 		(options.BeforeGrantedAt.IsZero() != options.BeforeUserID.IsZero()) {
 		return nil, store.NewErrInvalidInput("exam_manager", "list_options", nil)
 	}

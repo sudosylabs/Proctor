@@ -79,7 +79,7 @@ func TestAdminSessionListPagesWithAnOpaqueCursor(t *testing.T) {
 		AuthenticatedAt: created, CreatedAt: created, UpdatedAt: created, LastActivityAt: created,
 		IdleExpiresAt: created.Add(time.Hour), ExpiresAt: created.Add(2 * time.Hour),
 	}
-	sessions := &sessionAdministrationHTTPApplication{list: []*model.Session{last}}
+	sessions := &sessionAdministrationHTTPApplication{list: []*model.Session{last}, hasMore: true}
 	httpAPI := newFocusedResourceAPI(t, logger, classRouteAuthenticator{principal: principal}, userAdministrationResource(&accountStateHTTPApplication{}, sessions))
 	serve := func(target string) *httptest.ResponseRecorder {
 		request := httptest.NewRequestWithContext(t.Context(), http.MethodGet, target, nil)
@@ -94,7 +94,7 @@ func TestAdminSessionListPagesWithAnOpaqueCursor(t *testing.T) {
 		NextCursor string `json:"next_cursor"`
 	}
 	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &body))
-	require.NotEmpty(t, body.NextCursor, "a full page continues")
+	require.NotEmpty(t, body.NextCursor, "a page with more Sessions continues")
 
 	response = serve("/api/v1/users/" + userID.String() + "/sessions?include_revoked=true&limit=1&cursor=" + body.NextCursor)
 	require.Equal(t, http.StatusOK, response.Code, response.Body.String())

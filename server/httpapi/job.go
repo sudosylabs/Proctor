@@ -110,7 +110,10 @@ func (m jobResourceModule) list(request operationRequest) (operationResult, erro
 	for _, item := range page.Items {
 		response.Items = append(response.Items, jobResponseFromApplication(item))
 	}
-	if len(page.Items) == query.Limit {
+	if page.HasMore && len(page.Items) == 0 {
+		return operationResult{}, unpresentableResult(errors.New("job page made no progress"))
+	}
+	if page.HasMore {
 		last := page.Items[len(page.Items)-1]
 		response.NextCursor, err = encodeJobCursor(jobCursor{CreatedAt: model.FormatRFC3339(last.CreatedAt), ID: last.ID.String()})
 		if err != nil {
@@ -147,7 +150,10 @@ func (m jobResourceModule) listAttempts(request operationRequest) (operationResu
 	for _, item := range page.Items {
 		response.Items = append(response.Items, jobAttemptResponseFromApplication(item))
 	}
-	if len(page.Items) == limit {
+	if page.HasMore && len(page.Items) == 0 {
+		return operationResult{}, unpresentableResult(errors.New("job attempt page made no progress"))
+	}
+	if page.HasMore {
 		response.NextCursor, err = encodeJobAttemptCursor(page.Items[len(page.Items)-1].Number)
 		if err != nil {
 			return operationResult{}, unpresentableResult(err)

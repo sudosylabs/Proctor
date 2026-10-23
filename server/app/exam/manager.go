@@ -35,7 +35,12 @@ type ManagerSummary struct {
 	IsOwner   bool
 }
 
-type ManagerPage struct{ Items []ManagerSummary }
+// ManagerPage is one page of an Exam's Exam Managers; HasMore reports that
+// another page follows the last item.
+type ManagerPage struct {
+	Items   []ManagerSummary
+	HasMore bool
+}
 
 type AddManagerCommand struct {
 	ExamID               model.ExamID
@@ -59,12 +64,14 @@ func (a *Authoring) ListExamManagers(ctx context.Context, invocation invocation.
 		return ManagerPage{}, err
 	}
 	items, err := a.deps.Persistence.ListManagers(ctx, store.ExamManagerListOptions{
-		ExamID: query.ExamID, BeforeGrantedAt: query.BeforeGrantedAt, BeforeUserID: query.BeforeUserID, Limit: query.Limit,
+		ExamID: query.ExamID, BeforeGrantedAt: query.BeforeGrantedAt, BeforeUserID: query.BeforeUserID, Limit: query.Limit + 1,
 	})
 	if err != nil {
 		return ManagerPage{}, examStoreErrors.Translate(err)
 	}
-	page := ManagerPage{Items: make([]ManagerSummary, 0, len(items))}
+	page := ManagerPage{HasMore: len(items) > query.Limit}
+	items = items[:min(len(items), query.Limit)]
+	page.Items = make([]ManagerSummary, 0, len(items))
 	for _, item := range items {
 		page.Items = append(page.Items, ManagerSummary{
 			Manager: item.Manager, IsCreator: item.IsCreator, IsOwner: item.IsOwner,

@@ -51,16 +51,16 @@ func newAuditListingService(deps auditListingServiceDependencies) *auditListingS
 	return &auditListingService{deps: deps}
 }
 
-func (s *auditListingService) ListAuditEvents(ctx context.Context, invocation invocation.Invocation, query ListAuditEventsQuery) ([]*model.AuditEvent, error) {
+func (s *auditListingService) ListAuditEvents(ctx context.Context, invocation invocation.Invocation, query ListAuditEventsQuery) (Page[*model.AuditEvent], error) {
 	visibility, err := s.deps.Authorization.AuthorizeList(ctx, invocation)
 	if err != nil {
-		return nil, err
+		return Page[*model.AuditEvent]{}, err
 	}
 	validAcademicVisibility := len(visibility.AllowedActions) > 0 &&
 		((visibility.AcademicInstitutionWide && len(visibility.AcademicUnitRootIDs) == 0) ||
 			(!visibility.AcademicInstitutionWide && len(visibility.AcademicUnitRootIDs) > 0))
 	if !visibility.InstitutionWide && !validAcademicVisibility {
-		return nil, authorizationDeniedError()
+		return Page[*model.AuditEvent]{}, authorizationDeniedError()
 	}
 	if query.Limit == 0 {
 		query.Limit = 50
@@ -69,23 +69,21 @@ func (s *auditListingService) ListAuditEvents(ctx context.Context, invocation in
 		(query.ActorID != "" && !model.UserID(query.ActorID).IsValid()) ||
 		(query.BeforeID != "" && !model.AuditEventID(query.BeforeID).IsValid()) ||
 		(query.Resource != nil && query.Resource.Validate() != nil) {
-		return nil, apperror.New("audit.query.invalid")
+		return Page[*model.AuditEvent]{}, apperror.New("audit.query.invalid")
 	}
 	events, err := s.deps.Audits.List(ctx, store.AuditListOptions{
 		ActorID: model.UserID(strings.TrimSpace(query.ActorID.String())), Action: strings.TrimSpace(query.Action),
-		Resource: query.Resource, BeforeCreatedAt: query.BeforeCreatedAt, BeforeID: model.AuditEventID(query.BeforeID), Limit: query.Limit,
+		Resource: query.Resource, BeforeCreatedAt: query.BeforeCreatedAt, BeforeID: model.AuditEventID(query.BeforeID), Limit: query.Limit + 1,
 		Visibility: visibility,
 	})
 	if err != nil {
-		return nil, auditListingError(err)
+		return Page[*model.AuditEvent]{}, auditListingError(err)
 	}
-	if events == nil {
-		events = []*model.AuditEvent{}
-	}
+	page := newPage(events, query.Limit)
 	if !visibility.InstitutionWide {
-		events = academicAuditProjection(events)
+		page.Items = academicAuditProjection(page.Items)
 	}
-	return events, nil
+	return page, nil
 }
 
 func academicAuditProjection(events []*model.AuditEvent) []*model.AuditEvent {

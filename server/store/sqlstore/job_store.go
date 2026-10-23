@@ -457,7 +457,7 @@ func (s SQLJobStore) ListAttempts(ctx context.Context, jobID model.JobID) ([]mod
 }
 
 func (s SQLJobStore) List(ctx context.Context, options store.JobListOptions) ([]*model.Job, error) {
-	if options.Limit < 1 || options.Limit > 200 || len(options.Types) == 0 ||
+	if options.Limit < 1 || options.Limit > 201 || len(options.Types) == 0 ||
 		(!options.BeforeID.IsZero() && (!options.BeforeID.IsValid() || options.BeforeCreatedAt.IsZero())) {
 		return nil, store.NewErrInvalidInput("job", "list", nil)
 	}
@@ -497,7 +497,7 @@ func (s SQLJobStore) List(ctx context.Context, options store.JobListOptions) ([]
 }
 
 func (s SQLJobStore) ListAttemptsPage(ctx context.Context, options store.JobAttemptListOptions) ([]model.JobAttempt, error) {
-	if !options.JobID.IsValid() || options.BeforeNumber < 0 || options.Limit < 1 || options.Limit > 200 {
+	if !options.JobID.IsValid() || options.BeforeNumber < 0 || options.Limit < 1 || options.Limit > 201 {
 		return nil, store.NewErrInvalidInput("job_attempt", "list", nil)
 	}
 	query := `SELECT ` + jobAttemptColumns + ` FROM job_attempts WHERE job_id = ?`

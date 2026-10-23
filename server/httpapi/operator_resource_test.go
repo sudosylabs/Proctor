@@ -124,14 +124,15 @@ func TestRoleBindingResourceOwnsPathCommandAndAuthentication(t *testing.T) {
 }
 
 type focusedAuditApplication struct {
-	query  app.ListAuditEventsQuery
-	events []*model.AuditEvent
-	err    error
+	query   app.ListAuditEventsQuery
+	events  []*model.AuditEvent
+	hasMore bool
+	err     error
 }
 
-func (f *focusedAuditApplication) ListAuditEvents(_ context.Context, _ invocation.Invocation, query app.ListAuditEventsQuery) ([]*model.AuditEvent, error) {
+func (f *focusedAuditApplication) ListAuditEvents(_ context.Context, _ invocation.Invocation, query app.ListAuditEventsQuery) (app.Page[*model.AuditEvent], error) {
 	f.query = query
-	return f.events, f.err
+	return app.Page[*model.AuditEvent]{Items: f.events, HasMore: f.hasMore}, f.err
 }
 
 func TestAuditResourcePreservesOpaqueCursorAndSafeErrors(t *testing.T) {
@@ -142,13 +143,20 @@ func TestAuditResourcePreservesOpaqueCursorAndSafeErrors(t *testing.T) {
 	audits := &focusedAuditApplication{events: []*model.AuditEvent{last}}
 	httpAPI := newFocusedResourceAPI(t, logger, &academicUnitHTTPApplication{principal: principal}, auditResource(audits))
 
+	final := serveOperatorRequest(httpAPI, http.MethodGet, "/api/v1/audits?limit=1", "", true)
+	require.Equal(t, http.StatusOK, final.Code, final.Body.String())
+	var finalPage listResponse[auditEventResponse]
+	require.NoError(t, json.Unmarshal(final.Body.Bytes(), &finalPage))
+	require.Empty(t, finalPage.NextCursor, "an exactly full final page has no continuation")
+	audits.hasMore = true
+
 	response := serveOperatorRequest(httpAPI, http.MethodGet, "/api/v1/audits?limit=1", "", true)
 	require.Equal(t, http.StatusOK, response.Code, "list status/query = %d/%#v: %s", response.Code, audits.query, response.Body.String())
 	require.Equal(t, 1, audits.query.Limit, "list status/query = %d/%#v: %s", response.Code, audits.query, response.Body.String())
 	var page listResponse[auditEventResponse]
 	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &page))
-	require.NotEmpty(t, page.NextCursor, "full audit page did not return an opaque cursor")
-	audits.events = nil
+	require.NotEmpty(t, page.NextCursor, "a page with more events did not return an opaque cursor")
+	audits.events, audits.hasMore = nil, false
 	second := serveOperatorRequest(httpAPI, http.MethodGet, "/api/v1/audits?limit=1&cursor="+url.QueryEscape(page.NextCursor), "", true)
 	require.Equal(t, http.StatusOK, second.Code, "second page status/query = %d/%#v: %s", second.Code, audits.query, second.Body.String())
 	require.True(t, last.CreatedAt.Equal(audits.query.BeforeCreatedAt), "second page status/query = %d/%#v: %s", second.Code, audits.query, second.Body.String())

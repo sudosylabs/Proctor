@@ -53,8 +53,19 @@ type AttemptView struct {
 	PublicErrorCode string
 }
 
-type Page struct{ Items []View }
-type AttemptPage struct{ Items []AttemptView }
+// Page is one page of operator-visible Jobs; HasMore reports that another
+// page follows the last item.
+type Page struct {
+	Items   []View
+	HasMore bool
+}
+
+// AttemptPage is one page of a Job's attempts; HasMore reports that another
+// page follows the last item.
+type AttemptPage struct {
+	Items   []AttemptView
+	HasMore bool
+}
 
 type ListQuery struct {
 	Statuses        []model.JobStatus
@@ -105,11 +116,13 @@ func (r *Engine) List(ctx context.Context, query ListQuery) (Page, error) {
 			return Page{}, ErrQueryInvalid
 		}
 	}
-	records, err := r.deps.Store.List(ctx, store.JobListOptions{Types: r.operatorTypes(), Statuses: query.Statuses, BeforeCreatedAt: query.BeforeCreatedAt, BeforeID: query.BeforeID, Limit: query.Limit})
+	records, err := r.deps.Store.List(ctx, store.JobListOptions{Types: r.operatorTypes(), Statuses: query.Statuses, BeforeCreatedAt: query.BeforeCreatedAt, BeforeID: query.BeforeID, Limit: query.Limit + 1})
 	if err != nil {
 		return Page{}, err
 	}
-	page := Page{Items: make([]View, 0, len(records))}
+	page := Page{HasMore: len(records) > query.Limit}
+	records = records[:min(len(records), query.Limit)]
+	page.Items = make([]View, 0, len(records))
 	for _, record := range records {
 		if record == nil {
 			return Page{}, errors.New("job store returned a nil record")
@@ -139,11 +152,13 @@ func (r *Engine) Attempts(ctx context.Context, query AttemptListQuery) (AttemptP
 	if query.Limit < 1 || query.Limit > 200 || query.BeforeNumber < 0 {
 		return AttemptPage{}, ErrQueryInvalid
 	}
-	records, err := r.deps.Store.ListAttemptsPage(ctx, store.JobAttemptListOptions{JobID: query.JobID, BeforeNumber: query.BeforeNumber, Limit: query.Limit})
+	records, err := r.deps.Store.ListAttemptsPage(ctx, store.JobAttemptListOptions{JobID: query.JobID, BeforeNumber: query.BeforeNumber, Limit: query.Limit + 1})
 	if err != nil {
 		return AttemptPage{}, err
 	}
-	page := AttemptPage{Items: make([]AttemptView, 0, len(records))}
+	page := AttemptPage{HasMore: len(records) > query.Limit}
+	records = records[:min(len(records), query.Limit)]
+	page.Items = make([]AttemptView, 0, len(records))
 	for _, record := range records {
 		page.Items = append(page.Items, projectAttempt(record))
 	}

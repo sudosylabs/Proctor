@@ -215,7 +215,7 @@ func (s SQLExamAuthoringStore) Archive(ctx context.Context, input *store.ExamArc
 
 func validateExamListOptions(options store.ExamListOptions) error {
 	hasOrdinary := options.Visibility.OrdinaryInstitutionWide || len(options.Visibility.OrdinaryAcademicUnitRootIDs) > 0
-	if options.Limit < 1 || options.Limit > 200 || !options.Visibility.ActorUserID.IsValid() ||
+	if options.Limit < 1 || options.Limit > 201 || !options.Visibility.ActorUserID.IsValid() ||
 		hasOrdinary && options.Visibility.OrdinaryMembershipAt.IsZero() ||
 		(options.BeforeUpdatedAt.IsZero() != options.BeforeExamID.IsZero()) ||
 		len(options.Visibility.OrdinaryAcademicUnitRootIDs)+len(options.Visibility.OverrideAcademicUnitRootIDs) > 256 ||

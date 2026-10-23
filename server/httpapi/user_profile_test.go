@@ -77,14 +77,15 @@ func (a *accountStateHTTPApplication) SetUserEnabled(_ context.Context, _ invoca
 type sessionAdministrationHTTPApplication struct {
 	SessionAdministrationApplication
 	list             []*model.Session
+	hasMore          bool
 	listQuery        app.ListUserSessionsQuery
 	revokeCommand    app.RevokeUserSessionCommand
 	revokeAllCommand app.RevokeUserSessionsCommand
 }
 
-func (a *sessionAdministrationHTTPApplication) ListUserSessions(_ context.Context, _ invocation.Invocation, query app.ListUserSessionsQuery) ([]*model.Session, error) {
+func (a *sessionAdministrationHTTPApplication) ListUserSessions(_ context.Context, _ invocation.Invocation, query app.ListUserSessionsQuery) (app.Page[*model.Session], error) {
 	a.listQuery = query
-	return a.list, nil
+	return app.Page[*model.Session]{Items: a.list, HasMore: a.hasMore}, nil
 }
 
 func (a *sessionAdministrationHTTPApplication) RevokeUserSession(_ context.Context, _ invocation.Invocation, command app.RevokeUserSessionCommand) error {
@@ -152,8 +153,8 @@ type auditListingHTTPApplication struct {
 	list []*model.AuditEvent
 }
 
-func (a *auditListingHTTPApplication) ListAuditEvents(context.Context, invocation.Invocation, app.ListAuditEventsQuery) ([]*model.AuditEvent, error) {
-	return a.list, nil
+func (a *auditListingHTTPApplication) ListAuditEvents(context.Context, invocation.Invocation, app.ListAuditEventsQuery) (app.Page[*model.AuditEvent], error) {
+	return app.Page[*model.AuditEvent]{Items: a.list}, nil
 }
 
 type bootstrapHTTPApplication struct {

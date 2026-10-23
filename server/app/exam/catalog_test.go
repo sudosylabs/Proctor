@@ -110,6 +110,21 @@ func TestListExamsDefaultsLimitAndActiveArchiveFilter(t *testing.T) {
 	_, err := fixture.service.ListExams(context.Background(), fixture.invocation, ListQuery{})
 	require.NoError(t, err)
 	options := fixture.persistence.listOptions
-	require.Equal(t, 50, options.Limit, "list options = %#v, want limit 50 and active archive filter", options)
+	require.Equal(t, 51, options.Limit, "list options = %#v, want limit 50 and active archive filter", options)
 	require.Equal(t, store.ExamArchiveActive, options.ArchiveFilter, "list options = %#v, want limit 50 and active archive filter", options)
+}
+
+func TestListExamsReportsMoreOnlyWhenTheProbeRowExists(t *testing.T) {
+	t.Parallel()
+	fixture := newAuthoringFixture(t)
+	fixture.authorizer.listVisibility = store.ExamListVisibility{ActorUserID: fixture.userID}
+	fixture.persistence.summaries = []store.ExamSummary{{ID: model.NewExamID()}, {ID: model.NewExamID()}}
+	full, err := fixture.service.ListExams(context.Background(), fixture.invocation, ListQuery{Limit: 2})
+	require.NoError(t, err)
+	require.Len(t, full.Items, 2)
+	require.False(t, full.HasMore, "an exactly full final page has no successor")
+	more, err := fixture.service.ListExams(context.Background(), fixture.invocation, ListQuery{Limit: 1})
+	require.NoError(t, err)
+	require.Equal(t, fixture.persistence.summaries[:1], more.Items)
+	require.True(t, more.HasMore)
 }

@@ -41,7 +41,12 @@ type MailDeliveryView struct {
 	PublicFailureCode                           string
 }
 
-type MailDeliveryPage struct{ Items []MailDeliveryView }
+// MailDeliveryPage is one page of mail deliveries; HasMore reports that
+// another page follows the last item.
+type MailDeliveryPage struct {
+	Items   []MailDeliveryView
+	HasMore bool
+}
 
 type ListMailDeliveriesQuery struct {
 	States          []model.MailDeliveryState
@@ -238,10 +243,13 @@ func (s *mailService) ListMailDeliveries(ctx context.Context, invocation invocat
 	if _, err := s.deps.Authorization.AuthorizeInstitution(ctx, invocation, model.ActionMailView); err != nil {
 		return MailDeliveryPage{}, err
 	}
+	if query.Limit < 1 || query.Limit > MaximumPageLimit {
+		return MailDeliveryPage{}, apperror.New("mail.query.invalid")
+	}
 	deliveries, err := s.deps.Mail.ListDeliveries(ctx, store.MailDeliveryListOptions{
 		States: query.States, TemplateKeys: query.TemplateKeys,
 		CreatedAfter: query.CreatedAfter, CreatedBefore: query.CreatedBefore,
-		BeforeCreatedAt: query.BeforeCreatedAt, BeforeID: query.BeforeID, Limit: query.Limit,
+		BeforeCreatedAt: query.BeforeCreatedAt, BeforeID: query.BeforeID, Limit: query.Limit + 1,
 	})
 	if err != nil {
 		var invalid *store.ErrInvalidInput
@@ -250,7 +258,9 @@ func (s *mailService) ListMailDeliveries(ctx context.Context, invocation invocat
 		}
 		return MailDeliveryPage{}, mailStoreErrors.Translate(err)
 	}
-	page := MailDeliveryPage{Items: make([]MailDeliveryView, 0, len(deliveries))}
+	page := MailDeliveryPage{HasMore: len(deliveries) > query.Limit}
+	deliveries = deliveries[:min(len(deliveries), query.Limit)]
+	page.Items = make([]MailDeliveryView, 0, len(deliveries))
 	for _, delivery := range deliveries {
 		page.Items = append(page.Items, mailDeliveryView(delivery))
 	}

@@ -33,6 +33,8 @@ type mailStoreFake struct {
 	delivery    *model.MailDelivery
 	gets        int
 	lists       int
+	listLimit   int
+	listCopies  int
 	mutates     int
 	permit      func() *store.MailSendPermit
 	classes     []store.MailSendClass
@@ -51,12 +53,17 @@ func (s *mailStoreFake) GetDelivery(_ context.Context, id model.MailDeliveryID) 
 	}
 	return s.delivery.Clone(), nil
 }
-func (s *mailStoreFake) ListDeliveries(_ context.Context, _ store.MailDeliveryListOptions) ([]*model.MailDelivery, error) {
+func (s *mailStoreFake) ListDeliveries(_ context.Context, options store.MailDeliveryListOptions) ([]*model.MailDelivery, error) {
 	s.lists++
+	s.listLimit = options.Limit
 	if s.delivery == nil {
 		return []*model.MailDelivery{}, nil
 	}
-	return []*model.MailDelivery{s.delivery.Clone()}, nil
+	deliveries := []*model.MailDelivery{s.delivery.Clone()}
+	for range s.listCopies {
+		deliveries = append(deliveries, s.delivery.Clone())
+	}
+	return deliveries, nil
 }
 func (s *mailStoreFake) CancelDelivery(_ context.Context, input *store.MailDeliveryMutation) (*model.MailDelivery, error) {
 	s.mutates++
@@ -478,6 +485,18 @@ func TestMailOperatorReadsAuthorizeBeforeInspectionAndReturnOnlySafeViews(t *tes
 	require.Len(t, page.Items, 1, "List() page=%#v err=%v lists=%d actions=%v", page, appErr, persistence.lists, authorizer.actions)
 	require.Equal(t, 1, persistence.lists, "List() page=%#v err=%v lists=%d actions=%v", page, appErr, persistence.lists, authorizer.actions)
 	require.Equal(t, model.ActionMailView, authorizer.actions[0], "List() page=%#v err=%v lists=%d actions=%v", page, appErr, persistence.lists, authorizer.actions)
+	require.Equal(t, 21, persistence.listLimit, "the read probes one past the page")
+	require.False(t, page.HasMore)
+	full, appErr := service.ListMailDeliveries(context.Background(), invocation.New(principal, model.RequestMetadata{}), ListMailDeliveriesQuery{Limit: 1})
+	require.NoError(t, appErr)
+	require.Len(t, full.Items, 1)
+	require.False(t, full.HasMore, "an exactly full final page has no successor")
+	persistence.listCopies = 1
+	more, appErr := service.ListMailDeliveries(context.Background(), invocation.New(principal, model.RequestMetadata{}), ListMailDeliveriesQuery{Limit: 1})
+	require.NoError(t, appErr)
+	require.Len(t, more.Items, 1)
+	require.True(t, more.HasMore)
+	persistence.listCopies = 0
 	authorizer.err = apperror.New("authorization.denied")
 	_, appErr = service.GetMailDelivery(context.Background(), invocation.New(principal, model.RequestMetadata{}), delivery.ID)
 	require.True(t, apperror.Is(appErr, "authorization.denied"), "denied Get() err=%v gets", appErr)

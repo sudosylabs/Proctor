@@ -86,7 +86,7 @@ func (m auditResourceModule) list(request operationRequest) (operationResult, er
 	if err != nil {
 		return operationResult{}, apperror.Invalid("request.invalid", "query")
 	}
-	events, listErr := m.audits.ListAuditEvents(
+	page, listErr := m.audits.ListAuditEvents(
 		request.context,
 		request.invocation(),
 		query,
@@ -94,19 +94,11 @@ func (m auditResourceModule) list(request operationRequest) (operationResult, er
 	if listErr != nil {
 		return operationResult{}, listErr
 	}
-	response := listResponse[auditEventResponse]{Items: make([]auditEventResponse, 0, len(events))}
-	for _, event := range events {
-		response.Items = append(response.Items, auditEventResponseFromModel(event))
-	}
-	if len(events) == query.Limit {
-		last := events[len(events)-1]
-		response.NextCursor, err = encodeAuditCursor(auditCursor{
-			CreatedAt: model.FormatRFC3339(last.CreatedAt),
-			ID:        last.ID.String(),
-		})
-		if err != nil {
-			return operationResult{}, unpresentableResult(err)
-		}
+	response, err := newListResponse(page.Items, page.HasMore, auditEventResponseFromModel, func(last *model.AuditEvent) (string, error) {
+		return encodeAuditCursor(auditCursor{CreatedAt: model.FormatRFC3339(last.CreatedAt), ID: last.ID.String()})
+	})
+	if err != nil {
+		return operationResult{}, err
 	}
 	return jsonResult(http.StatusOK, response), nil
 }

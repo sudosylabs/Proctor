@@ -112,11 +112,12 @@ func TestAdminSessionListAuthorizesThenReads(t *testing.T) {
 	service := newSessionAdministrationService(sessionAdministrationServiceDependencies{Sessions: persistence, Users: &sessionAdministrationUserStoreFake{events: &events, user: sessionAdministrationTestUser(userID)}, Authorization: &sessionAdministrationAuthorizerFake{events: &events}, Audit: &institutionAuditorFake{events: &events}, Mail: &securityNoticeMailerFake{events: &events}, Effects: &sessionAdministrationEffectsFake{events: &events}, Now: func() time.Time { return at }})
 	got, err := service.ListUserSessions(context.Background(), invocation.Invocation{}, ListUserSessionsQuery{UserID: model.UserID(userID), Limit: 50})
 	require.NoError(t, err)
-	require.Len(t, got, 1)
-	require.Equal(t, session.ID.String(), got[0].ID.String())
+	require.Len(t, got.Items, 1)
+	require.Equal(t, session.ID.String(), got.Items[0].ID.String())
+	require.False(t, got.HasMore)
 	// Contract: authorization precedes the read.
 	require.Equal(t, []string{"authorize-view", "list"}, events)
-	require.Equal(t, 50, persistence.listedPage.Limit)
+	require.Equal(t, 51, persistence.listedPage.Limit, "the read probes one past the page")
 	require.True(t, persistence.listedPage.ActiveAt.Equal(model.TimeUTC(at)), "active Session listing time = %v", persistence.listedPage.ActiveAt)
 	require.Same(t, time.UTC, persistence.listedPage.ActiveAt.Location(), "active Session listing time = %v", persistence.listedPage.ActiveAt)
 }
@@ -125,16 +126,25 @@ func TestAdminSessionHistoryIsPaged(t *testing.T) {
 	t.Parallel()
 	events := []string{}
 	userID := model.NewUserID()
-	persistence := &sessionAdministrationStoreFake{events: &events}
+	rows := []*model.Session{{ID: model.NewSessionID()}, {ID: model.NewSessionID()}, {ID: model.NewSessionID()}}
+	persistence := &sessionAdministrationStoreFake{events: &events, list: rows}
 	service := newSessionAdministrationService(sessionAdministrationServiceDependencies{Sessions: persistence, Users: &sessionAdministrationUserStoreFake{events: &events, user: sessionAdministrationTestUser(userID.String())}, Authorization: &sessionAdministrationAuthorizerFake{events: &events}, Audit: &institutionAuditorFake{events: &events}, Mail: &securityNoticeMailerFake{events: &events}, Effects: &sessionAdministrationEffectsFake{events: &events}, Now: time.Now})
 	before := time.Date(2026, 8, 12, 9, 30, 0, 0, time.UTC)
 	beforeID := model.NewSessionID()
-	_, err := service.ListUserSessions(context.Background(), invocation.Invocation{}, ListUserSessionsQuery{
+	page, err := service.ListUserSessions(context.Background(), invocation.Invocation{}, ListUserSessionsQuery{
 		UserID: userID, IncludeRevoked: true, Limit: 2, BeforeCreatedAt: before, BeforeID: beforeID,
 	})
 	require.NoError(t, err)
-	require.Equal(t, &store.SessionPageQuery{UserID: userID, Limit: 2, BeforeCreatedAt: before, BeforeID: beforeID}, persistence.listedPage,
-		"history includes revoked Sessions and continues after the cursor")
+	require.Equal(t, &store.SessionPageQuery{UserID: userID, Limit: 3, BeforeCreatedAt: before, BeforeID: beforeID}, persistence.listedPage,
+		"history includes revoked Sessions, continues after the cursor and probes one past the page")
+	require.Equal(t, rows[:2], page.Items)
+	require.True(t, page.HasMore)
+
+	persistence.list = rows[:2]
+	page, err = service.ListUserSessions(context.Background(), invocation.Invocation{}, ListUserSessionsQuery{UserID: userID, IncludeRevoked: true, Limit: 2})
+	require.NoError(t, err)
+	require.Equal(t, rows[:2], page.Items)
+	require.False(t, page.HasMore, "an exactly full final page has no successor")
 
 	for _, query := range []ListUserSessionsQuery{
 		{UserID: userID, Limit: 0},

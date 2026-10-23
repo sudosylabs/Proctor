@@ -288,7 +288,10 @@ func (m mailResourceModule) listDeliveries(request operationRequest) (operationR
 	for _, item := range page.Items {
 		response.Items = append(response.Items, mailResponse(item))
 	}
-	if len(page.Items) == query.Limit {
+	if page.HasMore && len(page.Items) == 0 {
+		return operationResult{}, unpresentableResult(errors.New("mail delivery page made no progress"))
+	}
+	if page.HasMore {
 		last := page.Items[len(page.Items)-1]
 		response.NextCursor, err = encodeMailDeliveryCursor(mailDeliveryCursor{CreatedAt: model.FormatRFC3339(last.CreatedAt), ID: last.ID.String()})
 		if err != nil {

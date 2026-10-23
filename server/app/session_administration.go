@@ -81,23 +81,23 @@ func (s *sessionAdministrationService) ListUserSessions(
 	ctx context.Context,
 	invocation invocation.Invocation,
 	query ListUserSessionsQuery,
-) ([]*model.Session, error) {
+) (Page[*model.Session], error) {
 	userID := query.UserID
 	if !userID.IsValid() {
-		return nil, apperror.New("request.invalid").WithField("field", "user_id")
+		return Page[*model.Session]{}, apperror.New("request.invalid").WithField("field", "user_id")
 	}
-	if query.Limit < 1 || query.Limit > store.MaximumSessionPageSize {
-		return nil, apperror.Invalid("request.invalid", "limit")
+	if query.Limit < 1 || query.Limit > MaximumPageLimit {
+		return Page[*model.Session]{}, apperror.Invalid("request.invalid", "limit")
 	}
 	if query.BeforeCreatedAt.IsZero() != query.BeforeID.IsZero() ||
 		(!query.BeforeID.IsZero() && !query.BeforeID.IsValid()) {
-		return nil, apperror.Invalid("request.invalid", "cursor")
+		return Page[*model.Session]{}, apperror.Invalid("request.invalid", "cursor")
 	}
 	if err := s.deps.Authorization.Authorize(ctx, invocation, model.ActionSessionView, model.Resource{Type: model.ResourceUser, ID: userID.String()}); err != nil {
-		return nil, err
+		return Page[*model.Session]{}, err
 	}
 	page := &store.SessionPageQuery{
-		UserID: userID, Limit: query.Limit,
+		UserID: userID, Limit: query.Limit + 1,
 		BeforeCreatedAt: query.BeforeCreatedAt, BeforeID: query.BeforeID,
 	}
 	if !query.IncludeRevoked {
@@ -105,12 +105,9 @@ func (s *sessionAdministrationService) ListUserSessions(
 	}
 	sessions, err := s.deps.Sessions.ListByUser(ctx, page)
 	if err != nil {
-		return nil, sessionAdministrationStoreErrors.Translate(err)
+		return Page[*model.Session]{}, sessionAdministrationStoreErrors.Translate(err)
 	}
-	if sessions == nil {
-		sessions = []*model.Session{}
-	}
-	return sessions, nil
+	return newPage(sessions, query.Limit), nil
 }
 
 func (s *sessionAdministrationService) RevokeUserSession(
