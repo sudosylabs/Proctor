@@ -109,35 +109,65 @@ func guardExamAttemptReallowAuthority(ctx context.Context, tx *sqlxTxWrapper, in
 	return nil
 }
 
+// examAttemptReallowRow is the locked Suspension with its Attempt that a
+// re-allow transitions.
+type examAttemptReallowRow struct {
+	ExamID              string         `db:"exam_id"`
+	SittingID           string         `db:"exam_sitting_id"`
+	ClassID             string         `db:"class_id"`
+	CandidateID         string         `db:"candidate_user_id"`
+	AdmissionRevisionID string         `db:"admission_revision_id"`
+	AttemptState        string         `db:"attempt_state"`
+	AttemptCreatedAt    time.Time      `db:"attempt_created_at"`
+	AttemptUpdatedAt    time.Time      `db:"attempt_updated_at"`
+	SubmittedAt         sql.NullTime   `db:"submitted_at"`
+	AttemptRevision     int64          `db:"attempt_revision"`
+	ParticipationID     string         `db:"participation_id"`
+	FlagID              string         `db:"flag_id"`
+	SuspensionState     string         `db:"suspension_state"`
+	Source              string         `db:"source"`
+	CandidateReason     string         `db:"candidate_reason"`
+	Generation          int64          `db:"generation"`
+	StartedAt           time.Time      `db:"started_at"`
+	EndedAt             sql.NullTime   `db:"ended_at"`
+	ReallowedByUserID   sql.NullString `db:"reallowed_by_user_id"`
+	PrivateReason       sql.NullString `db:"private_reason"`
+	SuspendedByUserID   sql.NullString `db:"suspended_by_user_id"`
+	SuspensionReason    sql.NullString `db:"suspension_private_reason"`
+}
+
+// reallowExamAttempt checks authority, closes the active Suspension, returns
+// the Attempt to ready, and completes the audit event inside tx.
 func reallowExamAttempt(ctx context.Context, tx *sqlxTxWrapper, input *store.ExamAttemptReallow) (examAttemptReallowOutcome, error) {
 	var zero examAttemptReallowOutcome
 	if err := guardExamAttemptReallowAuthority(ctx, tx, input, true); err != nil {
 		return zero, err
 	}
-	var row struct {
-		ExamID              string         `db:"exam_id"`
-		SittingID           string         `db:"exam_sitting_id"`
-		ClassID             string         `db:"class_id"`
-		CandidateID         string         `db:"candidate_user_id"`
-		AdmissionRevisionID string         `db:"admission_revision_id"`
-		AttemptState        string         `db:"attempt_state"`
-		AttemptCreatedAt    time.Time      `db:"attempt_created_at"`
-		AttemptUpdatedAt    time.Time      `db:"attempt_updated_at"`
-		SubmittedAt         sql.NullTime   `db:"submitted_at"`
-		AttemptRevision     int64          `db:"attempt_revision"`
-		ParticipationID     string         `db:"participation_id"`
-		FlagID              string         `db:"flag_id"`
-		SuspensionState     string         `db:"suspension_state"`
-		Source              string         `db:"source"`
-		CandidateReason     string         `db:"candidate_reason"`
-		Generation          int64          `db:"generation"`
-		StartedAt           time.Time      `db:"started_at"`
-		EndedAt             sql.NullTime   `db:"ended_at"`
-		ReallowedByUserID   sql.NullString `db:"reallowed_by_user_id"`
-		PrivateReason       sql.NullString `db:"private_reason"`
-		SuspendedByUserID   sql.NullString `db:"suspended_by_user_id"`
-		SuspensionReason    sql.NullString `db:"suspension_private_reason"`
+	row, err := lockExamAttemptReallowSuspension(ctx, tx, input)
+	if err != nil {
+		return zero, err
 	}
+	attempt, suspension, err := examAttemptReallowDomain(input, row)
+	if err != nil {
+		return zero, err
+	}
+	focusLossWindowReset, err := applyExamAttemptReallow(ctx, tx, input, row, attempt, suspension)
+	if err != nil {
+		return zero, err
+	}
+	value := examAttemptReallowOutcome{ExamID: input.ExamID.String(), SittingID: input.SittingID.String(), ClassID: row.ClassID,
+		CandidateID: row.CandidateID, AttemptID: input.AttemptID.String(), SuspensionID: input.SuspensionID.String(),
+		FocusLossWindowReset: focusLossWindowReset}
+	if err = completeExamAttemptReallowAudit(ctx, tx, value, false, "", input.AuditEventID, input.AuditAt); err != nil {
+		return zero, err
+	}
+	return value, nil
+}
+
+// lockExamAttemptReallowSuspension locks the Suspension and requires it to be
+// active on a suspended Attempt at the expected revision.
+func lockExamAttemptReallowSuspension(ctx context.Context, tx *sqlxTxWrapper, input *store.ExamAttemptReallow) (examAttemptReallowRow, error) {
+	var row examAttemptReallowRow
 	err := tx.Get(ctx, &row, `SELECT a.exam_id,a.exam_sitting_id,s.class_id,a.candidate_user_id,a.admission_revision_id,
 		a.state AS attempt_state,a.created_at AS attempt_created_at,a.updated_at AS attempt_updated_at,a.submitted_at,
 		a.revision AS attempt_revision,su.participation_id,COALESCE(su.integrity_flag_id,'') AS flag_id,su.state AS suspension_state,
@@ -147,37 +177,43 @@ func reallowExamAttempt(ctx context.Context, tx *sqlxTxWrapper, input *store.Exa
 		JOIN exam_sittings s ON s.id=a.exam_sitting_id WHERE su.id=? AND su.exam_attempt_id=? FOR UPDATE OF su`,
 		input.SuspensionID.String(), input.AttemptID.String())
 	if errors.Is(err, sql.ErrNoRows) {
-		return zero, store.NewErrConflict("attempt_suspension", "attempt_suspension_active", nil)
+		return row, store.NewErrConflict("attempt_suspension", "attempt_suspension_active", nil)
 	}
 	if err != nil {
-		return zero, fmt.Errorf("lock Attempt Suspension: %w", err)
+		return row, fmt.Errorf("lock Attempt Suspension: %w", err)
 	}
 	if row.SuspensionState != string(model.AttemptSuspensionActive) {
-		return zero, store.NewErrConflict("attempt_suspension", "attempt_suspension_active", nil)
+		return row, store.NewErrConflict("attempt_suspension", "attempt_suspension_active", nil)
 	}
 	if row.AttemptRevision != input.ExpectedRevision {
-		return zero, store.NewErrConflict("exam_attempt", "exam_attempt_revision", nil)
+		return row, store.NewErrConflict("exam_attempt", "exam_attempt_revision", nil)
 	}
 	if row.AttemptState != string(model.ExamAttemptSuspended) {
-		return zero, store.NewErrConflict("exam_attempt", "exam_attempt_state", nil)
+		return row, store.NewErrConflict("exam_attempt", "exam_attempt_state", nil)
 	}
+	return row, nil
+}
+
+// examAttemptReallowDomain builds and validates the Attempt and Suspension
+// from row and validates the re-allow private reason.
+func examAttemptReallowDomain(input *store.ExamAttemptReallow, row examAttemptReallowRow) (*model.ExamAttempt, *model.AttemptSuspension, error) {
 	attemptID := input.AttemptID
 	revisionID, err := model.ParseExamRevisionID(row.AdmissionRevisionID)
 	if err != nil {
-		return zero, invalidPersistedState("exam_attempt", "admission_revision_id", err)
+		return nil, nil, invalidPersistedState("exam_attempt", "admission_revision_id", err)
 	}
 	candidateID, err := model.ParseUserID(row.CandidateID)
 	if err != nil {
-		return zero, invalidPersistedState("exam_attempt", "candidate_user_id", err)
+		return nil, nil, invalidPersistedState("exam_attempt", "candidate_user_id", err)
 	}
 	participationID, err := model.ParseAttemptParticipationID(row.ParticipationID)
 	if err != nil {
-		return zero, invalidPersistedState("attempt_suspension", "participation_id", err)
+		return nil, nil, invalidPersistedState("attempt_suspension", "participation_id", err)
 	}
 	flagID, suspendedBy, err := suspensionProvenance(model.AttemptSuspensionSource(row.Source),
 		model.AttemptSuspensionCandidateReason(row.CandidateReason), row.FlagID, row.SuspendedByUserID.String)
 	if err != nil {
-		return zero, err
+		return nil, nil, err
 	}
 	attempt := &model.ExamAttempt{ID: attemptID, ExamID: input.ExamID, SittingID: input.SittingID, CandidateUserID: candidateID,
 		AdmissionRevisionID: revisionID, State: model.ExamAttemptState(row.AttemptState), CreatedAt: model.TimeUTC(row.AttemptCreatedAt),
@@ -188,50 +224,53 @@ func reallowExamAttempt(ctx context.Context, tx *sqlxTxWrapper, input *store.Exa
 		StartedAt: model.TimeUTC(row.StartedAt), EndedAt: OptionalTimeFromNullTime(row.EndedAt),
 		SuspendedByUserID: suspendedBy, SuspensionPrivateReason: row.SuspensionReason.String}
 	if err = attempt.Validate(); err != nil {
-		return zero, invalidPersistedState("exam_attempt", "value", err)
+		return nil, nil, invalidPersistedState("exam_attempt", "value", err)
 	}
 	if err = suspension.Validate(); err != nil {
-		return zero, invalidPersistedState("attempt_suspension", "value", err)
+		return nil, nil, invalidPersistedState("attempt_suspension", "value", err)
 	}
 	if !model.IsValidAttemptSuspensionPrivateReason(input.PrivateReason) {
-		return zero, store.NewErrInvalidInput("attempt_suspension", "private_reason", nil)
+		return nil, nil, store.NewErrInvalidInput("attempt_suspension", "private_reason", nil)
 	}
+	return attempt, suspension, nil
+}
+
+// applyExamAttemptReallow transitions the Suspension and Attempt at database
+// time, writes both, and resets the causal Focus Loss window when the Focus
+// Loss policy caused the Suspension; it reports whether it reset the window.
+func applyExamAttemptReallow(ctx context.Context, tx *sqlxTxWrapper, input *store.ExamAttemptReallow, row examAttemptReallowRow,
+	attempt *model.ExamAttempt, suspension *model.AttemptSuspension,
+) (bool, error) {
 	// Database time decides the transition, matching the system expiry and
 	// suspension paths, so a skewed application clock cannot reject a valid
 	// decision or stamp it before the episode began.
 	var changedAt time.Time
-	if err = tx.Get(ctx, &changedAt, `SELECT statement_timestamp()`); err != nil {
-		return zero, fmt.Errorf("read Exam Attempt re-allow time: %w", err)
+	if err := tx.Get(ctx, &changedAt, `SELECT statement_timestamp()`); err != nil {
+		return false, fmt.Errorf("read Exam Attempt re-allow time: %w", err)
 	}
 	changedAt = model.TimeUTC(changedAt)
-	if err = suspension.Reallow(input.ActorUserID, input.PrivateReason, changedAt); err != nil {
-		return zero, fmt.Errorf("close Attempt Suspension: %w", err)
+	if err := suspension.Reallow(input.ActorUserID, input.PrivateReason, changedAt); err != nil {
+		return false, fmt.Errorf("close Attempt Suspension: %w", err)
 	}
-	if err = attempt.Reallow(changedAt); err != nil {
-		return zero, fmt.Errorf("re-allow Exam Attempt: %w", err)
+	if err := attempt.Reallow(changedAt); err != nil {
+		return false, fmt.Errorf("re-allow Exam Attempt: %w", err)
 	}
-	if _, err = tx.Exec(ctx, `UPDATE exam_attempt_suspensions SET state='closed',ended_at=?,reallowed_by_user_id=?,private_reason=? WHERE id=? AND state='active'`,
+	if _, err := tx.Exec(ctx, `UPDATE exam_attempt_suspensions SET state='closed',ended_at=?,reallowed_by_user_id=?,private_reason=? WHERE id=? AND state='active'`,
 		suspension.EndedAt.Time, suspension.ReallowedByUserID.String(), suspension.PrivateReason, suspension.ID.String()); err != nil {
-		return zero, fmt.Errorf("close Attempt Suspension: %w", err)
+		return false, fmt.Errorf("close Attempt Suspension: %w", err)
 	}
-	if _, err = tx.Exec(ctx, `UPDATE exam_attempts SET state='ready',updated_at=?,revision=? WHERE id=? AND revision=?`,
+	if _, err := tx.Exec(ctx, `UPDATE exam_attempts SET state='ready',updated_at=?,revision=? WHERE id=? AND revision=?`,
 		attempt.UpdatedAt, attempt.Revision, attempt.ID.String(), row.AttemptRevision); err != nil {
-		return zero, fmt.Errorf("re-allow Exam Attempt: %w", err)
+		return false, fmt.Errorf("re-allow Exam Attempt: %w", err)
 	}
 	focusLossWindowReset := row.CandidateReason == string(model.AttemptSuspensionCandidateReasonFocusLossPolicy)
 	if focusLossWindowReset {
-		if _, err = tx.Exec(ctx, `DELETE FROM exam_attempt_focus_loss_pending WHERE exam_attempt_id=? AND generation=?`,
+		if _, err := tx.Exec(ctx, `DELETE FROM exam_attempt_focus_loss_pending WHERE exam_attempt_id=? AND generation=?`,
 			input.AttemptID.String(), row.Generation); err != nil {
-			return zero, fmt.Errorf("reset causal Focus Loss window: %w", err)
+			return false, fmt.Errorf("reset causal Focus Loss window: %w", err)
 		}
 	}
-	value := examAttemptReallowOutcome{ExamID: input.ExamID.String(), SittingID: input.SittingID.String(), ClassID: row.ClassID,
-		CandidateID: row.CandidateID, AttemptID: input.AttemptID.String(), SuspensionID: input.SuspensionID.String(),
-		FocusLossWindowReset: focusLossWindowReset}
-	if err = completeExamAttemptReallowAudit(ctx, tx, value, false, "", input.AuditEventID, input.AuditAt); err != nil {
-		return zero, err
-	}
-	return value, nil
+	return focusLossWindowReset, nil
 }
 
 func completeExamAttemptReallowAudit(ctx context.Context, tx *sqlxTxWrapper, value examAttemptReallowOutcome,
@@ -252,33 +291,39 @@ func completeExamAttemptReallowAudit(ctx context.Context, tx *sqlxTxWrapper, val
 	return nil
 }
 
+// examAttemptReallowResultRow is the Attempt with the re-allowed Suspension a
+// re-allow result reports.
+type examAttemptReallowResultRow struct {
+	ExamID              string       `db:"exam_id"`
+	SittingID           string       `db:"exam_sitting_id"`
+	ClassID             string       `db:"class_id"`
+	CandidateID         string       `db:"candidate_user_id"`
+	AttemptID           string       `db:"attempt_id"`
+	AdmissionRevisionID string       `db:"admission_revision_id"`
+	AttemptState        string       `db:"attempt_state"`
+	AttemptCreatedAt    time.Time    `db:"attempt_created_at"`
+	AttemptUpdatedAt    time.Time    `db:"attempt_updated_at"`
+	SubmittedAt         sql.NullTime `db:"submitted_at"`
+	AttemptRevision     int64        `db:"attempt_revision"`
+	SuspensionID        string       `db:"suspension_id"`
+	ParticipationID     string       `db:"participation_id"`
+	FlagID              string       `db:"flag_id"`
+	SuspensionState     string       `db:"suspension_state"`
+	Source              string       `db:"source"`
+	CandidateReason     string       `db:"candidate_reason"`
+	Generation          int64        `db:"generation"`
+	StartedAt           time.Time    `db:"started_at"`
+	EndedAt             sql.NullTime `db:"ended_at"`
+	ReallowedByUserID   string       `db:"reallowed_by_user_id"`
+	PrivateReason       string       `db:"private_reason"`
+	SuspendedByUserID   string       `db:"suspended_by_user_id"`
+	SuspensionReason    string       `db:"suspension_private_reason"`
+}
+
+// loadExamAttemptReallowResult reads the re-allowed Attempt and Suspension
+// named by value outside the command transaction.
 func (s *SQLExamAttemptStore) loadExamAttemptReallowResult(ctx context.Context, value examAttemptReallowOutcome) (*store.ExamAttemptReallowResult, error) {
-	var row struct {
-		ExamID              string       `db:"exam_id"`
-		SittingID           string       `db:"exam_sitting_id"`
-		ClassID             string       `db:"class_id"`
-		CandidateID         string       `db:"candidate_user_id"`
-		AttemptID           string       `db:"attempt_id"`
-		AdmissionRevisionID string       `db:"admission_revision_id"`
-		AttemptState        string       `db:"attempt_state"`
-		AttemptCreatedAt    time.Time    `db:"attempt_created_at"`
-		AttemptUpdatedAt    time.Time    `db:"attempt_updated_at"`
-		SubmittedAt         sql.NullTime `db:"submitted_at"`
-		AttemptRevision     int64        `db:"attempt_revision"`
-		SuspensionID        string       `db:"suspension_id"`
-		ParticipationID     string       `db:"participation_id"`
-		FlagID              string       `db:"flag_id"`
-		SuspensionState     string       `db:"suspension_state"`
-		Source              string       `db:"source"`
-		CandidateReason     string       `db:"candidate_reason"`
-		Generation          int64        `db:"generation"`
-		StartedAt           time.Time    `db:"started_at"`
-		EndedAt             sql.NullTime `db:"ended_at"`
-		ReallowedByUserID   string       `db:"reallowed_by_user_id"`
-		PrivateReason       string       `db:"private_reason"`
-		SuspendedByUserID   string       `db:"suspended_by_user_id"`
-		SuspensionReason    string       `db:"suspension_private_reason"`
-	}
+	var row examAttemptReallowResultRow
 	err := s.GetMaster().Get(ctx, &row, `SELECT a.exam_id,a.exam_sitting_id,s.class_id,a.candidate_user_id,a.id AS attempt_id,a.admission_revision_id,
 		a.state AS attempt_state,a.created_at AS attempt_created_at,a.updated_at AS attempt_updated_at,a.submitted_at,a.revision AS attempt_revision,
 		su.id AS suspension_id,su.participation_id,COALESCE(su.integrity_flag_id,'') AS flag_id,su.state AS suspension_state,su.source,
