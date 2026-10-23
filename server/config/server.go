@@ -30,6 +30,31 @@ type Server struct {
 	TrustedProxies []string `json:"TrustedProxies"`
 }
 
+// defaultServer returns the default HTTP server settings.
+func defaultServer() Server {
+	return Server{
+		ListenAddress:   "127.0.0.1:8065",
+		PublicURL:       "http://localhost:8065",
+		WebappDirectory: "./webapp/dist",
+		TLS: ServerTLS{
+			Mode:                          ServerTLSModeDisabled,
+			HTTPListenAddress:             "127.0.0.1:8080",
+			StrictTransportSecurityMaxAge: Duration{Duration: 365 * 24 * time.Hour},
+			LetsEncrypt: ServerLetsEncrypt{
+				CacheDirectory: "./data/acme",
+			},
+		},
+		ReadHeaderTimeout: Duration{Duration: 10 * time.Second},
+		ReadTimeout:       Duration{Duration: 30 * time.Second},
+		WriteTimeout:      Duration{Duration: 30 * time.Second},
+		IdleTimeout:       Duration{Duration: 2 * time.Minute},
+		ShutdownTimeout:   Duration{Duration: 15 * time.Second},
+		MaxHeaderBytes:    1 << 20,
+		MaxBodyBytes:      1 << 20,
+		TrustedProxies:    []string{},
+	}
+}
+
 func validatePublicURL(raw string, add func(string, string)) {
 	parsed, err := url.Parse(raw)
 	if err != nil {

@@ -107,8 +107,80 @@ type Authentication struct {
 	External                ExternalAuthentication `json:"External"`
 }
 
+// defaultAuthentication returns the default authentication settings.
+func defaultAuthentication() Authentication {
+	return Authentication{
+		Bootstrap: Bootstrap{DevelopmentMode: true},
+		Password: Password{
+			MaximumConcurrentOperations: 2,
+			MinimumLength:               12,
+			MaximumLength:               128,
+			ArgonMemoryKiB:              64 * 1024,
+			ArgonIterations:             3,
+			ArgonParallelism:            2,
+			ArgonSaltBytes:              16,
+			ArgonKeyBytes:               32,
+			HistoryCount:                5,
+		},
+		Sessions: Sessions{
+			AccessTTL:              Duration{Duration: 15 * time.Minute},
+			RefreshTTL:             Duration{Duration: 30 * 24 * time.Hour},
+			IdleTTL:                Duration{Duration: 7 * 24 * time.Hour},
+			AbsoluteTTL:            Duration{Duration: 30 * 24 * time.Hour},
+			ActivityUpdateInterval: Duration{Duration: 5 * time.Minute},
+			MaximumPerUser:         10,
+			RetiredRetention:       Duration{Duration: 30 * 24 * time.Hour},
+		},
+		RecentAuthenticationTTL: Duration{Duration: 15 * time.Minute},
+		LoginRateLimit: LoginRateLimit{
+			Window:                     Duration{Duration: time.Minute},
+			MaximumAttempts:            10,
+			MaximumSourceAttempts:      1000,
+			AccountFailuresBeforeDelay: 5,
+			MaximumAccountFailureDelay: Duration{Duration: 4 * time.Second},
+		},
+		AccountRecovery: AccountRecovery{
+			EmailVerificationTTL: Duration{Duration: 24 * time.Hour},
+			PasswordResetTTL:     Duration{Duration: time.Hour},
+			EmailChangeUndoTTL:   Duration{Duration: 72 * time.Hour},
+			RateLimit: AttemptRateLimit{
+				Window:                Duration{Duration: 15 * time.Minute},
+				MaximumAttempts:       3,
+				MaximumSourceAttempts: 100,
+			},
+		},
+		PersonalAccessTokens: PersonalAccessTokens{
+			MinimumLifetime:        Duration{Duration: time.Hour},
+			MaximumLifetime:        Duration{Duration: 90 * 24 * time.Hour},
+			LastUsedUpdateInterval: Duration{Duration: 5 * time.Minute},
+			MaximumPerUser:         50,
+		},
+		MFA: MFA{
+			Enabled:           false,
+			Issuer:            "Proctor",
+			DecryptionKeys:    []string{},
+			SetupTTL:          Duration{Duration: 10 * time.Minute},
+			RecoveryCodeCount: 10,
+		},
+		External: ExternalAuthentication{
+			LoginStateTTL: Duration{Duration: 10 * time.Minute},
+			Providers:     []ExternalAuthenticationProvider{},
+		},
+	}
+}
+
 func validateAuthentication(authentication Authentication, add func(string, string)) {
-	password := authentication.Password
+	validateAuthenticationPassword(authentication.Password, add)
+	validateAuthenticationSessions(authentication, add)
+	validateAuthenticationLoginRateLimit(authentication.LoginRateLimit, add)
+	validateAuthenticationAccountRecovery(authentication.AccountRecovery, add)
+	validateAuthenticationPersonalAccessTokens(authentication.PersonalAccessTokens, add)
+	validateAuthenticationMFA(authentication.MFA, add)
+	validateExternalAuthentication(authentication.External, add)
+}
+
+// validateAuthenticationPassword reports invalid password length and hashing settings.
+func validateAuthenticationPassword(password Password, add func(string, string)) {
 	if password.MaximumConcurrentOperations < 1 {
 		add("authentication.password.maximum_concurrent_operations", "must be greater than zero")
 	}
@@ -136,7 +208,10 @@ func validateAuthentication(authentication Authentication, add func(string, stri
 	if password.HistoryCount < 0 || password.HistoryCount > 24 {
 		add("authentication.password.history_count", "must be between 0 and 24")
 	}
+}
 
+// validateAuthenticationSessions reports invalid Session lifetimes, limits and the recent authentication window.
+func validateAuthenticationSessions(authentication Authentication, add func(string, string)) {
 	sessions := authentication.Sessions
 	for _, item := range []struct {
 		field string
@@ -184,8 +259,10 @@ func validateAuthentication(authentication Authentication, add func(string, stri
 			"must not exceed sessions.absolute_ttl",
 		)
 	}
+}
 
-	rateLimit := authentication.LoginRateLimit
+// validateAuthenticationLoginRateLimit reports invalid login throttling settings.
+func validateAuthenticationLoginRateLimit(rateLimit LoginRateLimit, add func(string, string)) {
 	validateAuthenticationRateLimit(
 		"authentication.login_rate_limit", AttemptRateLimit{
 			Window: rateLimit.Window, MaximumAttempts: rateLimit.MaximumAttempts,
@@ -199,8 +276,10 @@ func validateAuthentication(authentication Authentication, add func(string, stri
 		rateLimit.MaximumAccountFailureDelay.Duration > 30*time.Second {
 		add("authentication.login_rate_limit.maximum_account_failure_delay", "must be between 250ms and 30s")
 	}
+}
 
-	recovery := authentication.AccountRecovery
+// validateAuthenticationAccountRecovery reports invalid account recovery lifetimes and throttling settings.
+func validateAuthenticationAccountRecovery(recovery AccountRecovery, add func(string, string)) {
 	if recovery.EmailVerificationTTL.Duration < 5*time.Minute ||
 		recovery.EmailVerificationTTL.Duration > 30*24*time.Hour {
 		add(
@@ -227,8 +306,10 @@ func validateAuthentication(authentication Authentication, add func(string, stri
 		recovery.RateLimit,
 		add,
 	)
+}
 
-	tokens := authentication.PersonalAccessTokens
+// validateAuthenticationPersonalAccessTokens reports invalid personal access token lifetimes and limits.
+func validateAuthenticationPersonalAccessTokens(tokens PersonalAccessTokens, add func(string, string)) {
 	if tokens.MinimumLifetime.Duration < 5*time.Minute ||
 		tokens.MinimumLifetime.Duration > 24*time.Hour {
 		add(
@@ -256,8 +337,10 @@ func validateAuthentication(authentication Authentication, add func(string, stri
 			"must be between 1 and 1000",
 		)
 	}
+}
 
-	mfa := authentication.MFA
+// validateAuthenticationMFA reports invalid MFA issuer, setup, recovery code and key settings.
+func validateAuthenticationMFA(mfa MFA, add func(string, string)) {
 	if len(mfa.Issuer) == 0 || len(mfa.Issuer) > 128 ||
 		strings.ContainsAny(mfa.Issuer, "\x00\r\n") {
 		add("authentication.mfa.issuer", "must contain between 1 and 128 safe characters")
@@ -277,8 +360,6 @@ func validateAuthentication(authentication Authentication, add func(string, stri
 	validateSecretSealing("authentication.mfa", SecretSealing{
 		EncryptionKey: mfa.EncryptionKey, DecryptionKeys: mfa.DecryptionKeys,
 	}, add)
-
-	validateExternalAuthentication(authentication.External, add)
 }
 
 func validateAuthenticationRateLimit(
