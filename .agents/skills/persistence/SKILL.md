@@ -135,9 +135,14 @@ error. The configured migration timeout bounds lock acquisition and each
 migration statement; it is not a single wall-clock budget for the complete
 migration set.
 `proctor migrate status` and `proctor migrate up` remain operator tools for
-inspection and deliberate pre-start convergence; `status` only reads, taking
-no migration lock and creating no tables. Rollback is never an automatic
-startup action. Offline host recovery commands never migrate: they
+inspection and deliberate pre-start convergence. `status` and the other host
+inspection commands (`cluster status`, `jobs list`, `jobs show`) only read:
+they open the store with the `ReadOnly` setting, whose sessions PostgreSQL
+starts with `default_transaction_read_only`, and take no migration or
+advisory lock and create no tables. Rollback is never an automatic startup
+action; `proctor migrate down` reverts an explicit step count only after
+`--confirm`, under the migration lock and the exclusive serving-node lease
+fence, and refuses while any lease is live. Offline host recovery commands never migrate: they
 refuse any schema that differs from the build and point at `migrate up`. Before the first supported release, migrations may
 be rewritten or squashed and development databases recreated. That release
 freezes the baseline; later changes are append-only expand/backfill/contract

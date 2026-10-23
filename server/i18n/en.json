@@ -292,8 +292,44 @@
     "translation": "Updated"
   },
   {
+    "id": "cli.migrate.down.empty_schema",
+    "translation": "warning: this reverts the single pre-release baseline and leaves an empty schema; every Proctor table and all of its data is dropped, and only a database backup restores it"
+  },
+  {
+    "id": "cli.migrate.down.error.confirm",
+    "translation": "nothing was reverted; re-run with --confirm to revert these migrations"
+  },
+  {
+    "id": "cli.migrate.down.error.live_nodes",
+    "translation": "refusing to revert: serving nodes {{.Nodes}} hold a live lease; stop every node and wait for its lease to expire"
+  },
+  {
+    "id": "cli.migrate.down.error.steps",
+    "translation": "migrate down requires --steps with a count of at least 1"
+  },
+  {
+    "id": "cli.migrate.down.flag.confirm",
+    "translation": "revert the listed migrations; without it the command only prints them"
+  },
+  {
+    "id": "cli.migrate.down.flag.steps",
+    "translation": "number of newest migrations to revert (required)"
+  },
+  {
+    "id": "cli.migrate.down.plan",
+    "translation": "database schema version {{.DatabaseVersion}}; reverting {{.Count}} migration(s) to version {{.TargetVersion}}:"
+  },
+  {
+    "id": "cli.migrate.down.short",
+    "translation": "Revert the newest database migrations while every node is stopped"
+  },
+  {
+    "id": "cli.migrate.down.success",
+    "translation": "database schema reverted to version {{.Version}}"
+  },
+  {
     "id": "cli.migrate.error.requires_subcommand",
-    "translation": "migrate requires an up or status subcommand"
+    "translation": "migrate requires an up, status, or down subcommand"
   },
   {
     "id": "cli.migrate.short",

@@ -162,7 +162,7 @@ func TestMigrationsRoundTrip(t *testing.T) {
 	case 0:
 	case 1:
 		truncateBaselineTables(t, ctx, migrator)
-		rolledBack, err := migrator.Down(1)
+		rolledBack, err := migrator.Down(ctx, 1)
 		require.NoError(t, err, "prepare version-zero database: Down(1)")
 		require.Equal(t, 1, rolledBack, "prepare version-zero database: Down(1)")
 	default:
@@ -174,7 +174,7 @@ func TestMigrationsRoundTrip(t *testing.T) {
 	assertBaselineSchema(t, ctx, migrator)
 
 	truncateBaselineTables(t, ctx, migrator)
-	rolledBack, err := migrator.Down(1)
+	rolledBack, err := migrator.Down(ctx, 1)
 	require.NoError(t, err, "Down(1)")
 	require.Equal(t, 1, rolledBack, "Down(1)")
 	assertBaselineAbsent(t, ctx, migrator)
@@ -281,7 +281,7 @@ func truncateBaselineTables(t *testing.T, ctx context.Context, migrator *Migrato
 
 	_, err := migrator.store.GetMaster().Exec(ctx, `
 		TRUNCATE TABLE
-			cluster_discovery_nodes, mail_send_rate_limit, mail_key_state, mfa_key_state, mail_fanout_bundles, mail_payload_keys, mail_deliveries, mail_occurrences, onboarding_import_rows, onboarding_imports, invitations, job_attempts, jobs, browser_authentication_transactions, external_login_states, installation_states, desktop_compatibility_policies, access_policy_transitions, access_policies,
+			serving_node_leases, cluster_discovery_nodes, mail_send_rate_limit, mail_key_state, mfa_key_state, mail_fanout_bundles, mail_payload_keys, mail_deliveries, mail_occurrences, onboarding_import_rows, onboarding_imports, invitations, job_attempts, jobs, browser_authentication_transactions, external_login_states, installation_states, desktop_compatibility_policies, access_policy_transitions, access_policies,
 			audit_events, mfa_recovery_codes, mfa_credentials, user_tokens,
 			user_settings_documents,
 			personal_access_token_mutation_preparations, personal_access_tokens, session_credentials, sessions, desktop_registrations, role_bindings,

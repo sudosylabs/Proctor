@@ -19,13 +19,13 @@ import (
 type migrateUpExecutor func(context.Context, string) (int, error)
 type migrateStatusExecutor func(context.Context, string) (server.MigrationStatus, error)
 
-func newMigrateCommand(up migrateUpExecutor, status migrateStatusExecutor, text commandText) *cobra.Command {
+func newMigrateCommand(up migrateUpExecutor, status migrateStatusExecutor, planDown migrateDownPlanExecutor, down migrateDownExecutor, text commandText) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "migrate",
 		Short: text.value("cli.migrate.short", "Manage the Proctor database schema", nil),
 		Args:  noArgs,
 		RunE: func(*cobra.Command, []string) error {
-			return newUsageError(text.value("cli.migrate.error.requires_subcommand", "migrate requires an up or status subcommand", nil))
+			return newUsageError(text.value("cli.migrate.error.requires_subcommand", "migrate requires an up, status, or down subcommand", nil))
 		},
 	}
 	command.AddCommand(
@@ -75,6 +75,7 @@ func newMigrateCommand(up migrateUpExecutor, status migrateStatusExecutor, text 
 				return err
 			},
 		},
+		newMigrateDownCommand(planDown, down, text),
 	)
 	return command
 }

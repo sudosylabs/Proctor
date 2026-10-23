@@ -54,6 +54,8 @@ type executors struct {
 	showJob               jobShowExecutor
 	migrateUp             migrateUpExecutor
 	migrateStatus         migrateStatusExecutor
+	planMigrateDown       migrateDownPlanExecutor
+	migrateDown           migrateDownExecutor
 	recoverAdministrator  administratorRecoveryExecutor
 	resetAdministratorMFA administratorMFAResetExecutor
 	currentBuildInfo      buildInfoExecutor
@@ -70,6 +72,8 @@ func productionExecutors() executors {
 		showJob:               server.ShowJob,
 		migrateUp:             server.MigrateUp,
 		migrateStatus:         server.MigrateStatus,
+		planMigrateDown:       server.PlanMigrateDown,
+		migrateDown:           server.MigrateDown,
 		recoverAdministrator:  server.RecoverAdministratorAccess,
 		resetAdministratorMFA: server.ResetAdministratorMFA,
 		currentBuildInfo:      server.CurrentBuildInfo,
@@ -146,7 +150,7 @@ func newRootCommand(stdin io.Reader, stdout, stderr io.Writer, execute executors
 	root.AddCommand(
 		newServeCommand(execute.serve, text),
 		newConfigCommand(execute.validateConfig, execute.showConfig, text),
-		newMigrateCommand(execute.migrateUp, execute.migrateStatus, text),
+		newMigrateCommand(execute.migrateUp, execute.migrateStatus, execute.planMigrateDown, execute.migrateDown, text),
 		newClusterCommand(execute.clusterStatus, text),
 		newJobsCommand(execute.listJobs, execute.showJob, text),
 		newAdministratorCommand(stdin, execute.recoverAdministrator, execute.resetAdministratorMFA, text),

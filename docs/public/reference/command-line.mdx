@@ -24,6 +24,7 @@ Every command accepts `--config` (short form `-c`). An explicit path wins over
 | `proctor config show` | print the effective configuration with every secret redacted | no |
 | `proctor migrate status` | compare database and server schema versions and report pending migrations | no |
 | `proctor migrate up` | apply every pending migration deliberately | no |
+| `proctor migrate down` | revert an explicit number of the newest migrations while every node is stopped | no |
 | `proctor cluster status` | list serving node leases, cluster discovery rows, and the schema version | no |
 | `proctor jobs list` | list the newest durable Jobs with state, attempts, last error code, and availability | no |
 | `proctor jobs show` | show one Job and its most recent attempts | no |
@@ -70,6 +71,29 @@ proctor migrate up --config /etc/proctor/config.json
 The current pre-release baseline does not support upgrading older incompatible
 development schemas. Status does not certify backup, rollback, or production
 upgrade safety.
+
+### Reverting Migrations
+
+```sh
+proctor migrate down --steps 1 --config /etc/proctor/config.json
+proctor migrate down --steps 1 --confirm --config /etc/proctor/config.json
+```
+
+`migrate down` reverts the newest `--steps` applied migrations; the count is
+required and must not exceed the applied migrations. It first prints the
+current schema version, each migration it would revert, and the resulting
+version. Without `--confirm` it stops there, reverts nothing, and exits with
+status 1. It refuses while any serving node holds a live lease, naming the
+nodes; stop every node and wait for a crashed node's lease to expire first.
+While reverting it holds the migration lock and the serving-node lease fence,
+so no node can start serving or migrate meanwhile.
+
+Proctor currently ships one pre-release baseline migration, so `--steps 1`
+reverts to version 0: an **empty schema**. Every Proctor table and all of its
+data is dropped; only Morph's own `db_migrations` and `db_lock` bookkeeping
+tables remain, and only a database backup brings the data back. The command
+says so before it acts. A node started afterwards applies the baseline again
+and starts from an empty installation. Rollback is never a startup action.
 
 ## Read-Only Inspection
 
