@@ -1,0 +1,35 @@
+# Review owners for Proctor. The last matching pattern wins.
+# Each boundary below is one the repository already treats as separately
+# owned (independently versioned modules, the server, the webapp,
+# documentation, build and release, and automation), so a future maintainer
+# can take one over without reshaping this file.
+
+* @AbassHammed
+
+# Independently versioned, Apache-2.0 reusable modules.
+/packages/cache/ @AbassHammed
+/packages/mail/ @AbassHammed
+/packages/vfs/ @AbassHammed
+
+# AGPL server and its server-hosted browser application.
+/server/ @AbassHammed
+/webapp/ @AbassHammed
+
+# Public, API, and site documentation.
+/docs/ @AbassHammed
+
+# Build, packaging, release, and deployment examples.
+/build/ @AbassHammed
+/deploy/ @AbassHammed
+/Makefile @AbassHammed
+/go.work @AbassHammed
+/go.work.sum @AbassHammed
+
+# Automation, supply-chain configuration, and repository governance.
+/.github/ @AbassHammed
+/.agents/ @AbassHammed
+/AGENTS.md @AbassHammed
+/SECURITY.md @AbassHammed
+/CODE_OF_CONDUCT.md @AbassHammed
+/LICENSING.md @AbassHammed
+/LICENSE @AbassHammed
