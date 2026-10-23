@@ -10,6 +10,8 @@ module when a change is not server-only. No module has been released yet.
 
 ### Removed
 
+- Server: the webapp build manifest and the devseed journal no longer carry
+  a `schema_version`; a manifest or journal that does is rejected.
 - Server: execution hosts and interactive terminals, including their APIs,
   settings, metrics, and persistence (**breaking**).
 
@@ -180,6 +182,18 @@ module when a change is not server-only. No module has been released yet.
 
 ### Fixed
 
+- Server: audit, Exam, Exam Manager, Job, Job attempt, mail delivery and
+  User Session listings no longer return a `next_cursor` on an exactly full
+  final page.
+- Cache: the memory backend never evicts a live atomic counter, so a flood
+  of new usernames cannot reset another account's login rate limit; new
+  counters beyond `Cache.Memory.MaxCounters` (default 100000) are refused
+  and the guarded sign-in fails closed.
+- Server: PostgreSQL sessions compute interval arithmetic in UTC, so
+  invitation and onboarding lifetimes no longer break within a week of a
+  daylight-saving change when the database runs in such a zone.
+- Server: the metrics listener's TLS certificate is reloaded on `SIGHUP` and
+  on file rotation, as the main listener's is.
 - Server: concurrent first TLS handshakes for the automatic-certificate
   hostname no longer crash the process (golang/go#80119); the embedded ACME
   client is rebased on `golang.org/x/crypto` v0.55.0.
