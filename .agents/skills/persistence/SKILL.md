@@ -214,6 +214,12 @@ Store mutation follows one rule:
 Regression tests inject skew by moving a row's instants ahead of the database
 clock (`TestTimeAuthority*` in `sqlstore`).
 
+Every Store connection runs with the session `TimeZone` fixed to UTC, whatever
+the data source or server default says, because `timestamptz` interval
+arithmetic follows the session zone. Fixed lifetimes in CHECK constraints are
+still written in hours (`interval '168 hours'`), which no zone can stretch
+across a daylight-saving transition.
+
 ## SQL idiom
 
 - Store implementations are exported `SQL<Model>Store` types in `sqlstore`.

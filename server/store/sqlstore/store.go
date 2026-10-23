@@ -20,11 +20,12 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	sq "github.com/Masterminds/squirrel"
 	"github.com/jmoiron/sqlx"
-	_ "github.com/lib/pq"
+	"github.com/lib/pq"
 
 	"github.com/sudosylabs/proctor/server/config"
 	"github.com/sudosylabs/proctor/server/store"
@@ -135,15 +136,38 @@ type SQLStore struct {
 	deliveryAppendSlots chan struct{}
 }
 
+// utcConnector connects with the session TimeZone fixed to UTC, replacing any
+// the data source or server default names. Interval arithmetic on timestamptz
+// (created_at + interval '7 days', CURRENT_TIMESTAMP - INTERVAL '30 days')
+// follows the session zone, so a server running in a daylight-saving zone
+// would otherwise shift lifetimes by an hour across a transition.
+func utcConnector(dataSource string) (*pq.Connector, error) {
+	cfg, err := pq.NewConfig(dataSource)
+	if err != nil {
+		return nil, err
+	}
+	for name := range cfg.Runtime {
+		if strings.EqualFold(name, "TimeZone") {
+			delete(cfg.Runtime, name)
+		}
+	}
+	if cfg.Runtime == nil {
+		cfg.Runtime = map[string]string{}
+	}
+	cfg.Runtime["TimeZone"] = "UTC"
+	return pq.NewConnectorConfig(cfg)
+}
+
 func New(ctx context.Context, settings Settings) (*SQLStore, error) {
 	if err := settings.validate(); err != nil {
 		return nil, err
 	}
 
-	db, err := sqlx.Open("postgres", settings.DataSource)
+	connector, err := utcConnector(settings.DataSource)
 	if err != nil {
 		return nil, fmt.Errorf("open PostgreSQL: %w", err)
 	}
+	db := sqlx.NewDb(sql.OpenDB(connector), "postgres")
 	db.SetMaxOpenConns(settings.MaxOpenConnections)
 	db.SetMaxIdleConns(settings.MaxIdleConnections)
 	db.SetConnMaxLifetime(settings.ConnectionMaxLifetime)

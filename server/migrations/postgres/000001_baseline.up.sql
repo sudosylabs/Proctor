@@ -411,7 +411,7 @@ CREATE TABLE invitations (
         AND suggested_first_name !~ '[\x01-\x1f\x7f-\x9f]'
         AND suggested_last_name !~ '[\x01-\x1f\x7f-\x9f]'
     ),
-    CONSTRAINT invitations_lifetime_check CHECK (expires_at = created_at + interval '7 days'),
+    CONSTRAINT invitations_lifetime_check CHECK (expires_at = created_at + interval '168 hours'),
     CONSTRAINT invitations_lifecycle_check CHECK (
         updated_at >= created_at AND
         ((state = 'accepted') = (accepted_at IS NOT NULL AND accepted_user_id IS NOT NULL AND
@@ -503,7 +503,7 @@ CREATE TABLE onboarding_imports (
         succeeded_rows + no_op_rows + failed_rows + skipped_rows <= total_rows
     ),
     CONSTRAINT onboarding_imports_lifecycle_check CHECK (
-        updated_at >= created_at AND expires_at = created_at + interval '7 days' AND
+        updated_at >= created_at AND expires_at = created_at + interval '168 hours' AND
         (state NOT IN ('uploading', 'parsing') OR preview_digest = '') AND
         (state NOT IN ('preview_ready', 'executing', 'completed', 'completed_with_errors') OR preview_digest <> '') AND
         ((state IN ('executing', 'completed', 'completed_with_errors') AND execution_job_id IS NOT NULL) OR
@@ -4639,7 +4639,7 @@ CREATE TABLE retention_source_protections (
     submission_id varchar(26) NOT NULL REFERENCES exam_submissions(id),
     category varchar(24) NOT NULL CHECK (category IN ('work','integrity','browser_activity','security_operational')),
     created_at timestamptz NOT NULL,
-    expires_at timestamptz NOT NULL CHECK (expires_at > created_at AND expires_at <= created_at + interval '1 day'),
+    expires_at timestamptz NOT NULL CHECK (expires_at > created_at AND expires_at <= created_at + interval '24 hours'),
     PRIMARY KEY (export_id, submission_id, category)
 );
 CREATE INDEX retention_source_protections_submission_idx ON retention_source_protections (submission_id, category, expires_at);
@@ -4656,8 +4656,8 @@ CREATE TABLE exam_exports (
     state varchar(16) NOT NULL CHECK (state IN ('queued','ready','failed','expired')),
     policy_revision bigint NOT NULL CHECK (policy_revision > 0),
     created_at timestamptz NOT NULL,
-    expires_at timestamptz NOT NULL CHECK (expires_at > created_at AND expires_at <= created_at + interval '7 days'),
-    source_expires_at timestamptz NOT NULL CHECK (source_expires_at > created_at AND source_expires_at <= created_at + interval '1 day' AND source_expires_at <= expires_at),
+    expires_at timestamptz NOT NULL CHECK (expires_at > created_at AND expires_at <= created_at + interval '168 hours'),
+    source_expires_at timestamptz NOT NULL CHECK (source_expires_at > created_at AND source_expires_at <= created_at + interval '24 hours' AND source_expires_at <= expires_at),
     submission_count integer NOT NULL CHECK (submission_count BETWEEN 1 AND 200),
     file_count integer NOT NULL CHECK (file_count BETWEEN 0 AND 50000),
     source_bytes bigint NOT NULL CHECK (source_bytes BETWEEN 0 AND 8589934592),
