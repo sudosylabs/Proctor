@@ -104,6 +104,18 @@
     "translation": "Inspect Proctor deployment configuration"
   },
   {
+    "id": "cli.config.show.environment_overrides",
+    "translation": "# environment overrides: {{.Names}}"
+  },
+  {
+    "id": "cli.config.show.flag.json",
+    "translation": "write the redacted configuration document as JSON"
+  },
+  {
+    "id": "cli.config.show.short",
+    "translation": "Print the effective configuration with every secret redacted"
+  },
+  {
     "id": "cli.config.validate.short",
     "translation": "Validate configuration without starting the server"
   },

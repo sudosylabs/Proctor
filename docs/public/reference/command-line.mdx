@@ -21,6 +21,7 @@ Every command accepts `--config` (short form `-c`). An explicit path wins over
 | --- | --- | --- |
 | `proctor serve` | run migrations/startup reconciliation, dependencies, Jobs, WebSocket, HTTP, readiness, and bounded shutdown | yes |
 | `proctor config validate` | strictly load and validate effective configuration | no |
+| `proctor config show` | print the effective configuration with every secret redacted | no |
 | `proctor migrate status` | compare database and server schema versions and report pending migrations | no |
 | `proctor migrate up` | apply every pending migration deliberately | no |
 | `proctor administrator recover` | host-only administrator local-authentication recovery while all nodes are stopped | no |
@@ -36,6 +37,25 @@ proctor serve --config /etc/proctor/config.json
 
 `serve` integrates with systemd notification when `NOTIFY_SOCKET` is present.
 The CLI warns when run as root; use a dedicated non-root service account.
+
+## Show Effective Configuration
+
+```sh
+proctor config show --config /etc/proctor/config.json
+proctor config show --json --config /etc/proctor/config.json
+```
+
+`config show` loads and validates configuration exactly as `config validate`
+does: built-in defaults, then the file, then `PROCTOR_` environment
+overrides. It prints one `Path = value` line per setting, with values in their
+JSON spelling, preceded by a comment naming any environment variables that
+replaced a file value. `--json` prints the whole document in the configuration
+file's shape instead. Every secret is replaced by `[redacted]` in both forms:
+the database data source, Redis password, metrics bearer token, Memberlist,
+mail sealing and MFA key rings, SMTP password, S3 credentials, bootstrap
+secret, and OIDC client secrets. An empty secret stays empty, so the output
+shows whether a secret is set without revealing it. The command connects to no
+dependency and never writes the file.
 
 ## Database Migration
 

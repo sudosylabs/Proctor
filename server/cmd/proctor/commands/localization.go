@@ -100,6 +100,8 @@ func LocalizationDefinitions() []localization.Definition {
 		"cli.config.error.requires_subcommand",
 		"cli.config.flag.path",
 		"cli.config.short",
+		"cli.config.show.flag.json",
+		"cli.config.show.short",
 		"cli.config.validate.short",
 		"cli.config.validate.success",
 		"cli.migrate.error.requires_subcommand",
@@ -123,6 +125,7 @@ func LocalizationDefinitions() []localization.Definition {
 		definitions = append(definitions, localization.Definition{ID: id, Origin: commandLocalizationOrigin})
 	}
 	definitions = append(definitions,
+		localization.Definition{ID: "cli.config.show.environment_overrides", Origin: commandLocalizationOrigin, Variables: []string{"Names"}},
 		localization.Definition{ID: "cli.migrate.up.success", Origin: commandLocalizationOrigin, Variables: []string{"Version"}},
 		localization.Definition{ID: "cli.migrate.status.success", Origin: commandLocalizationOrigin, Variables: []string{"DatabaseVersion", "PendingMigrations", "ServerVersion"}},
 		localization.Definition{ID: "cli.version.output", Origin: commandLocalizationOrigin, Variables: []string{"BuildTime", "Commit", "GoVersion", "Version"}},

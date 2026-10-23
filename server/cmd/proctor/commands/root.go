@@ -48,6 +48,7 @@ func noArgs(command *cobra.Command, args []string) error {
 type executors struct {
 	serve                 serveExecutor
 	validateConfig        configValidateExecutor
+	showConfig            configShowExecutor
 	migrateUp             migrateUpExecutor
 	migrateStatus         migrateStatusExecutor
 	recoverAdministrator  administratorRecoveryExecutor
@@ -60,6 +61,7 @@ func productionExecutors() executors {
 	return executors{
 		serve:                 serve,
 		validateConfig:        server.ValidateConfig,
+		showConfig:            server.ShowEffectiveConfiguration,
 		migrateUp:             server.MigrateUp,
 		migrateStatus:         server.MigrateStatus,
 		recoverAdministrator:  server.RecoverAdministratorAccess,
@@ -137,7 +139,7 @@ func newRootCommand(stdin io.Reader, stdout, stderr io.Writer, execute executors
 
 	root.AddCommand(
 		newServeCommand(execute.serve, text),
-		newConfigCommand(execute.validateConfig, text),
+		newConfigCommand(execute.validateConfig, execute.showConfig, text),
 		newMigrateCommand(execute.migrateUp, execute.migrateStatus, text),
 		newAdministratorCommand(stdin, execute.recoverAdministrator, execute.resetAdministratorMFA, text),
 		newVersionCommand(execute.currentBuildInfo, text),

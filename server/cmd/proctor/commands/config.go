@@ -16,7 +16,7 @@ import (
 
 type configValidateExecutor func(context.Context, string) error
 
-func newConfigCommand(validate configValidateExecutor, text commandText) *cobra.Command {
+func newConfigCommand(validate configValidateExecutor, show configShowExecutor, text commandText) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "config",
 		Short: text.value("cli.config.short", "Inspect Proctor deployment configuration", nil),
@@ -40,6 +40,6 @@ func newConfigCommand(validate configValidateExecutor, text commandText) *cobra.
 			_, err = fmt.Fprintln(command.OutOrStdout(), text.value("cli.config.validate.success", "configuration is valid", nil))
 			return err
 		},
-	})
+	}, newConfigShowCommand(show, text))
 	return command
 }
