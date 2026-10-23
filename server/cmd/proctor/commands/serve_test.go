@@ -67,7 +67,7 @@ func TestServeReceivesContextAndConfigPath(t *testing.T) {
 func TestServeHoldsSIGHUPReceivedDuringStartupUntilTheNodeExists(t *testing.T) {
 	// SIGHUP is process-wide; this test must not share its delivery window.
 	node := &reloadRecordingNode{reloaded: make(chan struct{}, 1)}
-	err := serveNode(context.Background(), func(context.Context) (servingNode, error) {
+	err := serveNode(context.Background(), nil, func(context.Context) (servingNode, error) {
 		// A reload request arriving while the node is still constructing, for
 		// example during migration, must not terminate the process.
 		require.NoError(t, syscall.Kill(os.Getpid(), syscall.SIGHUP))
@@ -80,6 +80,8 @@ func TestServeHoldsSIGHUPReceivedDuringStartupUntilTheNodeExists(t *testing.T) {
 type reloadRecordingNode struct{ reloaded chan struct{} }
 
 func (*reloadRecordingNode) ForceStop() {}
+
+func (*reloadRecordingNode) Ready() bool { return true }
 
 func (n *reloadRecordingNode) Reload(context.Context) error {
 	n.reloaded <- struct{}{}

@@ -89,3 +89,12 @@ func TestWithReadyNotifierRejectsNil(t *testing.T) {
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "ready notifier is nil")
 }
+
+func TestWithStoppingNotifierRejectsNil(t *testing.T) {
+	t.Parallel()
+
+	settings := options{}
+	err := WithStoppingNotifier(nil)(&settings)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "stopping notifier is nil")
+}

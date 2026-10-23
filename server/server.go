@@ -28,8 +28,9 @@ import (
 )
 
 type options struct {
-	configPath    string
-	readyNotifier ReadyNotifier
+	configPath       string
+	readyNotifier    ReadyNotifier
+	stoppingNotifier StoppingNotifier
 	// requireCurrentSchema makes construction refuse an out-of-date schema
 	// instead of migrating it; offline host commands must not converge
 	// schema as a side effect.
@@ -54,6 +55,11 @@ type Option func(*options) error
 // logged and do not stop an otherwise healthy server.
 type ReadyNotifier func(context.Context) error
 
+// StoppingNotifier observes the single transition of a running node into
+// shutdown. Implementations must return promptly; notification failures are
+// logged and never delay or alter the shutdown sequence.
+type StoppingNotifier func(context.Context) error
+
 // WithConfigPath selects the deployment configuration file used to construct
 // the server. Applying the option fails when path is empty; loading and
 // validating the file occurs in New.
@@ -76,6 +82,20 @@ func WithReadyNotifier(notify ReadyNotifier) Option {
 			return errors.New("ready notifier is nil")
 		}
 		settings.readyNotifier = notify
+		return nil
+	}
+}
+
+// WithStoppingNotifier attaches a host-process shutdown notification. The
+// notifier runs exactly once when a node that Run started begins shutting
+// down, after readiness is withdrawn and before HTTP stops. It is not called
+// when an inert node closes.
+func WithStoppingNotifier(notify StoppingNotifier) Option {
+	return func(settings *options) error {
+		if notify == nil {
+			return errors.New("stopping notifier is nil")
+		}
+		settings.stoppingNotifier = notify
 		return nil
 	}
 }
@@ -327,9 +347,11 @@ const (
 // Server is the lifecycle owner for one assembled Proctor node.
 type Server struct {
 	components runtimeComponents
-	// readyNotifier is a borrowed host-process observer, not an owned runtime
-	// component. It has no lifecycle and is invoked only after readiness.
-	readyNotifier ReadyNotifier
+	// readyNotifier and stoppingNotifier are borrowed host-process observers,
+	// not owned runtime components. They have no lifecycle; readyNotifier runs
+	// only after readiness and stoppingNotifier only when shutdown begins.
+	readyNotifier    ReadyNotifier
+	stoppingNotifier StoppingNotifier
 
 	lifecycleMu sync.Mutex
 	state       nodeState
@@ -408,6 +430,7 @@ func New(ctx context.Context, optionValues ...Option) (*Server, error) {
 		return nil, fmt.Errorf("construct server: %w", err)
 	}
 	result.server.readyNotifier = settings.readyNotifier
+	result.server.stoppingNotifier = settings.stoppingNotifier
 	return result.server, nil
 }
 

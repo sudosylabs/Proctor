@@ -120,8 +120,11 @@ route traffic to. Detailed dependency state is operator-only and must not be
 smuggled into a public health response.
 
 A host-process readiness observer, such as the systemd notification adapter,
-runs only after internal readiness. It reports outward; it does not own server
-lifecycle and cannot make an otherwise ready server fail.
+runs only after internal readiness, and its shutdown observer runs once when a
+running node begins stopping. They report outward; they do not own server
+lifecycle and cannot make an otherwise ready server fail or delay shutdown.
+The host process, not the server, feeds a supervisor watchdog from
+`Server.Ready`.
 
 ## Understand Reverse Shutdown
 

@@ -14,6 +14,8 @@ import (
 	"net"
 	"net/http"
 	"time"
+
+	"github.com/sudosylabs/proctor/server/logging"
 )
 
 // ErrShutdownForced reports that the host forced the stop before the graceful
@@ -26,6 +28,10 @@ var errHTTPServerStopTimeout = errors.New("HTTP server did not stop after gracef
 // closed rather than drained. A closed server returns promptly, so this wait
 // is independent of whatever shutdown budget remains.
 const forcedServeExitWait = 2 * time.Second
+
+// stoppingNotificationTimeout bounds the host shutdown notification so a
+// stalled supervisor socket cannot spend the shutdown budget.
+const stoppingNotificationTimeout = time.Second
 
 // stopPlan is what the run hands the shutdown sequence: why the node stops
 // and how HTTP serving must end.
@@ -121,8 +127,17 @@ func (s *Server) beginStopping(running bool) {
 	}
 	s.lifecycleMu.Unlock()
 	s.setUnready()
-	if running {
-		s.components.logger.Info("server shutdown started")
+	if !running {
+		return
+	}
+	s.components.logger.Info("server shutdown started")
+	if s.stoppingNotifier == nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), stoppingNotificationTimeout)
+	defer cancel()
+	if err := s.stoppingNotifier(ctx); err != nil {
+		s.components.logger.ErrorContext(ctx, "host shutdown notification failed", logging.Err(err))
 	}
 }
 

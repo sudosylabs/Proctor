@@ -79,7 +79,7 @@ inside `app/` are application-owned modules, not transports.
 | `server` | Construction dependencies | Business rules |
 | `cmd/proctor-healthcheck` | Standard-library HTTP readiness probing | Server packages, application state, configuration, persistence, and third-party libraries |
 | `cmd/proctor` | `cmd/proctor/commands` and standard-library process lifecycle | Server, application, persistence, and concrete infrastructure |
-| `cmd/proctor/commands` | Module-root `server`, `localization`, Cobra, and standard-library presentation concerns | Application packages, persistence, platform, and independent infrastructure construction |
+| `cmd/proctor/commands` | Module-root `server`, `localization`, Cobra, `golang.org/x/sys/unix` for the systemd notification clock, and standard-library presentation concerns | Application packages, persistence, platform, and independent infrastructure construction |
 | `cmd/mailpreview` | `model`, `localization`, `app/mail`, standard library, and repository source assets | parent application, persistence, infrastructure adapters, mail delivery |
 | `cmd/ptool` | `localization` plus the consumer-owned localization definition registries in `app/mail`, `cmd/proctor/commands`, `httpapi`, and `websocket`; `internal/openapidoc` and `internal/errorcatalog` behind the local-filesystem build/check adapters, which also type-check production packages to inventory minted error codes | runtime composition and concrete infrastructure construction |
 | `cmd/ptool/devseed` | Standard-library HTTP, synthetic fixture construction, and private local journal I/O | Application packages, persistence, runtime composition, concrete server adapters |

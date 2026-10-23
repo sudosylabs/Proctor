@@ -36,7 +36,31 @@ after reviewing the change.
 Proctor sends `READY=1` only after dependencies, serving lease, startup
 reconciliation, Jobs, WebSocket, listener handoff, and readiness succeed. A
 notification failure is logged; systemd's startup timeout remains the external
-boundary.
+boundary. Proctor also reports the rest of its lifecycle to systemd:
+
+| Event | Notification |
+| --- | --- |
+| shutdown begins, after readiness is withdrawn | `STOPPING=1` |
+| `SIGHUP` reload (`systemctl reload proctor`) | `RELOADING=1` with `MONOTONIC_USEC`, then `READY=1`, also after a failed reload that kept the running configuration |
+| every half `WatchdogSec` while the node is healthy | `WATCHDOG=1` |
+
+The tracked unit sets `WatchdogSec=60s`. Proctor samples its own readiness,
+the same answer `/health/ready` gives including the bounded PostgreSQL, cache,
+cluster, and VFS probe, several times per keep-alive interval and sends
+`WATCHDOG=1` only when the node was ready at least once since the previous
+keep-alive. A short dependency blip therefore costs nothing, but a node that
+stays unready for most of a minute, or whose readiness check wedges, stops the
+keep-alives; systemd then aborts it with `SIGABRT`, which writes every
+goroutine's stack to the journal, and `Restart=on-failure` starts it again.
+After `STOPPING=1` the keep-alives continue through the bounded drain, so
+`TimeoutStopSec`, not the watchdog, limits shutdown. Raise `WatchdogSec` in a
+drop-in if your PostgreSQL failover routinely takes longer than about half a
+minute; `WatchdogSec=0` disables the watchdog.
+
+The unit keeps `Type=notify` with `ExecReload` sending `SIGHUP`, which works
+on every supported systemd. On systemd 253 or newer you may instead set
+`Type=notify-reload` and remove `ExecReload`; systemd then sends `SIGHUP`
+itself and waits for the same `RELOADING=1` and `READY=1` pair.
 
 ## Container
 

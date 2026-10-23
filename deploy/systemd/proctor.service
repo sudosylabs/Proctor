@@ -18,6 +18,9 @@ Restart=on-failure
 RestartSec=5s
 TimeoutStartSec=120s
 TimeoutStopSec=90s
+# Proctor sends WATCHDOG=1 every half interval while it reports ready. A node
+# that stays unready or wedges for about a minute is aborted and restarted.
+WatchdogSec=60s
 KillSignal=SIGTERM
 UMask=0077
 

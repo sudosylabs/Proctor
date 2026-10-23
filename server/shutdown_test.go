@@ -9,11 +9,13 @@ package server
 
 import (
 	"context"
+	"errors"
 	"net"
 	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -220,4 +222,51 @@ func TestForceStopOfARunningNodeStopsItAndReportsTheForcedStop(t *testing.T) {
 	node.ForceStop()
 	require.ErrorIs(t, receiveLifecycleResult(t, done, "Run after a forced stop"), ErrShutdownForced, "Run() error")
 	require.False(t, node.Ready(), "node stayed ready after a forced stop")
+}
+
+func TestShutdownNotifiesTheHostOnceAfterWithdrawingReadinessAndBeforeHTTPStops(t *testing.T) {
+	t.Parallel()
+
+	events := &lifecycleEvents{}
+	httpService := &lifecycleHTTP{events: events, started: make(chan struct{}), stopped: make(chan struct{})}
+	node := newLifecycleTestServer(t, runtimeComponents{
+		platform: &lifecyclePlatform{events: events}, jobs: &lifecycleJobs{events: events},
+		websocket: &lifecycleWebSocket{events: events}, transport: &lifecycleTransport{events: events},
+		readiness: &lifecycleReadiness{events: events},
+		listen:    func(string, string) (net.Listener, error) { return &lifecycleListener{}, nil },
+		newHTTP:   func(httpServerSettings) httpRuntime { return httpService },
+	})
+	node.stoppingNotifier = func(ctx context.Context) error {
+		_, bounded := ctx.Deadline()
+		assert.True(t, bounded, "host shutdown notification has no deadline")
+		events.record("host-stopping-notify")
+		return errors.New("notification socket unavailable")
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- node.Run(ctx) }()
+	waitForLifecycleReady(t, node)
+	cancel()
+	require.NoError(t, receiveLifecycleResult(t, done, "Run"), "a failed host notification must not fail shutdown")
+	require.NoError(t, node.Close())
+	assertLifecycleEvents(t, events,
+		"platform-start", "jobs-start", "websocket-start", "http-serve", "ready", "unready",
+		"host-stopping-notify", "http-shutdown", "jobs-close", "websocket-close", "transport-close", "platform-close",
+	)
+}
+
+func TestInertCloseDoesNotNotifyTheHostOfShutdown(t *testing.T) {
+	t.Parallel()
+
+	events := &lifecycleEvents{}
+	node := newLifecycleTestServer(t, runtimeComponents{
+		platform: &lifecyclePlatform{events: events}, transport: &lifecycleTransport{events: events},
+		readiness: &lifecycleReadiness{},
+	})
+	node.stoppingNotifier = func(context.Context) error {
+		events.record("host-stopping-notify")
+		return nil
+	}
+	require.NoError(t, node.Close())
+	assertLifecycleEvents(t, events, "transport-close", "platform-close")
 }

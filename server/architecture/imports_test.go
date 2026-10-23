@@ -178,6 +178,7 @@ func TestDependencyPolicyAllowsInwardImports(t *testing.T) {
 		{name: "operator command tree may import the root server facade", from: serverModule + "/cmd/proctor/commands", imported: serverModule},
 		{name: "operator command tree may import localization", from: serverModule + "/cmd/proctor/commands", imported: serverModule + "/localization"},
 		{name: "operator command tree may import Cobra", from: serverModule + "/cmd/proctor/commands", imported: "github.com/spf13/cobra"},
+		{name: "operator command tree may read the monotonic clock", from: serverModule + "/cmd/proctor/commands", imported: "golang.org/x/sys/unix"},
 		{name: "mail preview may import mail rendering", from: serverModule + "/cmd/mailpreview", imported: serverModule + "/app/mail"},
 		{name: "mail preview may import localization", from: serverModule + "/cmd/mailpreview", imported: serverModule + "/localization"},
 		{name: "standard library remains available", from: serverModule + "/app", imported: "context"},

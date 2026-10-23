@@ -546,7 +546,8 @@ var dependencyRules = []dependencyRule{
 			exact(serverModule),
 			exact(serverModule+"/localization"),
 		),
-		thirdParty: only(exact("github.com/spf13/cobra")),
+		// x/sys/unix reads CLOCK_MONOTONIC for systemd reload notifications.
+		thirdParty: only(exact("github.com/spf13/cobra"), exact("golang.org/x/sys/unix")),
 	},
 	{
 		name:    "ptool executable",

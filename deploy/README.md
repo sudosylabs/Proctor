@@ -21,7 +21,10 @@ unprivileged, read-only process.
 
 The unit uses `Type=notify`. Proctor sends `READY=1` only after mandatory
 dependencies, migrations, metrics, Jobs, HTTP, and internal readiness are all
-usable. Put persistent ACME or local VFS state below `/var/lib/proctor` and file
+usable, `STOPPING=1` when shutdown begins, and `RELOADING=1`/`READY=1` around
+a `SIGHUP` reload. With the unit's `WatchdogSec=60s` it sends `WATCHDOG=1`
+every 30 seconds while it reports ready, so a node that stays unready or wedges
+is aborted and restarted. Put persistent ACME or local VFS state below `/var/lib/proctor` and file
 logs below `/var/log/proctor`, or add an explicit systemd drop-in for another
 operator-owned writable path.
 

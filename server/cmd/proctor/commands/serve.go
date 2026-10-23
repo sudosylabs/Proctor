@@ -42,10 +42,14 @@ func serve(ctx context.Context, configPath string) error {
 	if configPath != "" {
 		options = append(options, server.WithConfigPath(configPath))
 	}
-	if socketPath := os.Getenv("NOTIFY_SOCKET"); socketPath != "" {
-		options = append(options, server.WithReadyNotifier(systemdReadyNotifier(socketPath)))
+	supervisor := newSystemdSupervisor(os.Getenv, os.Getpid())
+	if supervisor != nil {
+		options = append(options,
+			server.WithReadyNotifier(supervisor.ready),
+			server.WithStoppingNotifier(supervisor.beginStopping),
+		)
 	}
-	return serveNode(ctx, func(ctx context.Context) (servingNode, error) {
+	return serveNode(ctx, supervisor, func(ctx context.Context) (servingNode, error) {
 		node, err := server.New(ctx, options...)
 		if err != nil {
 			return nil, err
@@ -59,14 +63,16 @@ type servingNode interface {
 	Run(context.Context) error
 	Reload(context.Context) error
 	ForceStop()
+	Ready() bool
 }
 
-// serveNode constructs and runs one node, forwarding SIGHUP to its Reload and
-// escalating repeated stop signals. Both handlers are registered before
-// construction: the default SIGHUP action terminates the process, and
+// serveNode constructs and runs one node, forwarding SIGHUP to its Reload,
+// escalating repeated stop signals, and keeping a supervising systemd's
+// watchdog fed while the node is ready. Both signal handlers are registered
+// before construction: the default SIGHUP action terminates the process, and
 // construction applies database migrations. A reload requested before the
 // node exists is held and runs once it does.
-func serveNode(ctx context.Context, construct func(context.Context) (servingNode, error)) error {
+func serveNode(ctx context.Context, supervisor *systemdSupervisor, construct func(context.Context) (servingNode, error)) error {
 	reloadSignals := make(chan os.Signal, 1)
 	signal.Notify(reloadSignals, syscall.SIGHUP)
 	defer signal.Stop(reloadSignals)
@@ -110,11 +116,23 @@ func serveNode(ctx context.Context, construct func(context.Context) (servingNode
 	reloadsDone := make(chan struct{})
 	go func() {
 		defer close(reloadsDone)
-		forwardReloadSignals(reloadCtx, reloadSignals, constructed.Reload)
+		forwardReloadSignals(reloadCtx, reloadSignals, func(ctx context.Context) error {
+			return supervisor.reload(ctx, constructed.Reload)
+		})
 	}()
 	defer func() {
 		stopReloads()
 		<-reloadsDone
+	}()
+	keepAliveDone := make(chan struct{})
+	keepAliveStopped := make(chan struct{})
+	go func() {
+		defer close(keepAliveStopped)
+		supervisor.keepAlive(keepAliveDone, constructed.Ready)
+	}()
+	defer func() {
+		close(keepAliveDone)
+		<-keepAliveStopped
 	}()
 	return constructed.Run(runCtx)
 }

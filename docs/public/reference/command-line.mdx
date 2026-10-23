@@ -39,7 +39,9 @@ proctor config validate --config /etc/proctor/config.json
 proctor serve --config /etc/proctor/config.json
 ```
 
-`serve` integrates with systemd notification when `NOTIFY_SOCKET` is present.
+`serve` integrates with systemd notification when `NOTIFY_SOCKET` is present:
+it reports readiness, shutdown, and reloads, and feeds the watchdog when
+`WATCHDOG_USEC` names this process.
 The first SIGTERM or SIGINT starts a graceful drain, a second forces it to
 finish at once and makes `serve` exit with status 1, and a third exits
 immediately. SIGHUP reloads configuration and static TLS certificates.
