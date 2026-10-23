@@ -99,6 +99,10 @@ or provenance changes. They may also close work that conflicts with the
 project's scope, architecture, safety obligations, or licensing boundaries.
 There is no guaranteed review or merge timeline.
 
+Proctor currently has a single maintainer. [GOVERNANCE.md](GOVERNANCE.md)
+explains how decisions are made and how maintainers are added;
+[MAINTAINERS.md](MAINTAINERS.md) lists who reviews which areas.
+
 Use GitHub issues for ordinary defects and proposals. Use
 [support@sudosy.fr](mailto:support@sudosy.fr) only when a private security or
 Code of Conduct report is required.

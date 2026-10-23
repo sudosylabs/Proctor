@@ -59,6 +59,9 @@ Read [CONTRIBUTING.md](CONTRIBUTING.md) before opening an issue or pull
 request. Participation in Proctor community spaces is governed by the
 [Code of Conduct](CODE_OF_CONDUCT.md).
 
+[GOVERNANCE.md](GOVERNANCE.md) describes how decisions and releases are made,
+and [MAINTAINERS.md](MAINTAINERS.md) lists the current maintainers.
+
 Do not report vulnerabilities in public issues. Follow the private process in
 [SECURITY.md](SECURITY.md).
 
