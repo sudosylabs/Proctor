@@ -132,6 +132,24 @@ func (t *PersonalAccessToken) Validate() error {
 			details,
 		)
 	}
+	if err := t.validateScopes(details); err != nil {
+		return err
+	}
+	if !t.AcademicUnitID.IsZero() && !t.AcademicUnitID.IsValid() {
+		return invalidModelError(
+			where,
+			"personal_access_token",
+			"academic_unit_id",
+			"must be empty or a valid identifier",
+			details,
+		)
+	}
+	return t.validateLifecycle(details)
+}
+
+// validateScopes checks that the scopes are a bounded set of distinct valid actions.
+func (t *PersonalAccessToken) validateScopes(details string) error {
+	const where = "PersonalAccessToken.Validate"
 	if len(t.Scopes) == 0 || len(t.Scopes) > PersonalAccessTokenScopeMaxCount {
 		return invalidModelError(
 			where,
@@ -163,15 +181,12 @@ func (t *PersonalAccessToken) Validate() error {
 		}
 		seen[scope] = struct{}{}
 	}
-	if !t.AcademicUnitID.IsZero() && !t.AcademicUnitID.IsValid() {
-		return invalidModelError(
-			where,
-			"personal_access_token",
-			"academic_unit_id",
-			"must be empty or a valid identifier",
-			details,
-		)
-	}
+	return nil
+}
+
+// validateLifecycle checks expiry, last use, archive, revocation and disablement times.
+func (t *PersonalAccessToken) validateLifecycle(details string) error {
+	const where = "PersonalAccessToken.Validate"
 	if !t.ExpiresAt.After(t.CreatedAt) {
 		return invalidModelError(
 			where,
