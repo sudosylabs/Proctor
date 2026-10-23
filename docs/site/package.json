@@ -66,9 +66,11 @@
   },
   "overrides": {
     "openapi-to-postmanv2": {
-      "js-yaml": "4.3.1"
+      "js-yaml": "4.3.2"
     },
+    "postcss-selector-parser": "7.1.7",
     "serialize-javascript": "7.1.0",
+    "tinypool": "2.2.0",
     "uuid": "11.1.1",
     "yaml": "1.10.3"
   },

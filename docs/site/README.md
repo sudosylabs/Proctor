@@ -190,18 +190,49 @@ smoke test exercises curl, JavaScript Fetch, and Python Requests output after a
 script-free install, and the production build is the final guard. Re-enable
 lifecycle scripts only after reviewing every dependency that would execute.
 
-The `package.json` overrides also keep the OpenAPI converter on patched
-`js-yaml` and `yaml` patch releases while its upstream dependency declarations
-lag behind. Keep those pins until `openapi-to-postmanv2` adopts the patched
-versions directly; the snippet smoke test and production build cover their
-runtime compatibility.
+## Dependency advisories
 
-## Current dependency constraint
+Every package in this site runs at build time; the published output is static
+files. `npm audit --omit=dev` still covers the toolchain because a
+compromised or crashing build dependency affects what is published.
 
-Docusaurus 3.10.2 currently resolves `image-size` 2.0.2, whose ICNS, JXL, and
-HEIF parsers have high-severity denial-of-service advisories and no published
-fixed release. Public pages therefore cannot add Markdown images, raw `img`
-elements, or image imports; `npm run validate` enforces that boundary.
+The `package.json` overrides hold patched transitive releases that the
+upstream declarations do not yet admit:
+
+- `js-yaml` 4.3.2 and `yaml` 1.10.3 under the OpenAPI converter
+  (`openapi-to-postmanv2`);
+- `tinypool` 2.2.0 for Docusaurus' static-rendering worker pool, the version
+  line the next Docusaurus major already declares; and
+- `postcss-selector-parser` 7.1.7 under the cssnano 6 minifier chain, which
+  otherwise resolves an unpatched 6.x release.
+
+Remove an override once its upstream declares a patched range. The snippet
+smoke test and the production build, which renders through the worker pool and
+minifies every stylesheet, cover their runtime compatibility.
+
+Two high-severity advisories have no compatible fix and are accepted:
+
+- [`braces` GHSA-vfj7-8cjw-p6xm](https://github.com/advisories/GHSA-vfj7-8cjw-p6xm)
+  has no patched release. It reaches the build through `micromatch`,
+  `fast-glob`, and the development-server file watcher, which expand only
+  glob patterns written in this repository; no reader input reaches them.
+- [`@faker-js/faker` GHSA-qxc2-j82w-r537](https://github.com/advisories/GHSA-qxc2-j82w-r537)
+  affects `helpers.fake`. The OpenAPI theme's `postman-collection` pins faker
+  5.5.3 for Postman dynamic variables and never calls `helpers.fake`; the
+  patched faker major removed the API it uses, so it cannot be overridden.
+
+Every other advisory npm reports stems from these two. Re-run the audit after
+each Docusaurus or OpenAPI plugin upgrade and drop an accepted advisory as soon
+as a compatible fix exists.
+
+## Image boundary
+
+Public pages cannot add Markdown images, raw `img` elements, or image imports;
+`npm run validate` enforces that boundary. It was introduced while
+Docusaurus' authored-image parser depended on an unpatched `image-size`
+release. That dependency now resolves to a patched version, but the boundary
+also keeps every content image inside the governed review below, so it stays
+until maintainers decide otherwise.
 
 Reviewed SVG and PNG content assets instead use the constrained static route
 governed by the repository
@@ -212,5 +243,4 @@ the two reviewed formats and checks inventory, ownership, provenance, license
 state, privacy review, dimensions, size, safe SVG structure, references, and
 review triggers. Each visual approval is bound to the asset's SHA-256 and a
 desktop/mobile acceptance checklist, so an edited illustration cannot inherit
-an earlier review silently. Revisit the parser prohibition when a fixed
-dependency is available; do not remove the governed asset boundary.
+an earlier review silently. Do not remove the governed asset boundary.

@@ -53,9 +53,8 @@ content, linked or embedded images, external references, event handlers,
 doctypes, or entities.
 
 The constrained static path deliberately bypasses Docusaurus' authored-image
-parser while its transitive `image-size` dependency has unresolved security
-advisories. Do not relax the Markdown-image and image-import prohibition when
-adding an asset.
+parser so every content image passes this review. Do not relax the
+Markdown-image and image-import prohibition when adding an asset.
 
 ## Registry record
 
