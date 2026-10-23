@@ -92,6 +92,9 @@ discoverable `origin` default branch or local `main` reference.
 its database changes independently of the source checkout and is therefore not
 hermetic. Each product module is scanned with `GOWORK=off` so workspace version
 selection cannot hide vulnerabilities in a module's standalone dependency graph.
+The same workflow audits the webapp's production npm dependencies from its
+lockfile and fails on a moderate or higher advisory, because those packages
+ship to every browser.
 
 ## Debug the Server Without an IDE
 
