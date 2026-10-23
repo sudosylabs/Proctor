@@ -269,6 +269,15 @@ func (s *Session) Validate() error {
 	if utf8.RuneCountInString(s.DeviceName) > SessionDeviceNameMaxRunes {
 		return invalidModelError(where, "session", "device_name", "is too long", details)
 	}
+	if err := s.validateAuthentication(details); err != nil {
+		return err
+	}
+	return s.validateLifecycle(details)
+}
+
+// validateAuthentication checks the recorded authentication method, identity and strength.
+func (s *Session) validateAuthentication(details string) error {
+	const where = "Session.Validate"
 	if len(s.AuthenticationMethod) == 0 ||
 		len(s.AuthenticationMethod) > SessionAuthenticationMaxLength ||
 		!validName.MatchString(s.AuthenticationMethod) {
@@ -312,6 +321,12 @@ func (s *Session) Validate() error {
 			details,
 		)
 	}
+	return nil
+}
+
+// validateLifecycle checks activity, expiry, archive and revocation state.
+func (s *Session) validateLifecycle(details string) error {
+	const where = "Session.Validate"
 	if s.LastActivityAt.Before(s.CreatedAt) {
 		return invalidModelError(where, "session", "last_activity_at", "must not precede create_at", details)
 	}
