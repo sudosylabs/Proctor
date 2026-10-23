@@ -89,22 +89,50 @@ func lockAttemptWorkspaceMutationTarget(ctx context.Context, tx *sqlxTxWrapper, 
 	if !validAttemptWorkspaceMutationAccess(access) {
 		return nil, time.Time{}, store.NewErrInvalidInput("attempt_workspace", "access", nil)
 	}
+	if err := lockAttemptWorkspaceEnrollmentFence(ctx, tx, access); err != nil {
+		return nil, time.Time{}, err
+	}
+	row, err := lockAttemptWorkspaceMutationRow(ctx, tx, access)
+	if err != nil {
+		return nil, time.Time{}, err
+	}
+	databaseNow, err := lockAttemptWorkspaceMembership(ctx, tx, access, row.ClassID)
+	if err != nil {
+		return nil, time.Time{}, err
+	}
+	if err = checkAttemptWorkspaceMutationAccess(ctx, tx, access, row, databaseNow); err != nil {
+		return nil, time.Time{}, err
+	}
+	if err = lockSecurityInteraction(ctx, tx, access.AttemptID); err != nil {
+		return nil, time.Time{}, err
+	}
+	target, err := attemptWorkspaceTarget(row)
+	return target, databaseNow, err
+}
+
+// lockAttemptWorkspaceEnrollmentFence resolves the Attempt's Academic Period
+// and locks the Candidate and their Class enrollment in that period.
+func lockAttemptWorkspaceEnrollmentFence(ctx context.Context, tx *sqlxTxWrapper, access store.ExamAttemptWorkspaceMutationAccess) error {
 	var periodID string
 	if err := tx.Get(ctx, &periodID, `SELECT cl.academic_period_id FROM exam_attempts a
 		JOIN exam_sittings s ON s.id=a.exam_sitting_id AND s.exam_id=a.exam_id
 		JOIN classes cl ON cl.id=s.class_id WHERE a.id=? AND a.candidate_user_id=?`,
 		access.AttemptID.String(), access.CandidateUserID.String()); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, time.Time{}, store.NewErrNotFound("attempt_workspace_access", access.AttemptID.String())
+			return store.NewErrNotFound("attempt_workspace_access", access.AttemptID.String())
 		}
-		return nil, time.Time{}, fmt.Errorf("resolve Attempt Workspace enrollment fence: %w", err)
+		return fmt.Errorf("resolve Attempt Workspace enrollment fence: %w", err)
 	}
 	if err := lockCandidateUser(ctx, tx, access.CandidateUserID.String()); err != nil {
-		return nil, time.Time{}, err
+		return err
 	}
-	if err := lockClassEnrollment(ctx, tx, access.CandidateUserID.String(), periodID); err != nil {
-		return nil, time.Time{}, err
-	}
+	return lockClassEnrollment(ctx, tx, access.CandidateUserID.String(), periodID)
+}
+
+// lockAttemptWorkspaceMutationRow locks the Attempt, its Participation,
+// Connection and Workspace, and share-locks the Sitting, Session, Desktop
+// registration, User and academic structure behind them.
+func lockAttemptWorkspaceMutationRow(ctx context.Context, tx *sqlxTxWrapper, access store.ExamAttemptWorkspaceMutationAccess) (attemptWorkspaceMutationTargetRow, error) {
 	var row attemptWorkspaceMutationTargetRow
 	err := tx.Get(ctx, &row, `SELECT a.exam_id,a.exam_sitting_id,s.class_id,a.candidate_user_id,w.id AS workspace_id,
 		a.admission_revision_id,s.exam_revision_id AS current_revision_id,
@@ -137,22 +165,29 @@ func lockAttemptWorkspaceMutationTarget(ctx context.Context, tx *sqlxTxWrapper, 
 		access.AttemptID.String(), access.CandidateUserID.String())
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, time.Time{}, store.NewErrNotFound("attempt_workspace_access", access.AttemptID.String())
+			return row, store.NewErrNotFound("attempt_workspace_access", access.AttemptID.String())
 		}
-		return nil, time.Time{}, fmt.Errorf("lock Attempt Workspace mutation access: %w", err)
+		return row, fmt.Errorf("lock Attempt Workspace mutation access: %w", err)
 	}
+	return row, nil
+}
+
+// lockAttemptWorkspaceMembership share-locks the Candidate's Class membership
+// history, reads the decision instant, and requires exactly one current
+// membership at that instant.
+func lockAttemptWorkspaceMembership(ctx context.Context, tx *sqlxTxWrapper, access store.ExamAttemptWorkspaceMutationAccess, classID string) (time.Time, error) {
 	var memberships []struct {
 		StartAt    time.Time    `db:"start_at"`
 		EndAt      sql.NullTime `db:"end_at"`
 		ArchivedAt sql.NullTime `db:"archived_at"`
 	}
-	if err = tx.Select(ctx, &memberships, `SELECT start_at,end_at,archived_at FROM class_members
-		WHERE class_id=? AND user_id=? ORDER BY start_at,id FOR SHARE`, row.ClassID, access.CandidateUserID.String()); err != nil {
-		return nil, time.Time{}, fmt.Errorf("lock Attempt Workspace membership history: %w", err)
+	if err := tx.Select(ctx, &memberships, `SELECT start_at,end_at,archived_at FROM class_members
+		WHERE class_id=? AND user_id=? ORDER BY start_at,id FOR SHARE`, classID, access.CandidateUserID.String()); err != nil {
+		return time.Time{}, fmt.Errorf("lock Attempt Workspace membership history: %w", err)
 	}
 	var databaseNow time.Time
-	if err = tx.Get(ctx, &databaseNow, `SELECT statement_timestamp()`); err != nil {
-		return nil, time.Time{}, fmt.Errorf("read Attempt Workspace decision time: %w", err)
+	if err := tx.Get(ctx, &databaseNow, `SELECT statement_timestamp()`); err != nil {
+		return time.Time{}, fmt.Errorf("read Attempt Workspace decision time: %w", err)
 	}
 	databaseNow = model.TimeUTC(databaseNow)
 	currentMemberships := 0
@@ -163,42 +198,46 @@ func lockAttemptWorkspaceMutationTarget(ctx context.Context, tx *sqlxTxWrapper, 
 		}
 	}
 	if currentMemberships != 1 {
-		return nil, time.Time{}, store.NewErrNotFound("attempt_workspace_access", access.AttemptID.String())
+		return time.Time{}, store.NewErrNotFound("attempt_workspace_access", access.AttemptID.String())
 	}
+	return databaseNow, nil
+}
+
+// checkAttemptWorkspaceMutationAccess requires the current Participation
+// generation and credential, live Attempt and Sitting states, no pending
+// Workspace correction acknowledgement, and an active Session, User and
+// academic structure.
+func checkAttemptWorkspaceMutationAccess(ctx context.Context, tx *sqlxTxWrapper, access store.ExamAttemptWorkspaceMutationAccess, row attemptWorkspaceMutationTargetRow, databaseNow time.Time) error {
 	if row.Generation != access.Generation {
-		return nil, time.Time{}, store.NewErrConflict("attempt_participation", "attempt_participation_generation", nil)
+		return store.NewErrConflict("attempt_participation", "attempt_participation_generation", nil)
 	}
 	if subtle.ConstantTimeCompare([]byte(row.CredentialHash), []byte(access.ContinuityCredentialHash)) != 1 ||
 		row.ConnectionState != string(model.AttemptConnectionOpen) {
-		return nil, time.Time{}, store.NewErrConflict("attempt_participation", "attempt_participation_credential", nil)
+		return store.NewErrConflict("attempt_participation", "attempt_participation_credential", nil)
 	}
 	if row.ParticipationState != string(model.AttemptParticipationActive) || !databaseNow.Before(row.LeaseExpiresAt) {
-		return nil, time.Time{}, store.NewErrConflict("attempt_participation", "attempt_participation_expired", nil)
+		return store.NewErrConflict("attempt_participation", "attempt_participation_expired", nil)
 	}
 	if row.SittingState != string(model.ExamSittingOpen) || !databaseNow.Before(row.ScheduledEndAt) {
-		return nil, time.Time{}, store.NewErrConflict("exam_sitting", "exam_sitting_state", nil)
+		return store.NewErrConflict("exam_sitting", "exam_sitting_state", nil)
 	}
 	if row.AttemptState != string(model.ExamAttemptActive) {
-		return nil, time.Time{}, store.NewErrConflict("exam_attempt", "exam_attempt_state", nil)
+		return store.NewErrConflict("exam_attempt", "exam_attempt_state", nil)
 	}
 	pendingAcknowledgement, err := hasPendingCandidateCorrectionCapability(ctx, tx, access.AttemptID.String(),
 		row.SittingID, row.AdmissionRevisionID, row.CurrentRevisionID, model.CandidateCapabilityWorkspace)
 	if err != nil {
-		return nil, time.Time{}, err
+		return err
 	}
 	if pendingAcknowledgement {
-		return nil, time.Time{}, store.NewErrConflict("attempt_workspace", "exam_correction_acknowledgement_required", nil)
+		return store.NewErrConflict("attempt_workspace", "exam_correction_acknowledgement_required", nil)
 	}
 	if row.SessionArchivedAt.Valid || row.SessionRevokedAt.Valid || !databaseNow.Before(row.SessionIdleExpiry) ||
 		!databaseNow.Before(row.SessionExpiry) || row.UserArchivedAt.Valid || row.UserDisabledAt.Valid ||
 		row.ClassArchived.Valid || row.LevelArchived.Valid || row.ProgrammeArchived.Valid || row.UnitArchived.Valid || row.PeriodArchived.Valid {
-		return nil, time.Time{}, store.NewErrNotFound("attempt_workspace_access", access.AttemptID.String())
+		return store.NewErrNotFound("attempt_workspace_access", access.AttemptID.String())
 	}
-	if err := lockSecurityInteraction(ctx, tx, access.AttemptID); err != nil {
-		return nil, time.Time{}, err
-	}
-	target, err := attemptWorkspaceTarget(row)
-	return target, databaseNow, err
+	return nil
 }
 
 func attemptWorkspaceTarget(row attemptWorkspaceMutationTargetRow) (*store.ExamAttemptWorkspaceMutationTarget, error) {
@@ -646,6 +685,24 @@ const attemptWorkspaceEntryMutationSelect = `SELECT e.id,e.workspace_id,e.admiss
 	o.storage_origin AS object_origin FROM exam_attempt_workspace_entries e
 	LEFT JOIN exam_attempt_workspace_objects o ON o.id=e.current_object_id AND o.workspace_id=e.workspace_id`
 
+// attemptWorkspaceMutationEffect carries what one Workspace operation changed
+// into its journal entry and outcome.
+type attemptWorkspaceMutationEffect struct {
+	entry     *store.CandidateAttemptWorkspaceItem
+	oldPath   string
+	newPath   string
+	entryKind model.StarterWorkspaceEntryKind
+	version   model.WorkspaceContentVersion
+	protected []string
+}
+
+// attemptWorkspaceMutationScope is the locked Workspace one operation acts on.
+type attemptWorkspaceMutationScope struct {
+	workspaceID model.ExamAttemptWorkspaceID
+	revisionID  model.ExamRevisionID
+	databaseNow time.Time
+}
+
 func applyAttemptWorkspaceMutation(ctx context.Context, tx *sqlxTxWrapper, input *store.ExamAttemptWorkspaceMutation, command *store.CommandIdempotency) (attemptWorkspaceMutationOutcome, error) {
 	var zero attemptWorkspaceMutationOutcome
 	target, databaseNow, err := lockAttemptWorkspaceMutationTarget(ctx, tx, input.Access)
@@ -666,168 +723,199 @@ func applyAttemptWorkspaceMutation(ctx context.Context, tx *sqlxTxWrapper, input
 	if err != nil {
 		return zero, invalidPersistedState("attempt_workspace", "admission_revision_id", err)
 	}
-	var entry *store.CandidateAttemptWorkspaceItem
-	var oldPath, newPath string
-	var entryKind model.StarterWorkspaceEntryKind
-	var version model.WorkspaceContentVersion
-	protected := make([]string, 0, 2)
+	scope := attemptWorkspaceMutationScope{workspaceID: target.WorkspaceID, revisionID: revisionID, databaseNow: databaseNow}
+	effect := attemptWorkspaceMutationEffect{protected: make([]string, 0, 2)}
 	switch input.Operation {
 	case model.AttemptWorkspaceMutationCreateFile:
-		if err = ensureAttemptWorkspaceParent(ctx, tx, target.WorkspaceID, input.DestinationPath); err != nil {
-			return zero, err
-		}
-		if err = ensureAttemptWorkspaceCapacity(ctx, tx, target.WorkspaceID, 1, 0); err != nil {
-			return zero, err
-		}
-		object, consumeErr := consumeAttemptWorkspaceObject(ctx, tx, target.WorkspaceID, input.ObjectID, databaseNow)
-		if consumeErr != nil {
-			return zero, consumeErr
-		}
-		if err = ensureAttemptWorkspaceCapacity(ctx, tx, target.WorkspaceID, 0, object.SizeBytes); err != nil {
-			return zero, err
-		}
-		if _, err = model.NewCandidateAttemptWorkspaceFile(input.EntryID, target.WorkspaceID, revisionID,
-			input.DestinationPath, object.ID, databaseNow); err != nil {
-			return zero, store.NewErrInvalidInput("attempt_workspace_entry", "value", nil).Wrap(err)
-		}
-		if _, err = tx.Exec(ctx, `INSERT INTO exam_attempt_workspace_entries
-			(id,workspace_id,admission_revision_id,source_starter_entry_id,kind,path,current_object_id,created_at,updated_at)
-			VALUES (?,?,?,NULL,'file',?,?,?,?)`, input.EntryID.String(), target.WorkspaceID.String(), revisionID.String(),
-			input.DestinationPath, object.ID.String(), databaseNow, databaseNow); err != nil {
-			return zero, translateAttemptWorkspaceMutationError("create Attempt Workspace file", err)
-		}
-		entry = candidateAttemptWorkspaceItem(input.EntryID, model.StarterWorkspaceEntryFile, input.DestinationPath, object)
-		entryKind, newPath, version = model.StarterWorkspaceEntryFile, input.DestinationPath, object.ContentVersion
-		protected = append(protected, object.ID.String())
+		err = createAttemptWorkspaceFile(ctx, tx, input, scope, &effect)
 	case model.AttemptWorkspaceMutationCreateDirectory:
-		if err = ensureAttemptWorkspaceParent(ctx, tx, target.WorkspaceID, input.DestinationPath); err != nil {
-			return zero, err
-		}
-		if err = ensureAttemptWorkspaceCapacity(ctx, tx, target.WorkspaceID, 1, 0); err != nil {
-			return zero, err
-		}
-		if _, err = model.NewCandidateAttemptWorkspaceDirectory(input.EntryID, target.WorkspaceID, revisionID, input.DestinationPath, databaseNow); err != nil {
-			return zero, store.NewErrInvalidInput("attempt_workspace_entry", "value", nil).Wrap(err)
-		}
-		if _, err = tx.Exec(ctx, `INSERT INTO exam_attempt_workspace_entries
-			(id,workspace_id,admission_revision_id,source_starter_entry_id,kind,path,current_object_id,created_at,updated_at)
-			VALUES (?,?,?,NULL,'directory',?,NULL,?,?)`, input.EntryID.String(), target.WorkspaceID.String(), revisionID.String(),
-			input.DestinationPath, databaseNow, databaseNow); err != nil {
-			return zero, translateAttemptWorkspaceMutationError("create Attempt Workspace directory", err)
-		}
-		entry = &store.CandidateAttemptWorkspaceItem{EntryID: input.EntryID, Kind: model.StarterWorkspaceEntryDirectory, Path: input.DestinationPath}
-		entryKind, newPath = model.StarterWorkspaceEntryDirectory, input.DestinationPath
+		err = createAttemptWorkspaceDirectory(ctx, tx, input, scope, &effect)
 	case model.AttemptWorkspaceMutationReplaceFile:
-		current, loadErr := loadAttemptWorkspaceEntryForMutation(ctx, tx, target.WorkspaceID, input.EntryID)
-		if loadErr != nil {
-			return zero, loadErr
-		}
-		currentVersion, versionErr := current.workspaceContentVersion()
-		if current.Kind != string(model.StarterWorkspaceEntryFile) || versionErr != nil || current.Path != input.ExpectedPath ||
-			currentVersion != input.ExpectedContentVersion {
-			return zero, store.NewErrConflict("attempt_workspace_entry", "attempt_workspace_content_version", versionErr)
-		}
-		object, consumeErr := consumeAttemptWorkspaceObject(ctx, tx, target.WorkspaceID, input.ObjectID, databaseNow)
-		if consumeErr != nil {
-			return zero, consumeErr
-		}
-		if err = ensureAttemptWorkspaceCapacity(ctx, tx, target.WorkspaceID, 0, object.SizeBytes-current.SizeBytes.Int64); err != nil {
-			return zero, err
-		}
-		if _, err = tx.Exec(ctx, `UPDATE exam_attempt_workspace_entries SET current_object_id=?,updated_at=? WHERE workspace_id=? AND id=?`,
-			object.ID.String(), databaseNow, target.WorkspaceID.String(), input.EntryID.String()); err != nil {
-			return zero, translateAttemptWorkspaceMutationError("replace Attempt Workspace file", err)
-		}
-		if current.ObjectOrigin.String == string(model.AttemptWorkspaceStorageAttempt) {
-			if err = retireAttemptWorkspaceObject(ctx, tx, current.CurrentObjectID.String, databaseNow); err != nil {
-				return zero, err
-			}
-			protected = append(protected, current.CurrentObjectID.String)
-		}
-		entry = candidateAttemptWorkspaceItem(input.EntryID, model.StarterWorkspaceEntryFile, current.Path, object)
-		entryKind, oldPath, newPath, version = model.StarterWorkspaceEntryFile, current.Path, current.Path, object.ContentVersion
-		protected = append(protected, object.ID.String())
+		err = replaceAttemptWorkspaceFile(ctx, tx, input, scope, &effect)
 	case model.AttemptWorkspaceMutationMoveEntry:
-		current, loadErr := loadAttemptWorkspaceEntryForMutation(ctx, tx, target.WorkspaceID, input.EntryID)
-		if loadErr != nil {
-			return zero, loadErr
-		}
-		if current.Path != input.ExpectedPath {
-			return zero, store.NewErrConflict("attempt_workspace_entry", "attempt_workspace_entry", nil)
-		}
-		if err = moveAttemptWorkspaceEntry(ctx, tx, target.WorkspaceID, current, input.DestinationPath, databaseNow); err != nil {
-			return zero, err
-		}
-		entryKind, oldPath, newPath = model.StarterWorkspaceEntryKind(current.Kind), current.Path, input.DestinationPath
-		if entryKind == model.StarterWorkspaceEntryFile {
-			version, err = current.workspaceContentVersion()
-			if err != nil {
-				return zero, err
-			}
-			entry = &store.CandidateAttemptWorkspaceItem{EntryID: input.EntryID, Kind: entryKind, Path: newPath,
-				ContentVersion: version, MediaType: current.MediaType.String, SizeBytes: current.SizeBytes.Int64, SHA256: current.SHA256.String}
-		} else {
-			entry = &store.CandidateAttemptWorkspaceItem{EntryID: input.EntryID, Kind: entryKind, Path: newPath}
-		}
+		err = moveAttemptWorkspaceMutationEntry(ctx, tx, input, scope, &effect)
 	case model.AttemptWorkspaceMutationDeleteEntry:
-		current, loadErr := loadAttemptWorkspaceEntryForMutation(ctx, tx, target.WorkspaceID, input.EntryID)
-		if loadErr != nil {
-			return zero, loadErr
-		}
-		if current.Path != input.ExpectedPath {
-			return zero, store.NewErrConflict("attempt_workspace_entry", "attempt_workspace_entry", nil)
-		}
-		entryKind, oldPath = model.StarterWorkspaceEntryKind(current.Kind), current.Path
-		if entryKind == model.StarterWorkspaceEntryDirectory {
-			if !input.ExpectedContentVersion.IsZero() {
-				return zero, store.NewErrConflict("attempt_workspace_entry", "attempt_workspace_content_version", nil)
-			}
-			var descendants int
-			if err = tx.Get(ctx, &descendants, `SELECT count(*) FROM exam_attempt_workspace_entries WHERE workspace_id=? AND path LIKE ? ESCAPE '!'`,
-				target.WorkspaceID.String(), escapeLike(current.Path)+"/%"); err != nil {
-				return zero, fmt.Errorf("count Attempt Workspace descendants: %w", err)
-			}
-			if descendants != 0 && !input.Recursive {
-				return zero, store.NewErrConflict("attempt_workspace_entry", "attempt_workspace_not_empty", nil)
-			}
-		} else {
-			if input.Recursive {
-				return zero, store.NewErrInvalidInput("attempt_workspace", "recursive_delete", nil)
-			}
-			currentVersion, versionErr := current.workspaceContentVersion()
-			if versionErr != nil || !input.ExpectedContentVersion.IsValid() || currentVersion != input.ExpectedContentVersion {
-				return zero, store.NewErrConflict("attempt_workspace_entry", "attempt_workspace_content_version", versionErr)
-			}
-			if current.ObjectOrigin.String == string(model.AttemptWorkspaceStorageAttempt) {
-				if err = retireAttemptWorkspaceObject(ctx, tx, current.CurrentObjectID.String, databaseNow); err != nil {
-					return zero, err
-				}
-				protected = append(protected, current.CurrentObjectID.String)
-			}
-		}
-		if input.Recursive {
-			if err = deleteAttemptWorkspaceSubtree(ctx, tx, target.WorkspaceID, current.Path, input.AuditEventID, databaseNow); err != nil {
-				return zero, err
-			}
-		} else {
-			if _, err = tx.Exec(ctx, `DELETE FROM exam_attempt_workspace_entries WHERE workspace_id=? AND id=?`,
-				target.WorkspaceID.String(), input.EntryID.String()); err != nil {
-				return zero, fmt.Errorf("delete Attempt Workspace entry: %w", err)
-			}
-		}
+		err = deleteAttemptWorkspaceMutationEntry(ctx, tx, input, scope, &effect)
 	}
-	change, err := appendAttemptWorkspaceJournal(ctx, tx, target.WorkspaceID, input.EntryID, entryKind, input.Operation,
-		oldPath, newPath, version, input.Recursive, command.KeyDigest[:], databaseNow)
+	if err != nil {
+		return zero, err
+	}
+	change, err := appendAttemptWorkspaceJournal(ctx, tx, target.WorkspaceID, input.EntryID, effect.entryKind, input.Operation,
+		effect.oldPath, effect.newPath, effect.version, input.Recursive, command.KeyDigest[:], databaseNow)
 	if err != nil {
 		return zero, err
 	}
 	outcome := attemptWorkspaceMutationOutcome{SittingID: target.SittingID.String(), ClassID: target.ClassID.String(),
-		CandidateID: target.CandidateUserID.String(), WorkspaceID: target.WorkspaceID.String(), Entry: (*attemptWorkspaceItemDocument)(entry),
-		Change: attemptWorkspaceJournalOutcomeFrom(*change), ProtectedObjectIDs: protected}
+		CandidateID: target.CandidateUserID.String(), WorkspaceID: target.WorkspaceID.String(), Entry: (*attemptWorkspaceItemDocument)(effect.entry),
+		Change: attemptWorkspaceJournalOutcomeFrom(*change), ProtectedObjectIDs: effect.protected}
 	if err = completeAttemptWorkspaceMutationAudit(ctx, tx, outcome, input.AuditEventID, input.AuditAt, false, ""); err != nil {
 		return zero, err
 	}
 	return outcome, nil
+}
+
+// createAttemptWorkspaceFile inserts a file entry backed by a newly consumed
+// ready object.
+func createAttemptWorkspaceFile(ctx context.Context, tx *sqlxTxWrapper, input *store.ExamAttemptWorkspaceMutation, scope attemptWorkspaceMutationScope, effect *attemptWorkspaceMutationEffect) error {
+	if err := ensureAttemptWorkspaceParent(ctx, tx, scope.workspaceID, input.DestinationPath); err != nil {
+		return err
+	}
+	if err := ensureAttemptWorkspaceCapacity(ctx, tx, scope.workspaceID, 1, 0); err != nil {
+		return err
+	}
+	object, err := consumeAttemptWorkspaceObject(ctx, tx, scope.workspaceID, input.ObjectID, scope.databaseNow)
+	if err != nil {
+		return err
+	}
+	if err = ensureAttemptWorkspaceCapacity(ctx, tx, scope.workspaceID, 0, object.SizeBytes); err != nil {
+		return err
+	}
+	if _, err = model.NewCandidateAttemptWorkspaceFile(input.EntryID, scope.workspaceID, scope.revisionID,
+		input.DestinationPath, object.ID, scope.databaseNow); err != nil {
+		return store.NewErrInvalidInput("attempt_workspace_entry", "value", nil).Wrap(err)
+	}
+	if _, err = tx.Exec(ctx, `INSERT INTO exam_attempt_workspace_entries
+		(id,workspace_id,admission_revision_id,source_starter_entry_id,kind,path,current_object_id,created_at,updated_at)
+		VALUES (?,?,?,NULL,'file',?,?,?,?)`, input.EntryID.String(), scope.workspaceID.String(), scope.revisionID.String(),
+		input.DestinationPath, object.ID.String(), scope.databaseNow, scope.databaseNow); err != nil {
+		return translateAttemptWorkspaceMutationError("create Attempt Workspace file", err)
+	}
+	effect.entry = candidateAttemptWorkspaceItem(input.EntryID, model.StarterWorkspaceEntryFile, input.DestinationPath, object)
+	effect.entryKind, effect.newPath, effect.version = model.StarterWorkspaceEntryFile, input.DestinationPath, object.ContentVersion
+	effect.protected = append(effect.protected, object.ID.String())
+	return nil
+}
+
+// createAttemptWorkspaceDirectory inserts an empty directory entry.
+func createAttemptWorkspaceDirectory(ctx context.Context, tx *sqlxTxWrapper, input *store.ExamAttemptWorkspaceMutation, scope attemptWorkspaceMutationScope, effect *attemptWorkspaceMutationEffect) error {
+	if err := ensureAttemptWorkspaceParent(ctx, tx, scope.workspaceID, input.DestinationPath); err != nil {
+		return err
+	}
+	if err := ensureAttemptWorkspaceCapacity(ctx, tx, scope.workspaceID, 1, 0); err != nil {
+		return err
+	}
+	if _, err := model.NewCandidateAttemptWorkspaceDirectory(input.EntryID, scope.workspaceID, scope.revisionID, input.DestinationPath, scope.databaseNow); err != nil {
+		return store.NewErrInvalidInput("attempt_workspace_entry", "value", nil).Wrap(err)
+	}
+	if _, err := tx.Exec(ctx, `INSERT INTO exam_attempt_workspace_entries
+		(id,workspace_id,admission_revision_id,source_starter_entry_id,kind,path,current_object_id,created_at,updated_at)
+		VALUES (?,?,?,NULL,'directory',?,NULL,?,?)`, input.EntryID.String(), scope.workspaceID.String(), scope.revisionID.String(),
+		input.DestinationPath, scope.databaseNow, scope.databaseNow); err != nil {
+		return translateAttemptWorkspaceMutationError("create Attempt Workspace directory", err)
+	}
+	effect.entry = &store.CandidateAttemptWorkspaceItem{EntryID: input.EntryID, Kind: model.StarterWorkspaceEntryDirectory, Path: input.DestinationPath}
+	effect.entryKind, effect.newPath = model.StarterWorkspaceEntryDirectory, input.DestinationPath
+	return nil
+}
+
+// replaceAttemptWorkspaceFile points a file entry at the expected version's
+// replacement object and retires the Attempt-owned object it replaced.
+func replaceAttemptWorkspaceFile(ctx context.Context, tx *sqlxTxWrapper, input *store.ExamAttemptWorkspaceMutation, scope attemptWorkspaceMutationScope, effect *attemptWorkspaceMutationEffect) error {
+	current, err := loadAttemptWorkspaceEntryForMutation(ctx, tx, scope.workspaceID, input.EntryID)
+	if err != nil {
+		return err
+	}
+	currentVersion, versionErr := current.workspaceContentVersion()
+	if current.Kind != string(model.StarterWorkspaceEntryFile) || versionErr != nil || current.Path != input.ExpectedPath ||
+		currentVersion != input.ExpectedContentVersion {
+		return store.NewErrConflict("attempt_workspace_entry", "attempt_workspace_content_version", versionErr)
+	}
+	object, err := consumeAttemptWorkspaceObject(ctx, tx, scope.workspaceID, input.ObjectID, scope.databaseNow)
+	if err != nil {
+		return err
+	}
+	if err = ensureAttemptWorkspaceCapacity(ctx, tx, scope.workspaceID, 0, object.SizeBytes-current.SizeBytes.Int64); err != nil {
+		return err
+	}
+	if _, err = tx.Exec(ctx, `UPDATE exam_attempt_workspace_entries SET current_object_id=?,updated_at=? WHERE workspace_id=? AND id=?`,
+		object.ID.String(), scope.databaseNow, scope.workspaceID.String(), input.EntryID.String()); err != nil {
+		return translateAttemptWorkspaceMutationError("replace Attempt Workspace file", err)
+	}
+	if current.ObjectOrigin.String == string(model.AttemptWorkspaceStorageAttempt) {
+		if err = retireAttemptWorkspaceObject(ctx, tx, current.CurrentObjectID.String, scope.databaseNow); err != nil {
+			return err
+		}
+		effect.protected = append(effect.protected, current.CurrentObjectID.String)
+	}
+	effect.entry = candidateAttemptWorkspaceItem(input.EntryID, model.StarterWorkspaceEntryFile, current.Path, object)
+	effect.entryKind, effect.oldPath, effect.newPath, effect.version = model.StarterWorkspaceEntryFile, current.Path, current.Path, object.ContentVersion
+	effect.protected = append(effect.protected, object.ID.String())
+	return nil
+}
+
+// moveAttemptWorkspaceMutationEntry moves the entry at its expected path, with
+// any descendants, to the destination path.
+func moveAttemptWorkspaceMutationEntry(ctx context.Context, tx *sqlxTxWrapper, input *store.ExamAttemptWorkspaceMutation, scope attemptWorkspaceMutationScope, effect *attemptWorkspaceMutationEffect) error {
+	current, err := loadAttemptWorkspaceEntryForMutation(ctx, tx, scope.workspaceID, input.EntryID)
+	if err != nil {
+		return err
+	}
+	if current.Path != input.ExpectedPath {
+		return store.NewErrConflict("attempt_workspace_entry", "attempt_workspace_entry", nil)
+	}
+	if err = moveAttemptWorkspaceEntry(ctx, tx, scope.workspaceID, current, input.DestinationPath, scope.databaseNow); err != nil {
+		return err
+	}
+	effect.entryKind, effect.oldPath, effect.newPath = model.StarterWorkspaceEntryKind(current.Kind), current.Path, input.DestinationPath
+	if effect.entryKind == model.StarterWorkspaceEntryFile {
+		effect.version, err = current.workspaceContentVersion()
+		if err != nil {
+			return err
+		}
+		effect.entry = &store.CandidateAttemptWorkspaceItem{EntryID: input.EntryID, Kind: effect.entryKind, Path: effect.newPath,
+			ContentVersion: effect.version, MediaType: current.MediaType.String, SizeBytes: current.SizeBytes.Int64, SHA256: current.SHA256.String}
+	} else {
+		effect.entry = &store.CandidateAttemptWorkspaceItem{EntryID: input.EntryID, Kind: effect.entryKind, Path: effect.newPath}
+	}
+	return nil
+}
+
+// deleteAttemptWorkspaceMutationEntry deletes the entry at its expected path
+// and version, or its whole subtree when the deletion is recursive.
+func deleteAttemptWorkspaceMutationEntry(ctx context.Context, tx *sqlxTxWrapper, input *store.ExamAttemptWorkspaceMutation, scope attemptWorkspaceMutationScope, effect *attemptWorkspaceMutationEffect) error {
+	current, err := loadAttemptWorkspaceEntryForMutation(ctx, tx, scope.workspaceID, input.EntryID)
+	if err != nil {
+		return err
+	}
+	if current.Path != input.ExpectedPath {
+		return store.NewErrConflict("attempt_workspace_entry", "attempt_workspace_entry", nil)
+	}
+	effect.entryKind, effect.oldPath = model.StarterWorkspaceEntryKind(current.Kind), current.Path
+	if effect.entryKind == model.StarterWorkspaceEntryDirectory {
+		if !input.ExpectedContentVersion.IsZero() {
+			return store.NewErrConflict("attempt_workspace_entry", "attempt_workspace_content_version", nil)
+		}
+		var descendants int
+		if err = tx.Get(ctx, &descendants, `SELECT count(*) FROM exam_attempt_workspace_entries WHERE workspace_id=? AND path LIKE ? ESCAPE '!'`,
+			scope.workspaceID.String(), escapeLike(current.Path)+"/%"); err != nil {
+			return fmt.Errorf("count Attempt Workspace descendants: %w", err)
+		}
+		if descendants != 0 && !input.Recursive {
+			return store.NewErrConflict("attempt_workspace_entry", "attempt_workspace_not_empty", nil)
+		}
+	} else {
+		if input.Recursive {
+			return store.NewErrInvalidInput("attempt_workspace", "recursive_delete", nil)
+		}
+		currentVersion, versionErr := current.workspaceContentVersion()
+		if versionErr != nil || !input.ExpectedContentVersion.IsValid() || currentVersion != input.ExpectedContentVersion {
+			return store.NewErrConflict("attempt_workspace_entry", "attempt_workspace_content_version", versionErr)
+		}
+		if current.ObjectOrigin.String == string(model.AttemptWorkspaceStorageAttempt) {
+			if err = retireAttemptWorkspaceObject(ctx, tx, current.CurrentObjectID.String, scope.databaseNow); err != nil {
+				return err
+			}
+			effect.protected = append(effect.protected, current.CurrentObjectID.String)
+		}
+	}
+	if input.Recursive {
+		return deleteAttemptWorkspaceSubtree(ctx, tx, scope.workspaceID, current.Path, input.AuditEventID, scope.databaseNow)
+	}
+	if _, err = tx.Exec(ctx, `DELETE FROM exam_attempt_workspace_entries WHERE workspace_id=? AND id=?`,
+		scope.workspaceID.String(), input.EntryID.String()); err != nil {
+		return fmt.Errorf("delete Attempt Workspace entry: %w", err)
+	}
+	return nil
 }
 
 func deleteAttemptWorkspaceSubtree(ctx context.Context, tx *sqlxTxWrapper, workspaceID model.ExamAttemptWorkspaceID,
@@ -1099,142 +1187,3 @@ func translateAttemptWorkspaceMutationError(operation string, err error) error {
 	}
 	return fmt.Errorf("%s: %w", operation, translated)
 }
-
-func (s *SQLExamAttemptWorkspaceStore) MarkObjectReclaimable(ctx context.Context, objectID model.AttemptWorkspaceObjectID) error {
-	if !objectID.IsValid() {
-		return store.NewErrInvalidInput("attempt_workspace_object", "reclaim", nil)
-	}
-	result, err := s.GetMaster().Exec(ctx, `UPDATE exam_attempt_workspace_objects objects
-		SET state='reclaimable',updated_at=GREATEST(objects.updated_at,statement_timestamp()),
-			reclaim_after=statement_timestamp()+(? * INTERVAL '1 millisecond')
-		WHERE objects.id=? AND objects.storage_origin='attempt' AND objects.state='staged'
-			AND NOT EXISTS (SELECT 1 FROM exam_attempt_workspace_entries entries WHERE entries.current_object_id=objects.id)
-			AND NOT EXISTS (SELECT 1 FROM exam_submission_manifest_entries submitted WHERE submitted.attempt_object_id=objects.id)
-			AND NOT EXISTS (SELECT 1 FROM command_outcomes outcomes
-				WHERE outcomes.operation=? AND jsonb_exists(outcomes.outcome->'o',objects.id))
-			AND NOT EXISTS (SELECT 1 FROM command_outcomes outcomes
-				WHERE outcomes.original_audit_event_id=objects.retired_by_audit_event_id)`,
-		model.AttemptWorkspaceReclaimSafetyWindow.Milliseconds(), objectID.String(), store.ExamAttemptWorkspaceMutationOperation)
-	if err != nil {
-		return fmt.Errorf("mark Attempt Workspace object reclaimable: %w", err)
-	}
-	if affected, rowsErr := result.RowsAffected(); rowsErr != nil {
-		return fmt.Errorf("inspect Attempt Workspace object reclamation: %w", rowsErr)
-	} else if affected != 1 {
-		return store.NewErrConflict("attempt_workspace_object", "attempt_workspace_object_state", nil)
-	}
-	return nil
-}
-
-// ClaimObjectsForCleanup claims up to the input limit of due Attempt Workspace objects for physical cleanup under the input claim token.
-func (s *SQLExamAttemptWorkspaceStore) ClaimObjectsForCleanup(ctx context.Context, input *store.AttemptWorkspaceCleanupClaim) ([]model.AttemptWorkspaceObject, error) {
-	limit := input.Limit
-	claimToken := input.ClaimToken
-	if limit < 1 || limit > 200 || strings.TrimSpace(claimToken) == "" || strings.TrimSpace(claimToken) != claimToken || len(claimToken) > model.AttemptWorkspaceClaimTokenMaxBytes {
-		return nil, store.NewErrInvalidInput("attempt_workspace_object", "cleanup_claim", nil)
-	}
-	var rows []attemptWorkspaceObjectRow
-	// The lifecycle CHECK requires claimed_at = updated_at. A release committed
-	// after this statement began can already carry a later updated_at, so the
-	// claim instant follows the same GREATEST as the modification time.
-	err := s.GetMaster().Select(ctx, &rows, `WITH candidates AS (
-		SELECT objects.id FROM exam_attempt_workspace_objects objects
-		WHERE objects.storage_origin='attempt'
-			AND ((objects.state='staged' AND objects.expires_at+(? * INTERVAL '1 millisecond')<=statement_timestamp())
-			 OR (objects.state='reclaimable' AND objects.reclaim_after<=statement_timestamp())
-			 OR (objects.state='claimed' AND objects.claimed_at+(? * INTERVAL '1 millisecond')<=statement_timestamp()))
-			AND NOT EXISTS (SELECT 1 FROM exam_attempt_workspace_entries entries WHERE entries.current_object_id=objects.id)
-			AND NOT EXISTS (SELECT 1 FROM exam_submission_manifest_entries submitted WHERE submitted.attempt_object_id=objects.id)
-			AND NOT EXISTS (SELECT 1 FROM command_outcomes outcomes
-				WHERE outcomes.operation=? AND jsonb_exists(outcomes.outcome->'o',objects.id))
-			AND NOT EXISTS (SELECT 1 FROM command_outcomes outcomes
-				WHERE outcomes.original_audit_event_id=objects.retired_by_audit_event_id)
-		ORDER BY COALESCE(objects.reclaim_after,objects.expires_at,objects.claimed_at),objects.id
-		FOR UPDATE SKIP LOCKED LIMIT ?
-	) UPDATE exam_attempt_workspace_objects objects
-		SET state='claimed',updated_at=GREATEST(objects.updated_at,statement_timestamp()),
-			reclaim_after=COALESCE(objects.reclaim_after,statement_timestamp()),claim_token=?,
-			claimed_at=GREATEST(objects.updated_at,statement_timestamp())
-		FROM candidates WHERE objects.id=candidates.id
-		RETURNING objects.id,objects.workspace_id,objects.storage_origin,objects.starter_object_id,objects.state,
-			objects.content_version,objects.media_type,objects.size_bytes,objects.sha256,objects.created_at,objects.updated_at,
-			objects.expires_at,objects.reclaim_after,objects.claim_token,objects.claimed_at`,
-		model.AttemptWorkspaceReclaimSafetyWindow.Milliseconds(), model.AttemptWorkspaceCleanupClaimLease.Milliseconds(),
-		store.ExamAttemptWorkspaceMutationOperation, limit, claimToken)
-	if err != nil {
-		return nil, fmt.Errorf("claim Attempt Workspace objects for cleanup: %w", err)
-	}
-	objects := make([]model.AttemptWorkspaceObject, 0, len(rows))
-	for _, row := range rows {
-		object, modelErr := row.model()
-		if modelErr != nil {
-			return nil, modelErr
-		}
-		objects = append(objects, *object)
-	}
-	return objects, nil
-}
-
-// CompleteObjectCleanup records that the claimed Attempt Workspace object was removed from storage; repeating it with the same claim token is a no-op.
-func (s *SQLExamAttemptWorkspaceStore) CompleteObjectCleanup(ctx context.Context, input *store.AttemptWorkspaceCleanupCompletion) error {
-	objectID := input.ObjectID
-	claimToken := input.ClaimToken
-	if !validAttemptWorkspaceCleanupSelector(objectID, claimToken) {
-		return store.NewErrInvalidInput("attempt_workspace_object", "cleanup_completion", nil)
-	}
-	result, err := s.GetMaster().Exec(ctx, `DELETE FROM exam_attempt_workspace_objects objects
-		WHERE objects.id=? AND objects.storage_origin='attempt' AND objects.state='claimed' AND objects.claim_token=?
-			AND NOT EXISTS (SELECT 1 FROM exam_attempt_workspace_entries entries WHERE entries.current_object_id=objects.id)
-			AND NOT EXISTS (SELECT 1 FROM exam_submission_manifest_entries submitted WHERE submitted.attempt_object_id=objects.id)
-			AND NOT EXISTS (SELECT 1 FROM command_outcomes outcomes
-				WHERE outcomes.operation=? AND jsonb_exists(outcomes.outcome->'o',objects.id))
-			AND NOT EXISTS (SELECT 1 FROM command_outcomes outcomes
-				WHERE outcomes.original_audit_event_id=objects.retired_by_audit_event_id)`,
-		objectID.String(), claimToken, store.ExamAttemptWorkspaceMutationOperation)
-	if err != nil {
-		return fmt.Errorf("complete Attempt Workspace object cleanup: %w", translateError("attempt_workspace_object", objectID.String(), err))
-	}
-	affected, err := result.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("inspect Attempt Workspace object cleanup: %w", err)
-	}
-	if affected == 1 {
-		return nil
-	}
-	var exists bool
-	if err = s.GetMaster().Get(ctx, &exists, `SELECT EXISTS (SELECT 1 FROM exam_attempt_workspace_objects WHERE id=?)`, objectID.String()); err != nil {
-		return fmt.Errorf("inspect completed Attempt Workspace object cleanup: %w", err)
-	}
-	if exists {
-		return store.NewErrConflict("attempt_workspace_object", "attempt_workspace_cleanup_claim", nil)
-	}
-	return nil
-}
-
-// ReleaseObjectCleanup returns a claimed Attempt Workspace object to the cleanup queue without removing it.
-func (s *SQLExamAttemptWorkspaceStore) ReleaseObjectCleanup(ctx context.Context, input *store.AttemptWorkspaceCleanupRelease) error {
-	objectID := input.ObjectID
-	claimToken := input.ClaimToken
-	if !validAttemptWorkspaceCleanupSelector(objectID, claimToken) {
-		return store.NewErrInvalidInput("attempt_workspace_object", "cleanup_release", nil)
-	}
-	result, err := s.GetMaster().Exec(ctx, `UPDATE exam_attempt_workspace_objects
-		SET state='reclaimable',updated_at=GREATEST(updated_at,statement_timestamp()),claim_token=NULL,claimed_at=NULL
-		WHERE id=? AND storage_origin='attempt' AND state='claimed' AND claim_token=?`, objectID.String(), claimToken)
-	if err != nil {
-		return fmt.Errorf("release Attempt Workspace object cleanup: %w", err)
-	}
-	if affected, rowsErr := result.RowsAffected(); rowsErr != nil {
-		return fmt.Errorf("inspect Attempt Workspace cleanup release: %w", rowsErr)
-	} else if affected != 1 {
-		return store.NewErrConflict("attempt_workspace_object", "attempt_workspace_cleanup_claim", nil)
-	}
-	return nil
-}
-
-func validAttemptWorkspaceCleanupSelector(objectID model.AttemptWorkspaceObjectID, claimToken string) bool {
-	return objectID.IsValid() && strings.TrimSpace(claimToken) != "" && strings.TrimSpace(claimToken) == claimToken &&
-		len(claimToken) <= model.AttemptWorkspaceClaimTokenMaxBytes
-}
-
-var _ store.ExamAttemptWorkspaceStore = (*SQLExamAttemptWorkspaceStore)(nil)
