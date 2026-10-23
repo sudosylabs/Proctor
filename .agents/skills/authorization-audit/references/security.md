@@ -139,8 +139,9 @@ outcomes or events but do not call a global telemetry facade.
 The Prometheus listener is disabled and loopback-bound by default. Binding it
 beyond loopback requires static TLS plus a 32-to-512-byte bearer token; the
 token is environment-overridable, redacted from configuration display, and
-compared without content-dependent timing. The listener exposes no pprof
-routes. Metrics are node-local and low-cardinality: they never label raw URL
+compared without content-dependent timing. Opt-in pprof routes exist only on
+this listener, require that bearer token even on loopback, and never include
+the process command line. Metrics are node-local and low-cardinality: they never label raw URL
 paths, VFS paths, Redis/cache keys, cluster
 node IDs, users, sessions, exam entities, mail addresses, payloads, or error
 strings. Deployment monitoring systems add target identity outside Proctor.

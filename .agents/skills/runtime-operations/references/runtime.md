@@ -283,8 +283,11 @@ node-local scrape listener. It starts after shared infrastructure and before
 public readiness, reports readiness as zero during startup and shutdown, and
 is closed after Jobs and public transports but before `platform.Service`.
 Binding, TLS-identity, and unexpected serving failures are terminal to
-`Server.Run`; metrics never run as an untracked sibling process. The endpoint
-exposes only `GET /metrics`, never profiling handlers. Loopback is the safe
+`Server.Run`; metrics never run as an untracked sibling process. The listener
+exposes `GET /metrics` and, only when `Metrics.ProfilingEnabled` is set, the
+Go runtime profiles under `/debug/pprof/` behind the same bearer token
+(required for profiling even on loopback); the command-line profile is never
+served, and the public listener never serves profiles. Loopback is the safe
 default. A non-loopback bind is rejected unless static TLS and bearer
 authentication are both configured. Prometheus scrapes each node separately;
 Memberlist does not aggregate or forward metrics.

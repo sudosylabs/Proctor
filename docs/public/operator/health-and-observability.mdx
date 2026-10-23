@@ -42,13 +42,35 @@ recommendations.
 ## Metrics
 
 Metrics use a separate node-local listener, default `127.0.0.1:8067`, exposing
-only `GET /metrics`. Scrape every node; Memberlist does not aggregate metrics.
+`GET /metrics` and, only when [profiling](#profiling) is enabled, the Go
+runtime profiles. Scrape every node; Memberlist does not aggregate metrics.
 The `proctor_` families cover readiness, HTTP, stores, caches, WebSocket,
 cluster, Jobs, VFS, mail, and selected domain outcomes.
 
 When binding beyond loopback, configuration requires static TLS and a random
 32–512-byte bearer token. Keep the token in protected secret input. Do not put
 it in scrape URLs or logs.
+
+## Profiling
+
+Set `Metrics.ProfilingEnabled` to serve Go runtime profiles from the same
+listener under `/debug/pprof/` (`heap`, `goroutine`, `allocs`, `block`,
+`mutex`, `threadcreate`, `profile`, `trace`, and `symbol`). Profiling requires
+the metrics bearer token even on loopback, and it is never available on the
+public listener. Fetch a profile from one node at a time:
+
+```sh
+curl --fail --silent --show-error --cacert metrics-ca.pem \
+  --header "Authorization: Bearer $(cat metrics-token)" \
+  --output node-a-cpu.pprof \
+  'https://node-a.internal:8067/debug/pprof/profile?seconds=20'
+go tool pprof -http=127.0.0.1:0 node-a-cpu.pprof
+```
+
+A CPU profile or execution trace must finish within `Metrics.WriteTimeout`
+(default `30s`). Profiles describe code paths, stacks, and allocation sizes
+rather than stored records, but treat captured files as internal diagnostics
+and disable profiling again when the investigation ends.
 
 ## Logs and Traces
 

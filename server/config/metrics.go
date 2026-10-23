@@ -26,6 +26,9 @@ type Metrics struct {
 	IdleTimeout              Duration   `json:"IdleTimeout"`
 	ShutdownTimeout          Duration   `json:"ShutdownTimeout"`
 	MaximumConcurrentScrapes int        `json:"MaximumConcurrentScrapes"`
+	// ProfilingEnabled serves the Go runtime profiles under /debug/pprof/ on
+	// this listener, behind the same bearer authentication as /metrics.
+	ProfilingEnabled bool `json:"ProfilingEnabled"`
 }
 
 type MetricsTLS struct {
@@ -72,6 +75,12 @@ func validateMetrics(metrics Metrics, server Server, add func(string, string)) {
 		if timeout.value <= 0 {
 			add(timeout.field, "must be greater than zero")
 		}
+	}
+	if metrics.ProfilingEnabled && !metrics.Enabled {
+		add("metrics.profiling_enabled", "requires metrics.enabled")
+	}
+	if metrics.ProfilingEnabled && metrics.BearerToken == "" {
+		add("metrics.profiling_enabled", "requires metrics.bearer_token")
 	}
 	if metrics.MaximumConcurrentScrapes < 1 || metrics.MaximumConcurrentScrapes > 32 {
 		add("metrics.maximum_concurrent_scrapes", "must be between 1 and 32")

@@ -21,7 +21,9 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"net/http/pprof"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -244,7 +246,7 @@ func New(settings config.Metrics, build BuildInfo, sources Sources) (*Module, er
 	scrapeHandler := promhttp.HandlerFor(registry, promhttp.HandlerOpts{
 		ErrorLog: sources.ErrorLog, MaxRequestsInFlight: settings.MaximumConcurrentScrapes,
 	})
-	module.handler = module.authorize(promhttp.InstrumentMetricHandler(registry, scrapeHandler))
+	module.handler = module.authorize(module.routes(promhttp.InstrumentMetricHandler(registry, scrapeHandler)))
 	return module, nil
 }
 
@@ -281,14 +283,53 @@ func registerDatabaseCollectors(registry *prometheus.Registry, stats func() sql.
 	}
 }
 
+// profilingPrefix is the path under which the opt-in Go profiling handlers
+// are served. They exist only on this authenticated, node-local listener.
+const profilingPrefix = "/debug/pprof/"
+
+// routes maps the listener's closed path set. The scrape endpoint is always
+// present; the Go runtime profiles are added only when profiling is enabled.
+// The command-line handler is never registered because process arguments can
+// carry operator secrets.
+func (m *Module) routes(scrape http.Handler) http.Handler {
+	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.URL.Path == "/metrics" && request.Method == http.MethodGet {
+			scrape.ServeHTTP(writer, request)
+			return
+		}
+		if !m.settings.ProfilingEnabled || !strings.HasPrefix(request.URL.Path, profilingPrefix) {
+			http.NotFound(writer, request)
+			return
+		}
+		name := strings.TrimPrefix(request.URL.Path, profilingPrefix)
+		if request.Method != http.MethodGet && (name != "symbol" || request.Method != http.MethodPost) {
+			http.NotFound(writer, request)
+			return
+		}
+		switch name {
+		case "cmdline":
+			http.NotFound(writer, request)
+		case "profile":
+			pprof.Profile(writer, request)
+		case "symbol":
+			pprof.Symbol(writer, request)
+		case "trace":
+			pprof.Trace(writer, request)
+		default:
+			// Index serves the listing for the bare prefix and every named
+			// runtime profile (heap, goroutine, allocs, block, mutex,
+			// threadcreate) beneath it.
+			pprof.Index(writer, request)
+		}
+	})
+}
+
+// authorize applies the listener-wide response headers and bearer
+// authentication before any route, so profiling shares the scrape credential.
 func (m *Module) authorize(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		writer.Header().Set("Cache-Control", "no-store")
 		writer.Header().Set("X-Content-Type-Options", "nosniff")
-		if request.URL.Path != "/metrics" || request.Method != http.MethodGet {
-			http.NotFound(writer, request)
-			return
-		}
 		if m.settings.BearerToken != "" {
 			got := request.Header.Get("Authorization")
 			want := "Bearer " + m.settings.BearerToken

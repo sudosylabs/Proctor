@@ -39,7 +39,8 @@
     "WriteTimeout": "30s",
     "IdleTimeout": "1m",
     "ShutdownTimeout": "5s",
-    "MaximumConcurrentScrapes": 2
+    "MaximumConcurrentScrapes": 2,
+    "ProfilingEnabled": false
   },
   "Database": {
     "DataSource": "postgres://proctor:proctor@127.0.0.1:15432/proctor?sslmode=disable",

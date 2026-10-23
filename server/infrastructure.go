@@ -411,6 +411,7 @@ func logStartupInfrastructure(
 		logging.String("listen_address", snapshot.Metrics.ListenAddress),
 		logging.Bool("tls", snapshot.Metrics.TLS.CertificateFile != ""),
 		logging.Bool("bearer_authentication", snapshot.Metrics.BearerToken != ""),
+		logging.Bool("profiling", snapshot.Metrics.ProfilingEnabled),
 	)
 }
 

@@ -81,8 +81,15 @@ built-in TLS mode, `Server.PublicURL` must use `https`.
 | `Metrics.IdleTimeout`<br />Default: `1m` | Maximum keep-alive idle time. Must be greater than zero. |
 | `Metrics.ShutdownTimeout`<br />Default: `5s` | Grace period for stopping the metrics listener. Must be greater than zero. |
 | `Metrics.MaximumConcurrentScrapes`<br />Default: `2` | Per-node cap on simultaneous Prometheus scrapes. Must be between `1` and `32`. |
+| `Metrics.ProfilingEnabled`<br />Default: `false` | Also serves Go runtime profiles under `/debug/pprof/` on the metrics listener. Requires `Metrics.Enabled` and `Metrics.BearerToken`. |
 
 An enabled metrics listener bound beyond loopback must configure both TLS files
 and a bearer token. This fail-closed rule prevents an accidental unauthenticated
 metrics endpoint. Store the token separately from the public-server TLS key and
 scrape it over HTTPS.
+
+Profiling is never served on the public listener. When enabled, the profiles
+use the same bearer token as `/metrics`; the command-line profile is never
+served because process arguments can carry secrets. A CPU profile or execution
+trace must finish within `Metrics.WriteTimeout`, so request a `seconds` value
+below it or raise the timeout for the diagnosis.

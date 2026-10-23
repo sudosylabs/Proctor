@@ -53,6 +53,8 @@ func TestRootHTTPTransportDispatchesWithoutCrossFallback(t *testing.T) {
 		{path: "/api/v1/discovery", want: "api"},
 		{path: "/health/live", want: "api"},
 		{path: "/missing", want: "api"},
+		// Profiling is served only by the metrics listener, never here.
+		{path: "/debug/pprof/", want: "api"},
 		{path: "/", want: "webapp"},
 		{path: "/login", want: "webapp"},
 		{path: "/assets/index-AbCdEf12.js", want: "webapp"},
@@ -64,7 +66,7 @@ func TestRootHTTPTransportDispatchesWithoutCrossFallback(t *testing.T) {
 			require.Equal(t, tt.want, response.Body.String(), "GET %s reached", tt.path)
 		})
 	}
-	require.Equal(t, 5, api.seen, "dispatch counts api")
+	require.Equal(t, 6, api.seen, "dispatch counts api")
 	require.Equal(t, 3, webapp.seen, "dispatch counts api")
 	require.Equal(t, 0, owned.seen, "dispatch counts api")
 }

@@ -176,6 +176,9 @@ var environmentOverrideCatalog = []environmentOverride{
 	boolEnvironmentOverride("PROCTOR_METRICS_ENABLED", func(cfg *Config) *bool {
 		return &cfg.Metrics.Enabled
 	}),
+	boolEnvironmentOverride("PROCTOR_METRICS_PROFILING_ENABLED", func(cfg *Config) *bool {
+		return &cfg.Metrics.ProfilingEnabled
+	}),
 	stringEnvironmentOverride("PROCTOR_METRICS_LISTEN_ADDRESS", func(cfg *Config) *string {
 		return &cfg.Metrics.ListenAddress
 	}),

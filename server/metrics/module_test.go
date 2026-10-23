@@ -103,6 +103,47 @@ func TestModuleServesAuthenticatedNodeMetricsWithoutDebugEndpoints(t *testing.T)
 	require.Equal(t, http.StatusNotFound, debugResponse.Code, "debug endpoint status")
 }
 
+func TestModuleServesProfilesOnlyWhenEnabledAndAuthenticated(t *testing.T) {
+	t.Parallel()
+
+	settings := config.Default().Metrics
+	settings.Enabled = true
+	settings.BearerToken = strings.Repeat("a", 32)
+	settings.ProfilingEnabled = true
+	module, err := New(settings, BuildInfo{}, Sources{})
+	require.NoError(t, err)
+	serve := func(method, path, token string) *httptest.ResponseRecorder {
+		request := httptest.NewRequestWithContext(t.Context(), method, path, nil)
+		if token != "" {
+			request.Header.Set("Authorization", "Bearer "+token)
+		}
+		response := httptest.NewRecorder()
+		module.handler.ServeHTTP(response, request)
+		return response
+	}
+
+	for _, path := range []string{"/debug/pprof/", "/debug/pprof/heap", "/debug/pprof/goroutine?debug=1", "/debug/pprof/symbol"} {
+		t.Run("unauthenticated "+path, func(t *testing.T) {
+			require.Equal(t, http.StatusUnauthorized, serve(http.MethodGet, path, "").Code)
+			require.Equal(t, http.StatusUnauthorized, serve(http.MethodGet, path, strings.Repeat("b", 32)).Code)
+		})
+		t.Run("authenticated "+path, func(t *testing.T) {
+			require.Equal(t, http.StatusOK, serve(http.MethodGet, path, settings.BearerToken).Code)
+		})
+	}
+	t.Run("command line is never served", func(t *testing.T) {
+		require.Equal(t, http.StatusNotFound, serve(http.MethodGet, "/debug/pprof/cmdline", settings.BearerToken).Code)
+	})
+	t.Run("only symbol accepts POST", func(t *testing.T) {
+		require.Equal(t, http.StatusOK, serve(http.MethodPost, "/debug/pprof/symbol", settings.BearerToken).Code)
+		require.Equal(t, http.StatusNotFound, serve(http.MethodPost, "/debug/pprof/heap", settings.BearerToken).Code)
+		require.Equal(t, http.StatusNotFound, serve(http.MethodPost, "/metrics", settings.BearerToken).Code)
+	})
+	t.Run("scrape endpoint is unchanged", func(t *testing.T) {
+		require.Equal(t, http.StatusOK, serve(http.MethodGet, "/metrics", settings.BearerToken).Code)
+	})
+}
+
 func TestDisabledModuleOwnsNoListener(t *testing.T) {
 	t.Parallel()
 
