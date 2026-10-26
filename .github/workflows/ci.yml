@@ -105,7 +105,7 @@ jobs:
         run: make module-pins-check
       - name: Retain tests, coverage, browser traces, and HTML reports
         if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: hermetic-test-reports
           path: .build/ci/
@@ -128,7 +128,7 @@ jobs:
         run: make integration
       - name: Retain integration test and coverage reports
         if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: integration-test-reports
           path: .build/ci/
@@ -156,7 +156,7 @@ jobs:
           make cluster-diagnostics > .build/ci/cluster.log 2>&1
       - name: Upload cluster diagnostics
         if: failure()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: cluster-diagnostics
           path: .build/ci/cluster.log
@@ -184,7 +184,7 @@ jobs:
           RELEASE_VERSION: ${{ inputs.version || format('0.0.0-ci.{0}', github.run_id) }}
         run: make VERSION="$RELEASE_VERSION" dist
       - name: Upload release artifacts
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: proctor-linux-${{ github.sha }}
           path: |
