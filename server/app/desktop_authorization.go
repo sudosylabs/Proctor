@@ -534,27 +534,12 @@ func (s *desktopAuthorizationService) ExchangeDesktopAuthorization(ctx context.C
 	if resolved == nil || !resolved.ID.IsValid() || !resolved.UserID.IsValid() {
 		return nil, apperror.New("authentication.desktop_authorization.unavailable")
 	}
-	binding := dpopBinding{Kind: dpopBindingAuthorization, AuthorizationID: resolved.ID,
-		KeyThumbprint: thumbprint, Origin: s.dpop.deps.Policy.Origin}
-	target, targetErr := canonicalDPoPTarget(s.dpop.deps.Policy.Origin + "/api/v1/auth/desktop/token")
-	if targetErr != nil {
-		return nil, apperror.New("authentication.desktop_authorization.unavailable").Wrap(targetErr)
-	}
-	if _, err = s.dpop.Verify(ctx, command.DPoPProof, "POST", target, "", &command.PublicJWK, binding); err != nil {
+	if err = s.verifyDesktopExchangeProof(ctx, command, resolved.ID, thumbprint); err != nil {
 		return nil, err
 	}
-	compatibility, err := s.compatibility.EvaluateDesktopCompatibility(ctx, invocation, desktopCompatibilityQueryFromAuthorization(command))
+	compatibility, err := s.evaluateDesktopExchangeCompatibility(ctx, invocation, command)
 	if err != nil {
-		return nil, apperror.New("authentication.desktop_authorization.unavailable").Wrap(err)
-	}
-	if compatibility.PolicyRevision < 1 {
-		return nil, apperror.New("authentication.desktop_authorization.unavailable")
-	}
-	if compatibility.Compatibility != DesktopCompatibilityCompatible {
-		return nil, apperror.New("authentication.desktop_authorization.incompatible").WithField("reason", compatibility.Reason)
-	}
-	if compatibility.Availability != model.DesktopAvailabilityReady {
-		return nil, apperror.New("authentication.desktop_authorization.unavailable").WithField("reason", string(compatibility.Availability))
+		return nil, err
 	}
 	institution, err := s.deps.Institutions.GetSingleton(ctx)
 	if err != nil || institution == nil || !institution.ID.IsValid() {
@@ -604,40 +589,85 @@ func (s *desktopAuthorizationService) ExchangeDesktopAuthorization(ctx context.C
 		SessionID: result.Session.ID, DesktopRegistrationID: result.Registration.ID,
 		KeyThumbprint: result.Session.DPoPKeyThumbprint, Origin: s.dpop.deps.Policy.Origin})
 	if nonceErr != nil {
-		// The credentials were never disclosed, but the SQL exchange has
-		// committed. Revoke that exact Session synchronously so a cache outage
-		// cannot consume the per-user Session allowance with inaccessible
-		// Sessions. The active Desktop Registration remains reusable by a fresh
-		// authorization after nonce storage recovers.
-		// The exchange's success audit already committed, so a separate
-		// withdrawal record says the issued Session was taken back.
-		revokeCtx := context.WithoutCancel(ctx)
-		withdrawal, auditErr := s.deps.Audit.PrepareWithdrawal(revokeCtx, invocation, result.Session.UserID,
-			institution.ID, result.Session.ID)
-		hashes, revokeErr := s.authentication.deps.Sessions.Withdraw(revokeCtx, &store.SessionWithdrawal{ID: result.Session.ID, UserID: result.Session.UserID, RevokedAt: s.deps.Now(), Reason: model.SessionRevocationDesktopAuthorizationFailed})
-		if auditErr == nil && withdrawal != nil {
-			if revokeErr != nil {
-				auditErr = s.deps.Audit.Fail(revokeCtx, withdrawal.ID, "authentication.desktop_authorization.unavailable")
-			} else {
-				auditErr = s.deps.Audit.Complete(revokeCtx, withdrawal.ID, map[string]any{
-					"session_id": result.Session.ID, "reason": string(model.SessionRevocationDesktopAuthorizationFailed),
-				})
-			}
-		}
-		if revokeErr != nil {
-			return nil, apperror.New("authentication.desktop_authorization.unavailable").Wrap(errors.Join(nonceErr, revokeErr, auditErr))
-		}
-		s.authentication.deps.SecurityEffects.SessionsRevoked(revokeCtx, result.Session.UserID,
-			[]model.SessionID{result.Session.ID}, hashes)
-		if auditErr != nil {
-			return nil, apperror.New("audit.unavailable").Wrap(errors.Join(nonceErr, auditErr))
-		}
-		return nil, nonceErr
+		return nil, s.withdrawUndisclosedDesktopSession(ctx, invocation, institution.ID, result, nonceErr)
 	}
 	return &DesktopAuthorizationExchangeResult{Session: result.Session, Registration: result.Registration,
 		Tokens: &model.AuthenticationTokens{TokenType: "DPoP", AccessToken: accessToken,
 			RefreshToken: refreshToken, AccessExpiresAt: result.AccessExpiresAt, RefreshExpiresAt: result.RefreshExpiresAt},
 		DPoPNonce: nonce}, nil
+}
+
+// verifyDesktopExchangeProof verifies the token request's DPoP proof against the authorization's bound key.
+func (s *desktopAuthorizationService) verifyDesktopExchangeProof(
+	ctx context.Context, command ExchangeDesktopAuthorizationCommand,
+	authorizationID model.BrowserAuthenticationTransactionID, thumbprint string,
+) error {
+	binding := dpopBinding{Kind: dpopBindingAuthorization, AuthorizationID: authorizationID,
+		KeyThumbprint: thumbprint, Origin: s.dpop.deps.Policy.Origin}
+	target, targetErr := canonicalDPoPTarget(s.dpop.deps.Policy.Origin + "/api/v1/auth/desktop/token")
+	if targetErr != nil {
+		return apperror.New("authentication.desktop_authorization.unavailable").Wrap(targetErr)
+	}
+	if _, err := s.dpop.Verify(ctx, command.DPoPProof, "POST", target, "", &command.PublicJWK, binding); err != nil {
+		return err
+	}
+	return nil
+}
+
+// evaluateDesktopExchangeCompatibility requires the exchanging desktop build to be compatible and ready.
+func (s *desktopAuthorizationService) evaluateDesktopExchangeCompatibility(
+	ctx context.Context, invocation invocation.Invocation, command ExchangeDesktopAuthorizationCommand,
+) (DesktopCompatibilityResult, error) {
+	compatibility, err := s.compatibility.EvaluateDesktopCompatibility(ctx, invocation, desktopCompatibilityQueryFromAuthorization(command))
+	if err != nil {
+		return DesktopCompatibilityResult{}, apperror.New("authentication.desktop_authorization.unavailable").Wrap(err)
+	}
+	if compatibility.PolicyRevision < 1 {
+		return DesktopCompatibilityResult{}, apperror.New("authentication.desktop_authorization.unavailable")
+	}
+	if compatibility.Compatibility != DesktopCompatibilityCompatible {
+		return DesktopCompatibilityResult{}, apperror.New("authentication.desktop_authorization.incompatible").WithField("reason", compatibility.Reason)
+	}
+	if compatibility.Availability != model.DesktopAvailabilityReady {
+		return DesktopCompatibilityResult{}, apperror.New("authentication.desktop_authorization.unavailable").WithField("reason", string(compatibility.Availability))
+	}
+	return compatibility, nil
+}
+
+// withdrawUndisclosedDesktopSession revokes and audits the withdrawal of an exchanged Session whose nonce could not be issued.
+func (s *desktopAuthorizationService) withdrawUndisclosedDesktopSession(
+	ctx context.Context, invocation invocation.Invocation, institutionID model.InstitutionID,
+	result *store.DesktopAuthorizationExchangeResult, nonceErr error,
+) error {
+	// The credentials were never disclosed, but the SQL exchange has
+	// committed. Revoke that exact Session synchronously so a cache outage
+	// cannot consume the per-user Session allowance with inaccessible
+	// Sessions. The active Desktop Registration remains reusable by a fresh
+	// authorization after nonce storage recovers.
+	// The exchange's success audit already committed, so a separate
+	// withdrawal record says the issued Session was taken back.
+	revokeCtx := context.WithoutCancel(ctx)
+	withdrawal, auditErr := s.deps.Audit.PrepareWithdrawal(revokeCtx, invocation, result.Session.UserID,
+		institutionID, result.Session.ID)
+	hashes, revokeErr := s.authentication.deps.Sessions.Withdraw(revokeCtx, &store.SessionWithdrawal{ID: result.Session.ID, UserID: result.Session.UserID, RevokedAt: s.deps.Now(), Reason: model.SessionRevocationDesktopAuthorizationFailed})
+	if auditErr == nil && withdrawal != nil {
+		if revokeErr != nil {
+			auditErr = s.deps.Audit.Fail(revokeCtx, withdrawal.ID, "authentication.desktop_authorization.unavailable")
+		} else {
+			auditErr = s.deps.Audit.Complete(revokeCtx, withdrawal.ID, map[string]any{
+				"session_id": result.Session.ID, "reason": string(model.SessionRevocationDesktopAuthorizationFailed),
+			})
+		}
+	}
+	if revokeErr != nil {
+		return apperror.New("authentication.desktop_authorization.unavailable").Wrap(errors.Join(nonceErr, revokeErr, auditErr))
+	}
+	s.authentication.deps.SecurityEffects.SessionsRevoked(revokeCtx, result.Session.UserID,
+		[]model.SessionID{result.Session.ID}, hashes)
+	if auditErr != nil {
+		return apperror.New("audit.unavailable").Wrap(errors.Join(nonceErr, auditErr))
+	}
+	return nonceErr
 }
 
 func validDesktopAuthorizationExchangeResult(result *store.DesktopAuthorizationExchangeResult, policy SessionPolicy) bool {
