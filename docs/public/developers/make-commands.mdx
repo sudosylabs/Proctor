@@ -139,6 +139,7 @@ checkout does not.
 | `make mail-templates-check` | Installs the locked MJML toolchain, then verifies that every tracked transactional-mail HTML file matches its MJML source and that the template tests pass. **Effect:** refreshes ignored dependencies |
 | `make docs-check` | Validates OpenAPI agreement, docs metadata and generators, TypeScript, and the production documentation build. **Effect:** generated output. |
 | `make integration` | Runs the server's dependency-backed suites plus reusable Redis-cache and SMTP-mail conformance. **Effect:** temporary runtime state. |
+| `make e2e` | Builds the webapp and server, starts one real node with disposable PostgreSQL and Mailpit on loopback, and runs the Chromium end-to-end journeys in `webapp/tests/e2e`; `E2E_ARGS` passes Playwright arguments. **Effect:** generated output and temporary runtime state, removed on exit. |
 | `make independent-modules` | Tests, race-tests, vets, and builds all four Go modules with workspace assistance disabled. **Effect:** read-only. |
 | `make module-pins-check` | Fails when the server's `go.mod` pins a `packages/*` module at content that differs from the working tree, and prints the pin to use. **Effect:** read-only. |
 | `make ci` | Runs `check`, dependency-backed integration, independent-module verification, module-pin verification, and release-package verification. **Effect:** generated output and temporary runtime state. |

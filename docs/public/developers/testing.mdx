@@ -68,7 +68,30 @@ These targets provision pinned dependencies, wait for health, and remove them
 after the test. If the requested service is unavailable, the test fails; it
 does not silently report success.
 
-### 4. Cross-Module and Product Gates
+### 4. Browser Journeys Against a Real Server
+
+```sh
+make e2e
+```
+
+The end-to-end suite drives Chromium through first-run setup, local login and
+sign-out, MFA enrollment and its login challenge, a mailed password reset, and
+a mailed Invitation against one real `proctor serve` node. The target builds
+the webapp and server, starts disposable PostgreSQL and Mailpit from
+`server/compose.yaml`, generates a loopback configuration and secrets below
+`.build/e2e/run`, waits for readiness, runs `webapp/tests/e2e`, and tears
+everything down even when a test fails. No API route is mocked. Pass
+Playwright arguments with `E2E_ARGS`, for example
+`make e2e E2E_ARGS='--grep MFA'`. Install the pinned browser once with
+`npx --prefix webapp playwright install chromium`.
+
+A failure keeps the trace, screenshot, and HTML report below
+`.build/e2e/run/report`; open a trace with
+`npx --prefix webapp playwright show-trace <trace.zip>`. CI runs this gate
+after the hermetic job and uploads the same evidence plus the server log when
+it fails.
+
+### 5. Cross-Module and Product Gates
 
 ```sh
 make independent-modules
@@ -104,6 +127,7 @@ might contain operator configuration.
 | WebSocket behavior | Authentication, subscription authorization, replay/resync, bounds, and backpressure |
 | Job behavior | Claim, lease, checkpoint, retry, cancellation, process-loss, and retention behavior |
 | Webapp interaction | Unit state coverage plus Chromium, Firefox, and WebKit browser behavior |
+| Hosted access journey or its server contract | A `make e2e` journey that asserts both page and server state |
 | Documentation presentation | Generator checks, production build, desktop/mobile and light/dark browser review |
 
 ## Diagnose a Cluster Failure

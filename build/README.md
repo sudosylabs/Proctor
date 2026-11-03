@@ -60,6 +60,11 @@ Run `make help` for the current command surface. The main lifecycles are:
 - `make cluster-smoke` certifies all three metrics targets, two peers per node,
   gateway readiness and build identity, then stops one node and verifies that
   the gateway remains usable before restoring full health.
+- `make e2e` builds the webapp and server, runs one real node against
+  disposable tmpfs PostgreSQL and Mailpit from `server/compose.yaml` with a
+  generated loopback configuration below `.build/e2e`, and drives the
+  Chromium journeys in `webapp/tests/e2e`. It tears the node and containers
+  down on every exit path. See the [webapp README](../webapp/README.md).
 - `make check`, `make integration`, and `make independent-modules` separate the
   hermetic, dependency-backed, and workspace-independence gates. `make ci`
   combines them with package verification.

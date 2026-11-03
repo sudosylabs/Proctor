@@ -108,5 +108,36 @@ shadcn/ui's OTP control with Proctor styling; `qrcode.react` encodes setup data
 locally. Neither dependency owns authentication policy or makes a QR-service
 request.
 
+## End-to-end journeys against a real server
+
+`tests/browser` mocks every API response. `tests/e2e` mocks none: it drives
+pinned Chromium against one real `proctor serve` node backed by PostgreSQL and
+Mailpit. From the repository root:
+
+```sh
+npx --prefix webapp playwright install chromium   # once
+make e2e
+make e2e E2E_ARGS='--grep MFA'                    # one journey
+```
+
+`make e2e` builds the webapp and server, starts disposable tmpfs PostgreSQL
+and Mailpit from `server/compose.yaml` under the `proctor-e2e` Compose project,
+generates a loopback configuration and fresh secrets below `.build/e2e/run`,
+waits for `/health/ready`, runs `playwright.e2e.config.ts`, and removes the
+server and containers on every exit path. Override the loopback ports with
+`PROCTOR_E2E_SERVER_PORT`, `PROCTOR_E2E_POSTGRES_PORT`,
+`PROCTOR_E2E_MAILPIT_SMTP_PORT`, and `PROCTOR_E2E_MAILPIT_HTTP_PORT`.
+
+The `installation` project completes `/setup` once; every other journey
+depends on it and admits its own Users through real Invitations, so journeys
+are independent and run in parallel. Mail is read back from the Mailpit API,
+authenticator codes are computed from the setup key, and assertions check
+server state through the public API as well as the page. Waits target network
+or DOM conditions only. Failed tests keep a trace, screenshot, and the HTML
+report below `.build/e2e/run/report` (or `$PROCTOR_TEST_REPORT_DIR/e2e`, which
+also receives the server log). Traces contain the run's generated synthetic
+secrets and passwords; they are useless after teardown but still belong only
+in internal diagnostics. The suite cannot run outside `make e2e`.
+
 The module is part of the combined Proctor server product and is licensed under
 AGPL-3.0-only. See [`../server/LICENSE`](../server/LICENSE).
