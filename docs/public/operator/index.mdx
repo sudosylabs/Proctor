@@ -36,8 +36,10 @@ changes infrastructure redundancy, not authorization or feature availability.
    not process existence.
 7. Use the bounded [maintenance and recovery procedures](./maintenance-and-recovery.mdx)
    that are implemented today.
-8. Stop at the explicit [pre-production limits](./pre-production-readiness.mdx)
-   instead of inventing sizing, backup, upgrade, or support promises.
+8. [Back up, restore, upgrade, and roll back](./backup-restore-and-upgrade.mdx)
+   PostgreSQL, file bytes, configuration, and key rings as one set.
+9. Stop at the explicit [pre-production limits](./pre-production-readiness.mdx)
+   instead of inventing sizing, recovery-objective, or support promises.
 
 <GovernedFigure asset="installation-authority-topology" />
 

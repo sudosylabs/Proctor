@@ -1,0 +1,185 @@
+---
+title: Back Up, Restore, Upgrade, and Roll Back
+description: Capture PostgreSQL, managed file bytes, configuration, and key rings as one consistent set; restore them in order and verify; and upgrade or roll back within the pre-release reset policy.
+audience: operator
+maturity: preview
+---
+
+# Back Up, Restore, Upgrade, and Roll Back
+
+Proctor has no built-in backup command. A recoverable installation is a set
+of four inputs captured together and restored together:
+
+| Input | What it holds | Backup method |
+| --- | --- | --- |
+| PostgreSQL | every durable fact: Users, Exams, Attempts, Submissions, audit, Jobs, mail state, file metadata, leases | PostgreSQL logical or physical backup |
+| VFS | managed file bytes under `VFS.Local.Root` or the `VFS.S3` bucket and prefix | filesystem snapshot or object-store copy |
+| Configuration | the active JSON file and every `PROCTOR_` environment override | your secret and configuration management |
+| Key material | the MFA and mail sealing key rings, the bootstrap secret, and TLS files | your secret store, kept with the backups that need them |
+
+Redis and Memberlist hold only disposable state and are not backed up.
+
+<Maturity state="preview">
+  These procedures follow from how the current build stores and checks its
+  state. They are not a certified disaster-recovery runbook: Proctor states no
+  recovery point or recovery time objective, and you must exercise every
+  procedure in your own topology before relying on it.
+</Maturity>
+
+## Understand Consistency Between PostgreSQL and File Bytes
+
+PostgreSQL is authoritative. Managed bytes live in VFS under unguessable,
+immutable, revision-scoped keys that only PostgreSQL metadata selects.
+Proctor writes an object first and commits its metadata afterwards, and
+deletes bytes only after the database has committed their removal. So:
+
+- an object with no database row is invisible to Proctor and harmless;
+- a database row whose object is missing makes that content unreadable.
+
+A backup is consistent when every object the database snapshot references is
+present in the VFS copy. Two ways to achieve that:
+
+- **Cold backup, consistent by construction.** Stop every application node,
+  confirm with `proctor cluster status` that no serving lease is live, back up
+  PostgreSQL, copy VFS, and start the nodes again.
+- **Online backup, best effort.** Back up PostgreSQL first and copy VFS
+  afterwards, as soon as possible. Objects created in between are harmless
+  extras. Content that is removed and physically purged in between is missing
+  from the copy; keep that window short. With S3, enable bucket versioning and
+  retain noncurrent versions for longer than the backup window, so a restore
+  can recover an object deleted during the copy.
+
+Never back up VFS before PostgreSQL: content uploaded between the two copies
+would be referenced but absent.
+
+## Back Up PostgreSQL
+
+Proctor requires PostgreSQL 14 or later and the `pg_trgm` extension, which
+the baseline migration installs. Either method works; choose by recovery
+needs.
+
+- **Logical backup** (`pg_dump --format=custom`) captures one consistent
+  snapshot of the Proctor database. Restore it with `pg_restore` into an
+  empty database of the same or a later PostgreSQL major version. It cannot
+  replay changes made after the dump.
+- **Physical backup** (`pg_basebackup` with continuous WAL archiving)
+  captures the whole cluster and supports point-in-time recovery. It restores
+  only to the same PostgreSQL major version.
+
+Include the Morph bookkeeping tables `db_migrations` and `db_lock`; they
+record the schema version a restored database is at. Backups contain student
+data, Exam content, answers, and sealed secrets: encrypt them and restrict
+access as you would the live database.
+
+## Back Up Configuration and Key Material
+
+Back up the active configuration file and the environment overrides your
+service manager or container runtime supplies. `proctor config show` prints
+the effective configuration with every secret redacted, so it records the
+shape of a deployment but never the secrets themselves; capture secrets from
+their source.
+
+Keep these with the backups that need them:
+
+- **`Authentication.MFA` key ring.** TOTP secrets are sealed with it. After an
+  MFA key rotation, a backup taken before the rekey finished still needs the
+  old key. A node refuses to start when the configured ring lacks a key that
+  seals a stored credential or the primary fenced by the last rekey, and names
+  that key.
+- **`Mail.SecretSealing` key ring.** Pending mail payloads are sealed with it.
+  A node likewise refuses to start without the required mail primary key or a
+  key that still seals an active payload.
+- **`Authentication.Bootstrap.Secret`**, which an uninitialized
+  network-accessible installation needs.
+- **TLS** certificate and key files, and the Let's Encrypt
+  `CacheDirectory` when that mode is used.
+- **Memberlist** gossip keys, which protect no stored data; any new key ring
+  shared by every node works after a restore.
+
+Retire an old MFA or mail key from your key archive only when no backup you
+may still restore needs it.
+
+## Restore in Order
+
+1. Stop every application node. Restore into a new or emptied database, not
+   one a node is using.
+2. Install the configuration and key rings that match the backup's time,
+   including every key retired after the backup was taken. Run
+   `proctor config validate`.
+3. Restore PostgreSQL.
+4. Restore VFS to the configured root or bucket and prefix. Extra objects are
+   harmless; missing ones make their content unreadable.
+5. Flush the Redis cache if the cluster uses one. Its entries are disposable,
+   and stale entries from before the restore are never needed.
+6. Run `proctor migrate status`. The database schema version must equal the
+   server schema version of the binary you will start, with no pending
+   migrations. A binary refuses to serve a schema newer than its own; use the
+   binary that matches the backup.
+7. Run `proctor cluster status`. Restored serving leases carry their old
+   expiry and show as `expired`; no lease may be `live` before you start.
+8. Start one node, wait for readiness, then start the rest.
+
+## Verify a Restore
+
+- `proctor migrate status` reports matching versions and no pending
+  migrations, and every node reaches readiness without a key-ring error.
+- An administrator signs in, and a User enrolled in MFA completes a TOTP
+  sign-in, which proves the MFA key ring opens restored secrets.
+- Open a sample of files, Exam Resources, and recent Submissions to prove the
+  VFS copy holds the objects the database references.
+- `proctor jobs list --state failed` shows no new failures, and queued mail is
+  delivered rather than failing to open its payload.
+- Record what the drill restored and how long it took; Proctor itself sets no
+  objective.
+
+## Upgrade
+
+Every pre-release build ships a single squashed baseline migration, recorded
+as schema version 1. The baseline's contents change between pre-release builds
+while its version stays 1, so `proctor migrate status` cannot reveal that a
+database came from an earlier baseline. Read the changelog for the build you
+install:
+
+- an entry saying the pre-release SQL baseline changed and databases must be
+  reset means there is **no upgrade path**. Recreate the database and VFS
+  content and set the installation up again; never edit old rows to fit the
+  new baseline.
+- an entry saying nodes must be upgraded together (for example the advisory
+  lock key scheme change, which means an older node no longer excludes a newer
+  one) forbids mixing builds even briefly.
+
+Until a supported release says otherwise, upgrade **all nodes together**:
+
+1. Take a backup as described above and keep the matching old binary.
+2. Stop every node and confirm with `proctor cluster status` that no lease is
+   live.
+3. Install the new binary and any configuration it requires, and run
+   `proctor config validate`.
+4. Run `proctor migrate up`, or let the first node migrate at startup under
+   the migration lock.
+5. Start one node, wait for readiness, then start the rest.
+
+A rolling restart, one node at a time behind the load balancer, is for
+changes within the same build: configuration, restart-required settings, and
+the staged key rotations in
+[maintenance and recovery](./maintenance-and-recovery.mdx). The first
+supported release freezes the baseline; later schema changes are designed as
+append-only migrations compatible with rolling startup, and that release's
+notes will state when rolling upgrades are supported.
+
+## Roll Back
+
+A node refuses a schema newer than its build, so rolling back the binary
+means rolling back the database too.
+
+- **Restore the pre-upgrade backup.** Stop every node, restore PostgreSQL,
+  VFS, configuration, and key rings from the backup taken before the upgrade
+  in the order above, and start the old binary. Changes made after the upgrade
+  are lost.
+- **`proctor migrate down`** reverts an explicit number of the newest
+  migrations while every node is stopped. With the single pre-release
+  baseline, reverting it leaves an **empty schema** and drops every table and
+  all data, so it is a reset, not a data-preserving rollback. See the
+  [CLI reference](../reference/command-line.mdx).
+
+Rollback is never automatic: a node never reverts migrations at startup.

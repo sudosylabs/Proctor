@@ -8,8 +8,8 @@ maturity: preview
 # Perform Maintenance and Bounded Recovery
 
 Current procedures recover application-node lifecycle and specific security
-controls. They are not a general backup, disaster-recovery, upgrade, or rollback
-runbook.
+controls. Backup, restore, upgrade, and rollback are described in
+[Back Up, Restore, Upgrade, and Roll Back](./backup-restore-and-upgrade.mdx).
 
 ## Drain or Restart One Node
 
@@ -104,13 +104,8 @@ Participation, Attempt Configuration, Submission, or terminal provenance to
 make old rows fit.
 
 `proctor migrate status` and `proctor migrate up` inspect and converge the
-current migration set. They do not prove backup completeness, restore behavior,
-mixed-version safety, or rollback.
-
-{/* TODO(operator-backup-recovery): Define and exercise PostgreSQL plus VFS
-backup consistency, restore validation, key/config recovery, RPO/RTO, and
-disaster-failover procedures before publishing a recovery runbook. */}
-
-{/* TODO(operator-upgrade-policy): Define supported source/target releases,
-preflight, mixed-version duration, schema compatibility, rollback or forward-
-recovery, and zero-downtime evidence before documenting production upgrades. */}
+current migration set. They do not prove backup completeness or restore
+behavior. `proctor migrate down` reverting the baseline leaves an empty
+schema; it resets a database rather than rolling it back. The
+[upgrade and rollback guidance](./backup-restore-and-upgrade.mdx#upgrade)
+explains how to tell when a build requires a reset.
