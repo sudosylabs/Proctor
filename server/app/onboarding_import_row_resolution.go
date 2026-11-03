@@ -72,26 +72,113 @@ func (s *onboardingImportService) resolveAcademicAdministrationImportRow(ctx con
 			return err
 		}
 	}
-	loadUser := func(id string) error {
-		user, userErr := s.deps.Users.Get(ctx, model.UserID(id))
-		if userErr != nil {
-			return userStoreErrors.Translate(userErr)
-		}
-		if user == nil || user.IsArchived() {
-			return apperror.New("resource.not_found")
-		}
-		row.UserID = user.ID
-		return nil
-	}
+	return s.resolveAcademicAdministrationImportOperation(ctx, invocation, current, operation, item, resource, row)
+}
+
+// resolveAcademicAdministrationImportOperation resolves and authorizes one validated Academic Administration operation row.
+func (s *onboardingImportService) resolveAcademicAdministrationImportOperation(ctx context.Context, invocation invocation.Invocation, current *store.OnboardingImport, operation AcademicAdministrationBatchOperation, item AcademicAdministrationBatchItemCommand, resource model.Resource, row *store.OnboardingImportRow) error {
 	switch operation {
 	case AcademicAdministrationAffiliationAdd:
-		if err = loadUser(item.UserID.String()); err != nil {
+		if err := s.loadAcademicAdministrationImportUser(ctx, item.UserID.String(), row); err != nil {
 			return err
 		}
 		if !row.StartsAt.Valid {
 			row.StartsAt = model.OptionalTimeFrom(current.CreatedAt)
 		}
 		return s.deps.Authorization.Authorize(ctx, invocation, model.ActionUserManage, model.Resource{Type: model.ResourceUser, ID: row.UserID.String()})
+	case AcademicAdministrationAcademicUnitMemberAdd:
+		if err := s.loadAcademicAdministrationImportUser(ctx, item.UserID.String(), row); err != nil {
+			return err
+		}
+		if !row.StartsAt.Valid {
+			row.StartsAt = model.OptionalTimeFrom(current.CreatedAt)
+		}
+		return s.deps.Authorization.Authorize(ctx, invocation, model.ActionAcademicUnitMembersManage, resource)
+	case AcademicAdministrationClassEnroll:
+		if err := s.loadAcademicAdministrationImportUser(ctx, item.UserID.String(), row); err != nil {
+			return err
+		}
+		if !row.StartsAt.Valid {
+			row.StartsAt = model.OptionalTimeFrom(current.CreatedAt)
+		}
+		return s.deps.Authorization.Authorize(ctx, invocation, model.ActionClassMembersManage, resource)
+	case AcademicAdministrationClassTransfer:
+		return s.resolveAcademicAdministrationImportClassTransfer(ctx, invocation, current, item, resource, row)
+	case AcademicAdministrationRoleBindingCreate:
+		return s.resolveAcademicAdministrationImportRoleBindingCreate(ctx, invocation, current, item, resource, row)
+	case AcademicAdministrationAffiliationEnd, AcademicAdministrationAcademicUnitMemberEnd, AcademicAdministrationClassEnd, AcademicAdministrationRoleBindingEnd:
+		return s.resolveAcademicAdministrationImportRelationshipEnd(ctx, invocation, current, operation, item, resource, row)
+	case AcademicAdministrationUserEnable, AcademicAdministrationUserDisable:
+		if err := s.loadAcademicAdministrationImportUser(ctx, item.UserID.String(), row); err != nil {
+			return err
+		}
+		return s.deps.Authorization.Authorize(ctx, invocation, model.ActionUserManage, model.Resource{Type: model.ResourceUser, ID: row.UserID.String()})
+	case AcademicAdministrationUserSessionsRevoke:
+		if err := s.loadAcademicAdministrationImportUser(ctx, item.UserID.String(), row); err != nil {
+			return err
+		}
+		return s.deps.Authorization.Authorize(ctx, invocation, model.ActionSessionManage, model.Resource{Type: model.ResourceUser, ID: row.UserID.String()})
+	default:
+		return apperror.New("request.invalid")
+	}
+}
+
+// loadAcademicAdministrationImportUser loads the active User a row targets and records it on the row.
+func (s *onboardingImportService) loadAcademicAdministrationImportUser(ctx context.Context, id string, row *store.OnboardingImportRow) error {
+	user, userErr := s.deps.Users.Get(ctx, model.UserID(id))
+	if userErr != nil {
+		return userStoreErrors.Translate(userErr)
+	}
+	if user == nil || user.IsArchived() {
+		return apperror.New("resource.not_found")
+	}
+	row.UserID = user.ID
+	return nil
+}
+
+// resolveAcademicAdministrationImportClassTransfer resolves a Class transfer row and authorizes both Classes.
+func (s *onboardingImportService) resolveAcademicAdministrationImportClassTransfer(ctx context.Context, invocation invocation.Invocation, current *store.OnboardingImport, item AcademicAdministrationBatchItemCommand, resource model.Resource, row *store.OnboardingImportRow) error {
+	if err := s.loadAcademicAdministrationImportUser(ctx, item.UserID.String(), row); err != nil {
+		return err
+	}
+	previous, getErr := s.deps.ClassMembers.Get(ctx, model.ClassMemberID(item.RelationshipID))
+	if getErr != nil {
+		return classMemberStoreErrors.Translate(getErr)
+	}
+	if previous.UserID != row.UserID {
+		return apperror.New("resource.not_found")
+	}
+	if !row.StartsAt.Valid {
+		row.StartsAt = model.OptionalTimeFrom(current.CreatedAt)
+	}
+	if err := s.deps.Authorization.Authorize(ctx, invocation, model.ActionClassMembersManage, model.Resource{Type: model.ResourceClass, ID: previous.ClassID.String()}); err != nil {
+		return err
+	}
+	return s.deps.Authorization.Authorize(ctx, invocation, model.ActionClassMembersManage, resource)
+}
+
+// resolveAcademicAdministrationImportRoleBindingCreate resolves a Role Binding creation row and authorizes its delegation.
+func (s *onboardingImportService) resolveAcademicAdministrationImportRoleBindingCreate(ctx context.Context, invocation invocation.Invocation, current *store.OnboardingImport, item AcademicAdministrationBatchItemCommand, resource model.Resource, row *store.OnboardingImportRow) error {
+	if err := s.loadAcademicAdministrationImportUser(ctx, item.UserID.String(), row); err != nil {
+		return err
+	}
+	role, roleErr := s.deps.Roles.Get(ctx, item.RoleID)
+	if roleErr != nil {
+		return roleBindingStoreErrors.Translate(roleErr)
+	}
+	row.RoleID, row.RoleRevision = role.ID, role.UpdatedAt.UnixMicro()
+	if !row.StartsAt.Valid {
+		row.StartsAt = model.OptionalTimeFrom(current.CreatedAt)
+	}
+	if err := s.deps.Authorization.Authorize(ctx, invocation, model.ActionRoleBindingManage, resource); err != nil {
+		return err
+	}
+	return s.deps.Authorization.AuthorizeActionDelegation(ctx, invocation, role.Permissions, current.ScopeType, current.ScopeID)
+}
+
+// resolveAcademicAdministrationImportRelationshipEnd resolves a row that ends an existing relationship and authorizes it.
+func (s *onboardingImportService) resolveAcademicAdministrationImportRelationshipEnd(ctx context.Context, invocation invocation.Invocation, current *store.OnboardingImport, operation AcademicAdministrationBatchOperation, item AcademicAdministrationBatchItemCommand, resource model.Resource, row *store.OnboardingImportRow) error {
+	switch operation {
 	case AcademicAdministrationAffiliationEnd:
 		value, getErr := s.deps.Affiliations.Get(ctx, model.AffiliationID(item.RelationshipID))
 		if getErr != nil {
@@ -99,14 +186,6 @@ func (s *onboardingImportService) resolveAcademicAdministrationImportRow(ctx con
 		}
 		row.UserID, row.AffiliationKind = value.UserID, value.Kind
 		return s.deps.Authorization.Authorize(ctx, invocation, model.ActionUserManage, model.Resource{Type: model.ResourceUser, ID: value.UserID.String()})
-	case AcademicAdministrationAcademicUnitMemberAdd:
-		if err = loadUser(item.UserID.String()); err != nil {
-			return err
-		}
-		if !row.StartsAt.Valid {
-			row.StartsAt = model.OptionalTimeFrom(current.CreatedAt)
-		}
-		return s.deps.Authorization.Authorize(ctx, invocation, model.ActionAcademicUnitMembersManage, resource)
 	case AcademicAdministrationAcademicUnitMemberEnd:
 		value, getErr := s.deps.UnitMembers.Get(ctx, model.AcademicUnitMemberID(item.RelationshipID))
 		if getErr != nil {
@@ -117,32 +196,6 @@ func (s *onboardingImportService) resolveAcademicAdministrationImportRow(ctx con
 		}
 		row.UserID = value.UserID
 		return s.deps.Authorization.Authorize(ctx, invocation, model.ActionAcademicUnitMembersManage, resource)
-	case AcademicAdministrationClassEnroll:
-		if err = loadUser(item.UserID.String()); err != nil {
-			return err
-		}
-		if !row.StartsAt.Valid {
-			row.StartsAt = model.OptionalTimeFrom(current.CreatedAt)
-		}
-		return s.deps.Authorization.Authorize(ctx, invocation, model.ActionClassMembersManage, resource)
-	case AcademicAdministrationClassTransfer:
-		if err = loadUser(item.UserID.String()); err != nil {
-			return err
-		}
-		previous, getErr := s.deps.ClassMembers.Get(ctx, model.ClassMemberID(item.RelationshipID))
-		if getErr != nil {
-			return classMemberStoreErrors.Translate(getErr)
-		}
-		if previous.UserID != row.UserID {
-			return apperror.New("resource.not_found")
-		}
-		if !row.StartsAt.Valid {
-			row.StartsAt = model.OptionalTimeFrom(current.CreatedAt)
-		}
-		if err = s.deps.Authorization.Authorize(ctx, invocation, model.ActionClassMembersManage, model.Resource{Type: model.ResourceClass, ID: previous.ClassID.String()}); err != nil {
-			return err
-		}
-		return s.deps.Authorization.Authorize(ctx, invocation, model.ActionClassMembersManage, resource)
 	case AcademicAdministrationClassEnd:
 		value, getErr := s.deps.ClassMembers.Get(ctx, model.ClassMemberID(item.RelationshipID))
 		if getErr != nil {
@@ -153,22 +206,6 @@ func (s *onboardingImportService) resolveAcademicAdministrationImportRow(ctx con
 		}
 		row.UserID = value.UserID
 		return s.deps.Authorization.Authorize(ctx, invocation, model.ActionClassMembersManage, resource)
-	case AcademicAdministrationRoleBindingCreate:
-		if err = loadUser(item.UserID.String()); err != nil {
-			return err
-		}
-		role, roleErr := s.deps.Roles.Get(ctx, item.RoleID)
-		if roleErr != nil {
-			return roleBindingStoreErrors.Translate(roleErr)
-		}
-		row.RoleID, row.RoleRevision = role.ID, role.UpdatedAt.UnixMicro()
-		if !row.StartsAt.Valid {
-			row.StartsAt = model.OptionalTimeFrom(current.CreatedAt)
-		}
-		if err = s.deps.Authorization.Authorize(ctx, invocation, model.ActionRoleBindingManage, resource); err != nil {
-			return err
-		}
-		return s.deps.Authorization.AuthorizeActionDelegation(ctx, invocation, role.Permissions, current.ScopeType, current.ScopeID)
 	case AcademicAdministrationRoleBindingEnd:
 		value, getErr := s.deps.RoleBindings.Get(ctx, model.RoleBindingID(item.RelationshipID))
 		if getErr != nil {
@@ -179,16 +216,6 @@ func (s *onboardingImportService) resolveAcademicAdministrationImportRow(ctx con
 		}
 		row.UserID = value.UserID
 		return s.deps.Authorization.Authorize(ctx, invocation, model.ActionRoleBindingManage, resource)
-	case AcademicAdministrationUserEnable, AcademicAdministrationUserDisable:
-		if err = loadUser(item.UserID.String()); err != nil {
-			return err
-		}
-		return s.deps.Authorization.Authorize(ctx, invocation, model.ActionUserManage, model.Resource{Type: model.ResourceUser, ID: row.UserID.String()})
-	case AcademicAdministrationUserSessionsRevoke:
-		if err = loadUser(item.UserID.String()); err != nil {
-			return err
-		}
-		return s.deps.Authorization.Authorize(ctx, invocation, model.ActionSessionManage, model.Resource{Type: model.ResourceUser, ID: row.UserID.String()})
 	default:
 		return apperror.New("request.invalid")
 	}
