@@ -72,6 +72,9 @@ func (s SQLMFAStore) GetByUser(ctx context.Context, userID model.UserID) (*model
 	return credential, nil
 }
 
+// Activate activates the User's pending MFA credential for the current
+// Session, replaces the recovery codes, upgrades the Session, enqueues the
+// Notice mail and completes the audit.
 func (s SQLMFAStore) Activate(
 	ctx context.Context,
 	input *store.MFAActivationMutation,
@@ -86,8 +89,7 @@ func (s SQLMFAStore) Activate(
 		len(input.RecoveryCodes) == 0 || len(input.RecoveryCodes) > model.MFARecoveryCodeMaxCount {
 		return nil, store.NewErrInvalidInput("mfa_credential", "activate", nil)
 	}
-	prepared, err := prepareMFARecoveryCodes(input.UserID.String(), input.RecoveryCodes, at)
-	if err != nil {
+	if _, err := prepareMFARecoveryCodes(input.UserID.String(), input.RecoveryCodes, at); err != nil {
 		return nil, err
 	}
 	payloadKeyID, err := validateSecurityNoticeMail(
@@ -102,91 +104,7 @@ func (s SQLMFAStore) Activate(
 		return nil, err
 	}
 	result, err := runSQLTransaction(ctx, s.GetMaster().Begin, "MFA activation", func(ctx context.Context, tx *sqlxTxWrapper) (*mfaActivationTransactionResult, error) {
-		if payloadKeyID != "" {
-			if err := requireMailPayloadPrimary(ctx, tx, payloadKeyID); err != nil {
-				return nil, err
-			}
-		}
-		if err = lockMFASessionUser(ctx, tx, input.UserID.String()); err != nil {
-			return nil, err
-		}
-		current, databaseNow, err := currentMFASession(ctx, tx, input.Principal, true, input.RecentAuthenticationTTL, false)
-		if err != nil {
-			return nil, err
-		}
-		if current.ID != input.SessionID || current.UserID != input.UserID || input.RecentAuthenticationTTL <= 0 {
-			return nil, store.NewErrInvalidInput("mfa_credential", "principal", nil)
-		}
-		at = databaseNow
-		currentStep := at.Unix() / 30
-		if input.TimeStep < currentStep-1 || input.TimeStep > currentStep+1 {
-			return nil, store.NewErrConflict("mfa_credential", "verification_expired", nil)
-		}
-		prepared, err = prepareMFARecoveryCodes(input.UserID.String(), input.RecoveryCodes, at)
-		if err != nil {
-			return nil, err
-		}
-		var row mfaCredentialRow
-		if err := tx.Get(ctx, &row, `
-		UPDATE mfa_credentials
-		   SET updated_at = GREATEST(updated_at, ?), state = 'active',
-		       pending_expires_at = NULL, activated_at = ?,
-		       last_used_time_step = ?
-		 WHERE id = ? AND user_id = ? AND archived_at IS NULL
-		   AND state = 'pending' AND pending_expires_at > ? AND pending_expires_at > ?
-		 RETURNING id, created_at, updated_at, archived_at, user_id, state,
-		           encrypted_secret, encryption_key_id, pending_expires_at,
-		           activated_at, last_used_time_step`,
-			at, at, input.TimeStep, input.CredentialID, input.UserID, at, model.TimeUTC(input.At),
-		); err != nil {
-			return nil, translateError("mfa_credential", input.CredentialID.String(), err)
-		}
-		credential, err := row.model()
-		if err != nil {
-			return nil, err
-		}
-		if _, err := tx.Exec(ctx, `
-		UPDATE mfa_recovery_codes
-		   SET updated_at = GREATEST(updated_at, ?), archived_at = ?
-		 WHERE user_id = ? AND archived_at IS NULL`,
-			at, at, input.UserID,
-		); err != nil {
-			return nil, fmt.Errorf("replace MFA recovery codes: %w", err)
-		}
-		for _, code := range prepared {
-			if err := insertMFARecoveryCode(ctx, tx, code); err != nil {
-				return nil, err
-			}
-		}
-		// Only activation of a new local factor clears assisted recovery. Other
-		// restricted Sessions stay invalid after this transition.
-		if current.MFARecoveryRequired {
-			if _, err := tx.Exec(ctx, `UPDATE user_mfa_recovery SET reenrollment_required=false,updated_at=? WHERE user_id=? AND generation=? AND reenrollment_required`, at, input.UserID, current.AuthenticationGeneration); err != nil {
-				return nil, err
-			}
-			if _, err := tx.Exec(ctx, `UPDATE sessions SET mfa_recovery_required=false,updated_at=GREATEST(updated_at,?) WHERE id=?`, at, input.SessionID); err != nil {
-				return nil, err
-			}
-		}
-		session, err := upgradeSessionAuthentication(ctx, tx, input.SessionID.String(), input.UserID.String(), at)
-		if err != nil {
-			return nil, err
-		}
-		hashes, err := selectActiveAccessTokenHashes(ctx, tx, input.SessionID.String())
-		if err != nil {
-			return nil, err
-		}
-		if err := insertSecurityNoticeMail(ctx, tx, input.Notice.Occurrence, input.Notice.Delivery, input.Notice.Job, payloadKeyID); err != nil {
-			return nil, err
-		}
-		auditData, err := model.EncodeAuditData(map[string]any{"credential": credential.Auditable(), "recovery_code_count": len(prepared)})
-		if err != nil {
-			return nil, err
-		}
-		if _, err = completeAuditEvent(ctx, tx, input.AuditEventID, model.AuditStatusSuccess, "", auditData, input.AuditAt); err != nil {
-			return nil, fmt.Errorf("complete MFA activation audit: %w", err)
-		}
-		return &mfaActivationTransactionResult{credential: credential, session: session, hashes: hashes}, nil
+		return activateMFACredential(ctx, tx, input, payloadKeyID)
 	})
 	if err != nil {
 		return nil, err
@@ -196,6 +114,108 @@ func (s SQLMFAStore) Activate(
 		Session:           result.session,
 		AccessTokenHashes: result.hashes,
 	}, nil
+}
+
+// activateMFACredential activates the pending MFA credential for the current Session inside the activation transaction.
+func activateMFACredential(ctx context.Context, tx *sqlxTxWrapper, input *store.MFAActivationMutation, payloadKeyID string) (*mfaActivationTransactionResult, error) {
+	if payloadKeyID != "" {
+		if err := requireMailPayloadPrimary(ctx, tx, payloadKeyID); err != nil {
+			return nil, err
+		}
+	}
+	if err := lockMFASessionUser(ctx, tx, input.UserID.String()); err != nil {
+		return nil, err
+	}
+	current, databaseNow, err := currentMFASession(ctx, tx, input.Principal, true, input.RecentAuthenticationTTL, false)
+	if err != nil {
+		return nil, err
+	}
+	if current.ID != input.SessionID || current.UserID != input.UserID || input.RecentAuthenticationTTL <= 0 {
+		return nil, store.NewErrInvalidInput("mfa_credential", "principal", nil)
+	}
+	at := databaseNow
+	currentStep := at.Unix() / 30
+	if input.TimeStep < currentStep-1 || input.TimeStep > currentStep+1 {
+		return nil, store.NewErrConflict("mfa_credential", "verification_expired", nil)
+	}
+	prepared, err := prepareMFARecoveryCodes(input.UserID.String(), input.RecoveryCodes, at)
+	if err != nil {
+		return nil, err
+	}
+	credential, err := activatePendingMFACredential(ctx, tx, input, at)
+	if err != nil {
+		return nil, err
+	}
+	if err = replaceMFARecoveryCodes(ctx, tx, input.UserID, prepared, at); err != nil {
+		return nil, err
+	}
+	// Only activation of a new local factor clears assisted recovery. Other
+	// restricted Sessions stay invalid after this transition.
+	if current.MFARecoveryRequired {
+		if _, err = tx.Exec(ctx, `UPDATE user_mfa_recovery SET reenrollment_required=false,updated_at=? WHERE user_id=? AND generation=? AND reenrollment_required`, at, input.UserID, current.AuthenticationGeneration); err != nil {
+			return nil, err
+		}
+		if _, err = tx.Exec(ctx, `UPDATE sessions SET mfa_recovery_required=false,updated_at=GREATEST(updated_at,?) WHERE id=?`, at, input.SessionID); err != nil {
+			return nil, err
+		}
+	}
+	session, err := upgradeSessionAuthentication(ctx, tx, input.SessionID.String(), input.UserID.String(), at)
+	if err != nil {
+		return nil, err
+	}
+	hashes, err := selectActiveAccessTokenHashes(ctx, tx, input.SessionID.String())
+	if err != nil {
+		return nil, err
+	}
+	if err = insertSecurityNoticeMail(ctx, tx, input.Notice.Occurrence, input.Notice.Delivery, input.Notice.Job, payloadKeyID); err != nil {
+		return nil, err
+	}
+	auditData, err := model.EncodeAuditData(map[string]any{"credential": credential.Auditable(), "recovery_code_count": len(prepared)})
+	if err != nil {
+		return nil, err
+	}
+	if _, err = completeAuditEvent(ctx, tx, input.AuditEventID, model.AuditStatusSuccess, "", auditData, input.AuditAt); err != nil {
+		return nil, fmt.Errorf("complete MFA activation audit: %w", err)
+	}
+	return &mfaActivationTransactionResult{credential: credential, session: session, hashes: hashes}, nil
+}
+
+// activatePendingMFACredential moves the unexpired pending MFA credential to active at the verified time step.
+func activatePendingMFACredential(ctx context.Context, tx *sqlxTxWrapper, input *store.MFAActivationMutation, at time.Time) (*model.MFACredential, error) {
+	var row mfaCredentialRow
+	if err := tx.Get(ctx, &row, `
+		UPDATE mfa_credentials
+		   SET updated_at = GREATEST(updated_at, ?), state = 'active',
+		       pending_expires_at = NULL, activated_at = ?,
+		       last_used_time_step = ?
+		 WHERE id = ? AND user_id = ? AND archived_at IS NULL
+		   AND state = 'pending' AND pending_expires_at > ? AND pending_expires_at > ?
+		 RETURNING id, created_at, updated_at, archived_at, user_id, state,
+		           encrypted_secret, encryption_key_id, pending_expires_at,
+		           activated_at, last_used_time_step`,
+		at, at, input.TimeStep, input.CredentialID, input.UserID, at, model.TimeUTC(input.At),
+	); err != nil {
+		return nil, translateError("mfa_credential", input.CredentialID.String(), err)
+	}
+	return row.model()
+}
+
+// replaceMFARecoveryCodes archives the User's live recovery codes and inserts the prepared replacements.
+func replaceMFARecoveryCodes(ctx context.Context, tx *sqlxTxWrapper, userID model.UserID, prepared []*model.MFARecoveryCode, at time.Time) error {
+	if _, err := tx.Exec(ctx, `
+		UPDATE mfa_recovery_codes
+		   SET updated_at = GREATEST(updated_at, ?), archived_at = ?
+		 WHERE user_id = ? AND archived_at IS NULL`,
+		at, at, userID,
+	); err != nil {
+		return fmt.Errorf("replace MFA recovery codes: %w", err)
+	}
+	for _, code := range prepared {
+		if err := insertMFARecoveryCode(ctx, tx, code); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // ConsumeSecondFactor records a used second factor for the active MFA
