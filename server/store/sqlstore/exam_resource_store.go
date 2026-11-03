@@ -290,20 +290,8 @@ func finalizeExamResourceUpload(ctx context.Context, tx *sqlxTxWrapper, input *s
 	if input.Rendition.Size > capacity.ResourceMaximumBytes {
 		return nil, store.NewErrConflict("exam_resource", "exam_resource_limit", nil)
 	}
-	var lease struct {
-		EntryID      string       `db:"file_entry_id"`
-		Purpose      string       `db:"purpose"`
-		Availability string       `db:"availability"`
-		CreatedBy    string       `db:"created_by_user_id"`
-		ExpiresAt    time.Time    `db:"expires_at"`
-		ConsumedAt   sql.NullTime `db:"consumed_at"`
-		DatabaseNow  time.Time    `db:"database_now"`
-	}
-	if err := tx.Get(ctx, &lease, `SELECT v.file_entry_id,e.purpose,v.availability,l.created_by_user_id,l.expires_at,l.consumed_at,CURRENT_TIMESTAMP AS database_now FROM upload_leases l JOIN file_revisions v ON v.id=l.file_revision_id JOIN file_entries e ON e.id=v.file_entry_id WHERE l.id=? AND v.id=? AND e.archived_at IS NULL AND v.purge_claim_id IS NULL FOR UPDATE OF l,v,e`, input.LeaseID.String(), input.Rendition.RevisionID.String()); err != nil {
-		return nil, translateError("upload_lease", input.LeaseID.String(), err)
-	}
-	if lease.EntryID != input.Resource.FileEntryID.String() || lease.Purpose != string(model.FilePurposeExamResource) || lease.Availability != string(model.FileAvailabilityPending) || lease.CreatedBy != input.ActorUserID.String() || lease.ConsumedAt.Valid || !lease.DatabaseNow.Before(lease.ExpiresAt) {
-		return nil, store.NewErrConflict("exam_resource", "exam_resource_upload", nil)
+	if err = lockExamResourceUploadLease(ctx, tx, input); err != nil {
+		return nil, err
 	}
 	var existing string
 	err = tx.Get(ctx, &existing, `SELECT file_entry_id FROM exam_resources WHERE exam_id=? AND id=? AND archived_at IS NULL FOR UPDATE`, input.ExamID.String(), input.Resource.ID.String())
@@ -326,30 +314,10 @@ func finalizeExamResourceUpload(ctx context.Context, tx *sqlxTxWrapper, input *s
 		return nil, store.NewErrConflict("exam_resource", "exam_resource_changed", nil)
 	}
 	r := input.Rendition
-	if _, err = tx.Exec(ctx, `INSERT INTO file_renditions (id,file_revision_id,created_at,name,media_type,size_bytes,width,height,sha256) VALUES (?,?,?,?,?,?,?,?,?)`, r.ID.String(), r.RevisionID.String(), r.CreatedAt, r.Name, r.MediaType, r.Size, r.Width, r.Height, r.SHA256); err != nil {
-		return nil, fmt.Errorf("persist exam resource rendition: %w", translateError("file_rendition", r.ID.String(), err))
-	}
-	result, err := tx.Exec(ctx, `UPDATE file_revisions SET availability='available' WHERE id=? AND availability='pending'`, r.RevisionID.String())
-	if err != nil {
+	if err = makeExamResourceUploadCurrent(ctx, tx, input); err != nil {
 		return nil, err
 	}
-	if err = requireExamResourceAffected(result, 1, "file_revision_changed"); err != nil {
-		return nil, err
-	}
-	result, err = tx.Exec(ctx, `UPDATE upload_leases SET consumed_at=GREATEST(created_at,?),updated_at=GREATEST(updated_at,?),revision=revision+1,bytes_received=? WHERE id=? AND consumed_at IS NULL`, input.ChangedAt, input.ChangedAt, r.Size, input.LeaseID.String())
-	if err != nil {
-		return nil, err
-	}
-	if err = requireExamResourceAffected(result, 1, "upload_lease_changed"); err != nil {
-		return nil, err
-	}
-	result, err = tx.Exec(ctx, `UPDATE file_entries SET current_revision_id=?,updated_at=GREATEST(updated_at,?),revision=revision+1 WHERE id=?`, r.RevisionID.String(), input.ChangedAt, input.Resource.FileEntryID.String())
-	if err != nil {
-		return nil, err
-	}
-	if err = requireExamResourceAffected(result, 1, "file_entry_changed"); err != nil {
-		return nil, err
-	}
+	var result sql.Result
 	if creating {
 		if _, err = tx.Exec(ctx, `INSERT INTO exam_resource_identities (id,exam_id,file_entry_id) VALUES (?,?,?)`, input.Resource.ID.String(), input.ExamID.String(), input.Resource.FileEntryID.String()); err != nil {
 			return nil, fmt.Errorf("create exam resource identity: %w", translateError("exam_resource", input.Resource.ID.String(), err))
@@ -379,6 +347,58 @@ func finalizeExamResourceUpload(ctx context.Context, tx *sqlxTxWrapper, input *s
 		return nil, err
 	}
 	return getExamResourceRecord(ctx, tx, input.ExamID, input.Resource.ID)
+}
+
+// lockExamResourceUploadLease locks the unconsumed, unexpired upload lease
+// and its pending Exam Resource file revision created by the actor.
+func lockExamResourceUploadLease(ctx context.Context, tx *sqlxTxWrapper, input *store.ExamResourceUploadFinalization) error {
+	var lease struct {
+		EntryID      string       `db:"file_entry_id"`
+		Purpose      string       `db:"purpose"`
+		Availability string       `db:"availability"`
+		CreatedBy    string       `db:"created_by_user_id"`
+		ExpiresAt    time.Time    `db:"expires_at"`
+		ConsumedAt   sql.NullTime `db:"consumed_at"`
+		DatabaseNow  time.Time    `db:"database_now"`
+	}
+	if err := tx.Get(ctx, &lease, `SELECT v.file_entry_id,e.purpose,v.availability,l.created_by_user_id,l.expires_at,l.consumed_at,CURRENT_TIMESTAMP AS database_now FROM upload_leases l JOIN file_revisions v ON v.id=l.file_revision_id JOIN file_entries e ON e.id=v.file_entry_id WHERE l.id=? AND v.id=? AND e.archived_at IS NULL AND v.purge_claim_id IS NULL FOR UPDATE OF l,v,e`, input.LeaseID.String(), input.Rendition.RevisionID.String()); err != nil {
+		return translateError("upload_lease", input.LeaseID.String(), err)
+	}
+	if lease.EntryID != input.Resource.FileEntryID.String() || lease.Purpose != string(model.FilePurposeExamResource) || lease.Availability != string(model.FileAvailabilityPending) || lease.CreatedBy != input.ActorUserID.String() || lease.ConsumedAt.Valid || !lease.DatabaseNow.Before(lease.ExpiresAt) {
+		return store.NewErrConflict("exam_resource", "exam_resource_upload", nil)
+	}
+	return nil
+}
+
+// makeExamResourceUploadCurrent records the rendition, makes the uploaded
+// revision available and current, and consumes its upload lease.
+func makeExamResourceUploadCurrent(ctx context.Context, tx *sqlxTxWrapper, input *store.ExamResourceUploadFinalization) error {
+	r := input.Rendition
+	if _, err := tx.Exec(ctx, `INSERT INTO file_renditions (id,file_revision_id,created_at,name,media_type,size_bytes,width,height,sha256) VALUES (?,?,?,?,?,?,?,?,?)`, r.ID.String(), r.RevisionID.String(), r.CreatedAt, r.Name, r.MediaType, r.Size, r.Width, r.Height, r.SHA256); err != nil {
+		return fmt.Errorf("persist exam resource rendition: %w", translateError("file_rendition", r.ID.String(), err))
+	}
+	result, err := tx.Exec(ctx, `UPDATE file_revisions SET availability='available' WHERE id=? AND availability='pending'`, r.RevisionID.String())
+	if err != nil {
+		return err
+	}
+	if err = requireExamResourceAffected(result, 1, "file_revision_changed"); err != nil {
+		return err
+	}
+	result, err = tx.Exec(ctx, `UPDATE upload_leases SET consumed_at=GREATEST(created_at,?),updated_at=GREATEST(updated_at,?),revision=revision+1,bytes_received=? WHERE id=? AND consumed_at IS NULL`, input.ChangedAt, input.ChangedAt, r.Size, input.LeaseID.String())
+	if err != nil {
+		return err
+	}
+	if err = requireExamResourceAffected(result, 1, "upload_lease_changed"); err != nil {
+		return err
+	}
+	result, err = tx.Exec(ctx, `UPDATE file_entries SET current_revision_id=?,updated_at=GREATEST(updated_at,?),revision=revision+1 WHERE id=?`, r.RevisionID.String(), input.ChangedAt, input.Resource.FileEntryID.String())
+	if err != nil {
+		return err
+	}
+	if err = requireExamResourceAffected(result, 1, "file_entry_changed"); err != nil {
+		return err
+	}
+	return nil
 }
 
 func getExamResourceRecord(ctx context.Context, executor sqlxExecutor, examID model.ExamID, resourceID model.ExamResourceID) (*store.ExamResourceRecord, error) {
