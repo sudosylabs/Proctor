@@ -1678,6 +1678,9 @@ func (s SQLInvitationStore) Maintain(ctx context.Context, limit int) (*store.Inv
 	})
 }
 
+// AcceptStudentClass consumes the pending student Class Invitation named by
+// the claim hash, granting the student Affiliation and Class membership, or
+// replays an accepted one.
 func (s SQLInvitationStore) AcceptStudentClass(ctx context.Context, input *store.StudentClassInvitationAcceptance) (*store.StudentClassInvitationAcceptanceResult, error) {
 	if err := validateStudentClassInvitationAcceptance(input); err != nil {
 		return nil, err
@@ -1687,107 +1690,164 @@ func (s SQLInvitationStore) AcceptStudentClass(ctx context.Context, input *store
 		return nil, store.NewErrInvalidInput("mail_delivery", "encrypted_payload", err)
 	}
 	return runSQLTransaction(ctx, s.GetMaster().Begin, "student class invitation acceptance", func(ctx context.Context, tx *sqlxTxWrapper) (*store.StudentClassInvitationAcceptanceResult, error) {
-		var row invitationRow
-		if err := tx.Get(ctx, &row, `SELECT `+invitationColumns+` FROM invitations WHERE claim_hash=? FOR UPDATE`, input.ClaimHash); err != nil {
-			return nil, translateError("invitation", "claim", err)
-		}
-		invitation, err := row.model()
-		if err != nil {
-			return nil, err
-		}
-		if invitation.State == model.InvitationAccepted {
-			user, err := invitationAcceptanceUser(ctx, tx, invitation.AcceptedUserID)
-			if err != nil {
-				return nil, err
-			}
-			affiliation, member, err := invitationAcceptedRelationships(ctx, tx, invitation, user.ID)
-			if err != nil {
-				return nil, err
-			}
-			if err = completeBrowserInvitationTransaction(ctx, tx, input.BrowserTransaction, invitation, user.ID); err != nil {
-				return nil, err
-			}
-			return &store.StudentClassInvitationAcceptanceResult{Invitation: invitation, User: user, Affiliation: affiliation, ClassMember: member, Replayed: true}, nil
-		}
-		var databaseNow time.Time
-		if err := tx.Get(ctx, &databaseNow, `SELECT clock_timestamp()`); err != nil {
-			return nil, fmt.Errorf("read invitation database time: %w", err)
-		}
-		databaseNow = model.TimeUTC(databaseNow)
-		if invitation.State != model.InvitationPending || !databaseNow.Before(invitation.ExpiresAt) ||
-			(invitation.IntendedEndsAt.Valid && !databaseNow.Before(invitation.IntendedEndsAt.Time)) {
-			return nil, store.NewErrConflict("invitation", "invitation_not_pending", nil)
-		}
-		if err = lockSystemAdministratorAuthenticationPaths(ctx, tx); err != nil {
-			return nil, err
-		}
-		if err = requireInvitationPolicy(ctx, tx); err != nil {
-			return nil, err
-		}
-		if err = lockInvitationInviterBeforeHierarchy(ctx, tx, invitation.InviterUserID); err != nil {
-			return nil, err
-		}
-		if payloadKeyID != "" {
-			if err := requireMailPayloadPrimary(ctx, tx, payloadKeyID); err != nil {
-				return nil, err
-			}
-		}
-		user, err := resolveInvitationUser(ctx, tx, invitation, input, databaseNow)
-		if err != nil {
-			return nil, err
-		}
-		if err := validateStudentClassInvitationPackage(ctx, tx, invitation, databaseNow); err != nil {
-			return nil, err
-		}
-		if err := requireStudentClassInvitationAuthority(ctx, tx, invitation.InviterUserID, invitation.ClassID, databaseNow); err != nil {
-			return nil, err
-		}
-		effectiveStart := invitation.EffectiveStartsAt(databaseNow)
-		affiliation, err := ensureInvitationStudentAffiliation(ctx, tx, input.Affiliation, user.ID, effectiveStart)
-		if err != nil {
-			return nil, err
-		}
-		member, err := ensureInvitationClassMember(ctx, tx, invitation, input.ClassMember, user.ID, effectiveStart)
-		if err != nil {
-			return nil, err
-		}
-		if err = invitation.Accept(user.ID, affiliation.ID, member.ID, invitationTransitionAt(databaseNow, invitation)); err != nil {
-			return nil, store.NewErrConflict("invitation", "invitation_not_pending", err)
-		}
-		if result, err := tx.Exec(ctx, `UPDATE invitations SET state=?,accepted_at=?,accepted_user_id=?,accepted_affiliation_id=?,accepted_class_member_id=?,updated_at=?,revision=? WHERE id=? AND state='pending' AND revision=?`,
-			invitation.State, invitation.AcceptedAt.Time, user.ID.String(), affiliation.ID.String(), member.ID.String(), invitation.UpdatedAt, invitation.Revision, invitation.ID.String(), invitation.Revision-1); err != nil {
-			return nil, fmt.Errorf("consume invitation: %w", err)
-		} else if affected, affectedErr := result.RowsAffected(); affectedErr != nil || affected != 1 {
-			return nil, store.NewErrConflict("invitation", "invitation_revision", affectedErr)
-		}
-		if err := suppressInvitationCredentialMail(ctx, tx, invitation.ID, model.MailDeliveryObsoleteCode, databaseNow); err != nil {
-			return nil, err
-		}
-		occurrence := *input.Occurrence
-		occurrence.ActorUserID = invitation.InviterUserID
-		delivery := *input.Delivery
-		delivery.TargetUserID = user.ID
-		delivery.TargetInvitationID = ""
-		if err := insertInvitationMail(ctx, tx, &occurrence, &delivery, input.DeliveryJob, payloadKeyID); err != nil {
-			return nil, err
-		}
-		event := input.AuditEvent.Clone()
-		event.ActorID = user.ID
-		encoded, appErr := model.EncodeAuditData(invitation.Auditable())
-		if appErr != nil {
-			return nil, appErr
-		}
-		event.Result = encoded
-		if _, err := insertAuditEvent(ctx, tx, event); err != nil {
-			return nil, fmt.Errorf("insert invitation acceptance audit: %w", err)
-		}
-		if err = completeBrowserInvitationTransaction(ctx, tx, input.BrowserTransaction, invitation, user.ID); err != nil {
-			return nil, err
-		}
-		return &store.StudentClassInvitationAcceptanceResult{Invitation: invitation, User: user, Affiliation: affiliation, ClassMember: member}, nil
+		return acceptStudentClassInvitation(ctx, tx, input, payloadKeyID)
 	})
 }
 
+// acceptStudentClassInvitation consumes a claimed student Class Invitation inside the acceptance transaction.
+func acceptStudentClassInvitation(ctx context.Context, tx *sqlxTxWrapper, input *store.StudentClassInvitationAcceptance, payloadKeyID string) (*store.StudentClassInvitationAcceptanceResult, error) {
+	row, err := lockInvitationRowByClaim(ctx, tx, input.ClaimHash)
+	if err != nil {
+		return nil, err
+	}
+	invitation, err := row.model()
+	if err != nil {
+		return nil, err
+	}
+	if invitation.State == model.InvitationAccepted {
+		return replayStudentClassInvitationAcceptance(ctx, tx, input, invitation)
+	}
+	var databaseNow time.Time
+	if err = tx.Get(ctx, &databaseNow, `SELECT clock_timestamp()`); err != nil {
+		return nil, fmt.Errorf("read invitation database time: %w", err)
+	}
+	databaseNow = model.TimeUTC(databaseNow)
+	if err = requirePendingInvitation(invitation, databaseNow); err != nil {
+		return nil, err
+	}
+	if err = lockStudentClassInvitationAcceptancePaths(ctx, tx, invitation, payloadKeyID); err != nil {
+		return nil, err
+	}
+	user, err := resolveInvitationUser(ctx, tx, invitation, input, databaseNow)
+	if err != nil {
+		return nil, err
+	}
+	if err = validateStudentClassInvitationPackage(ctx, tx, invitation, databaseNow); err != nil {
+		return nil, err
+	}
+	if err = requireStudentClassInvitationAuthority(ctx, tx, invitation.InviterUserID, invitation.ClassID, databaseNow); err != nil {
+		return nil, err
+	}
+	effectiveStart := invitation.EffectiveStartsAt(databaseNow)
+	affiliation, err := ensureInvitationStudentAffiliation(ctx, tx, input.Affiliation, user.ID, effectiveStart)
+	if err != nil {
+		return nil, err
+	}
+	member, err := ensureInvitationClassMember(ctx, tx, invitation, input.ClassMember, user.ID, effectiveStart)
+	if err != nil {
+		return nil, err
+	}
+	if err = consumeStudentClassInvitation(ctx, tx, invitation, user.ID, affiliation.ID, member.ID, databaseNow); err != nil {
+		return nil, err
+	}
+	if err = recordStudentClassInvitationAcceptance(ctx, tx, input, invitation, user.ID, payloadKeyID); err != nil {
+		return nil, err
+	}
+	return &store.StudentClassInvitationAcceptanceResult{Invitation: invitation, User: user, Affiliation: affiliation, ClassMember: member}, nil
+}
+
+// lockInvitationRowByClaim reads the Invitation that owns a claim hash under a row lock.
+func lockInvitationRowByClaim(ctx context.Context, tx *sqlxTxWrapper, claimHash string) (invitationRow, error) {
+	var row invitationRow
+	if err := tx.Get(ctx, &row, `SELECT `+invitationColumns+` FROM invitations WHERE claim_hash=? FOR UPDATE`, claimHash); err != nil {
+		return invitationRow{}, translateError("invitation", "claim", err)
+	}
+	return row, nil
+}
+
+// requirePendingInvitation rejects an Invitation that is no longer pending or whose admission window has closed.
+func requirePendingInvitation(invitation *model.Invitation, databaseNow time.Time) error {
+	if invitation.State != model.InvitationPending || !databaseNow.Before(invitation.ExpiresAt) ||
+		(invitation.IntendedEndsAt.Valid && !databaseNow.Before(invitation.IntendedEndsAt.Time)) {
+		return store.NewErrConflict("invitation", "invitation_not_pending", nil)
+	}
+	return nil
+}
+
+// replayStudentClassInvitationAcceptance returns the recorded result of an already accepted student Class Invitation.
+func replayStudentClassInvitationAcceptance(ctx context.Context, tx *sqlxTxWrapper, input *store.StudentClassInvitationAcceptance, invitation *model.Invitation) (*store.StudentClassInvitationAcceptanceResult, error) {
+	user, err := invitationAcceptanceUser(ctx, tx, invitation.AcceptedUserID)
+	if err != nil {
+		return nil, err
+	}
+	affiliation, member, err := invitationAcceptedRelationships(ctx, tx, invitation, user.ID)
+	if err != nil {
+		return nil, err
+	}
+	if err = completeBrowserInvitationTransaction(ctx, tx, input.BrowserTransaction, invitation, user.ID); err != nil {
+		return nil, err
+	}
+	return &store.StudentClassInvitationAcceptanceResult{Invitation: invitation, User: user, Affiliation: affiliation, ClassMember: member, Replayed: true}, nil
+}
+
+// lockStudentClassInvitationAcceptancePaths takes the authentication, policy, inviter and mail key locks a student acceptance needs.
+func lockStudentClassInvitationAcceptancePaths(ctx context.Context, tx *sqlxTxWrapper, invitation *model.Invitation, payloadKeyID string) error {
+	if err := lockSystemAdministratorAuthenticationPaths(ctx, tx); err != nil {
+		return err
+	}
+	if err := requireInvitationPolicy(ctx, tx); err != nil {
+		return err
+	}
+	if err := lockInvitationInviterBeforeHierarchy(ctx, tx, invitation.InviterUserID); err != nil {
+		return err
+	}
+	if payloadKeyID != "" {
+		if err := requireMailPayloadPrimary(ctx, tx, payloadKeyID); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// consumeStudentClassInvitation marks a pending student Class Invitation accepted under its revision fence.
+func consumeStudentClassInvitation(ctx context.Context, tx *sqlxTxWrapper, invitation *model.Invitation, userID model.UserID, affiliationID model.AffiliationID, memberID model.ClassMemberID, databaseNow time.Time) error {
+	if err := invitation.Accept(userID, affiliationID, memberID, invitationTransitionAt(databaseNow, invitation)); err != nil {
+		return store.NewErrConflict("invitation", "invitation_not_pending", err)
+	}
+	if result, err := tx.Exec(ctx, `UPDATE invitations SET state=?,accepted_at=?,accepted_user_id=?,accepted_affiliation_id=?,accepted_class_member_id=?,updated_at=?,revision=? WHERE id=? AND state='pending' AND revision=?`,
+		invitation.State, invitation.AcceptedAt.Time, userID.String(), affiliationID.String(), memberID.String(), invitation.UpdatedAt, invitation.Revision, invitation.ID.String(), invitation.Revision-1); err != nil {
+		return fmt.Errorf("consume invitation: %w", err)
+	} else if affected, affectedErr := result.RowsAffected(); affectedErr != nil || affected != 1 {
+		return store.NewErrConflict("invitation", "invitation_revision", affectedErr)
+	}
+	return suppressInvitationCredentialMail(ctx, tx, invitation.ID, model.MailDeliveryObsoleteCode, databaseNow)
+}
+
+// recordStudentClassInvitationAcceptance queues the acceptance mail, inserts the audit event and completes the browser transaction.
+func recordStudentClassInvitationAcceptance(ctx context.Context, tx *sqlxTxWrapper, input *store.StudentClassInvitationAcceptance, invitation *model.Invitation, userID model.UserID, payloadKeyID string) error {
+	occurrence := *input.Occurrence
+	occurrence.ActorUserID = invitation.InviterUserID
+	delivery := *input.Delivery
+	delivery.TargetUserID = userID
+	delivery.TargetInvitationID = ""
+	if err := insertInvitationMail(ctx, tx, &occurrence, &delivery, input.DeliveryJob, payloadKeyID); err != nil {
+		return err
+	}
+	event, err := invitationAcceptanceAuditEvent(input.AuditEvent, invitation, userID)
+	if err != nil {
+		return err
+	}
+	if _, err := insertAuditEvent(ctx, tx, event); err != nil {
+		return fmt.Errorf("insert invitation acceptance audit: %w", err)
+	}
+	return completeBrowserInvitationTransaction(ctx, tx, input.BrowserTransaction, invitation, userID)
+}
+
+// invitationAcceptanceAuditEvent clones the prepared acceptance audit event with the accepting User and the accepted Invitation.
+func invitationAcceptanceAuditEvent(prepared *model.AuditEvent, invitation *model.Invitation, userID model.UserID) (*model.AuditEvent, error) {
+	event := prepared.Clone()
+	event.ActorID = userID
+	encoded, appErr := model.EncodeAuditData(invitation.Auditable())
+	if appErr != nil {
+		return nil, appErr
+	}
+	event.Result = encoded
+	return event, nil
+}
+
+// AcceptTeacherAcademicUnit consumes the pending teacher Academic Unit
+// Invitation named by the claim hash, granting the teacher Affiliation,
+// membership and Role Binding, or replays an accepted one.
 func (s SQLInvitationStore) AcceptTeacherAcademicUnit(ctx context.Context, input *store.TeacherAcademicUnitInvitationAcceptance) (*store.TeacherAcademicUnitInvitationAcceptanceResult, error) {
 	if err := validateTeacherAcademicUnitInvitationAcceptance(input); err != nil {
 		return nil, err
@@ -1797,311 +1857,438 @@ func (s SQLInvitationStore) AcceptTeacherAcademicUnit(ctx context.Context, input
 		return nil, store.NewErrInvalidInput("mail_delivery", "encrypted_payload", err)
 	}
 	return runSQLTransaction(ctx, s.GetMaster().Begin, "teacher academic unit invitation acceptance", func(ctx context.Context, tx *sqlxTxWrapper) (*store.TeacherAcademicUnitInvitationAcceptanceResult, error) {
-		var row invitationRow
-		if err := tx.Get(ctx, &row, `SELECT `+invitationColumns+` FROM invitations WHERE claim_hash=? FOR UPDATE`, input.ClaimHash); err != nil {
-			return nil, translateError("invitation", "claim", err)
-		}
-		invitation, err := row.model()
-		if err != nil || invitation.Purpose != model.InvitationPurposeTeacherAcademicUnit {
-			return nil, store.NewErrConflict("invitation", "invitation_not_pending", err)
-		}
-		if invitation.State == model.InvitationAccepted {
-			result, replayErr := replayTeacherAcademicUnitInvitation(ctx, tx, invitation)
-			if replayErr != nil {
-				return nil, replayErr
-			}
-			if replayErr = completeBrowserInvitationTransaction(ctx, tx, input.BrowserTransaction, invitation, result.User.ID); replayErr != nil {
-				return nil, replayErr
-			}
-			return result, nil
-		}
-		databaseNow, err := jobDatabaseNow(ctx, tx)
-		if err != nil {
-			return nil, err
-		}
-		if invitation.State != model.InvitationPending || !databaseNow.Before(invitation.ExpiresAt) ||
-			(invitation.IntendedEndsAt.Valid && !databaseNow.Before(invitation.IntendedEndsAt.Time)) {
-			return nil, store.NewErrConflict("invitation", "invitation_not_pending", nil)
-		}
-		if err = lockSystemAdministratorAuthenticationPaths(ctx, tx); err != nil {
-			return nil, err
-		}
-		if err = requireInvitationPolicy(ctx, tx); err != nil {
-			return nil, err
-		}
-		if err = lockInvitationInviterBeforeHierarchy(ctx, tx, invitation.InviterUserID); err != nil {
-			return nil, err
-		}
-		if err = lockInvitationMailbox(ctx, tx, invitation.TargetEmail); err != nil {
-			return nil, err
-		}
-		var existingUser bool
-		if err = tx.Get(ctx, &existingUser, `SELECT EXISTS(SELECT 1 FROM users WHERE email=? AND archived_at IS NULL)`, invitation.TargetEmail); err != nil {
-			return nil, fmt.Errorf("inspect invited teacher user: %w", err)
-		}
-		if !existingUser && payloadKeyID != "" {
-			if err = requireMailPayloadPrimary(ctx, tx, payloadKeyID); err != nil {
-				return nil, err
-			}
-		}
-		studentArtifacts := &store.StudentClassInvitationAcceptance{User: input.User, Settings: input.Settings,
-			PasswordCredential: input.PasswordCredential, DefaultProfilePictureJob: input.DefaultProfilePictureJob}
-		user, err := resolveInvitationUser(ctx, tx, invitation, studentArtifacts, databaseNow)
-		if err != nil {
-			return nil, err
-		}
-		if err = validateTeacherAcademicUnitInvitationPackage(ctx, tx, invitation, databaseNow); err != nil {
-			return nil, err
-		}
-		if err = requireTeacherAcademicUnitInvitationAuthority(ctx, tx, invitation, databaseNow); err != nil {
-			return nil, err
-		}
-		effectiveStart := invitation.EffectiveStartsAt(databaseNow)
-		affiliation, err := ensureInvitationTeacherAffiliation(ctx, tx, input.Affiliation, user.ID, effectiveStart)
-		if err != nil {
-			return nil, err
-		}
-		member, err := ensureInvitationAcademicUnitMember(ctx, tx, invitation, input.AcademicUnitMember, user.ID, effectiveStart)
-		if err != nil {
-			return nil, err
-		}
-		binding, err := ensureInvitationRoleBinding(ctx, tx, invitation, input.RoleBinding, user.ID, member.ID, effectiveStart)
-		if err != nil {
-			return nil, err
-		}
-		if err = invitation.AcceptTeacherAcademicUnit(user.ID, affiliation.ID, member.ID, binding.ID, invitationTransitionAt(databaseNow, invitation)); err != nil {
-			return nil, store.NewErrConflict("invitation", "invitation_not_pending", err)
-		}
-		result, err := tx.Exec(ctx, `UPDATE invitations SET state=?,accepted_at=?,accepted_user_id=?,accepted_affiliation_id=?,accepted_academic_unit_member_id=?,accepted_role_binding_id=?,updated_at=?,revision=? WHERE id=? AND state='pending' AND revision=?`,
-			invitation.State, invitation.AcceptedAt.Time, user.ID.String(), affiliation.ID.String(), member.ID.String(), binding.ID.String(), invitation.UpdatedAt, invitation.Revision, invitation.ID.String(), invitation.Revision-1)
-		if err != nil {
-			return nil, fmt.Errorf("consume teacher Invitation: %w", err)
-		}
-		if affected, affectedErr := result.RowsAffected(); affectedErr != nil || affected != 1 {
-			return nil, store.NewErrConflict("invitation", "invitation_revision", affectedErr)
-		}
-		if err = suppressInvitationCredentialMail(ctx, tx, invitation.ID, model.MailDeliveryObsoleteCode, databaseNow); err != nil {
-			return nil, err
-		}
-		if !existingUser {
-			occurrence := *input.Occurrence
-			occurrence.ActorUserID = invitation.InviterUserID
-			delivery := *input.Delivery
-			delivery.TargetUserID, delivery.TargetInvitationID = user.ID, ""
-			if err = insertInvitationMail(ctx, tx, &occurrence, &delivery, input.DeliveryJob, payloadKeyID); err != nil {
-				return nil, err
-			}
-		}
-		event := input.AuditEvent.Clone()
-		event.ActorID = user.ID
-		encoded, appErr := model.EncodeAuditData(invitation.Auditable())
-		if appErr != nil {
-			return nil, appErr
-		}
-		event.Result = encoded
-		if _, err = insertAuditEvent(ctx, tx, event); err != nil {
-			return nil, fmt.Errorf("insert teacher Invitation acceptance audit: %w", err)
-		}
-		if err = completeBrowserInvitationTransaction(ctx, tx, input.BrowserTransaction, invitation, user.ID); err != nil {
-			return nil, err
-		}
-		return &store.TeacherAcademicUnitInvitationAcceptanceResult{Invitation: invitation, User: user, Affiliation: affiliation, AcademicUnitMember: member, RoleBinding: binding}, nil
+		return acceptTeacherAcademicUnitInvitation(ctx, tx, input, payloadKeyID)
 	})
 }
 
+// acceptTeacherAcademicUnitInvitation consumes a claimed teacher Academic Unit Invitation inside the acceptance transaction.
+func acceptTeacherAcademicUnitInvitation(ctx context.Context, tx *sqlxTxWrapper, input *store.TeacherAcademicUnitInvitationAcceptance, payloadKeyID string) (*store.TeacherAcademicUnitInvitationAcceptanceResult, error) {
+	row, err := lockInvitationRowByClaim(ctx, tx, input.ClaimHash)
+	if err != nil {
+		return nil, err
+	}
+	invitation, err := row.model()
+	if err != nil || invitation.Purpose != model.InvitationPurposeTeacherAcademicUnit {
+		return nil, store.NewErrConflict("invitation", "invitation_not_pending", err)
+	}
+	if invitation.State == model.InvitationAccepted {
+		return replayTeacherAcademicUnitInvitationAcceptance(ctx, tx, input, invitation)
+	}
+	databaseNow, err := jobDatabaseNow(ctx, tx)
+	if err != nil {
+		return nil, err
+	}
+	if err = requirePendingInvitation(invitation, databaseNow); err != nil {
+		return nil, err
+	}
+	existingUser, err := lockTeacherAcademicUnitInvitationAcceptancePaths(ctx, tx, invitation, payloadKeyID)
+	if err != nil {
+		return nil, err
+	}
+	studentArtifacts := &store.StudentClassInvitationAcceptance{User: input.User, Settings: input.Settings,
+		PasswordCredential: input.PasswordCredential, DefaultProfilePictureJob: input.DefaultProfilePictureJob}
+	user, err := resolveInvitationUser(ctx, tx, invitation, studentArtifacts, databaseNow)
+	if err != nil {
+		return nil, err
+	}
+	if err = validateTeacherAcademicUnitInvitationPackage(ctx, tx, invitation, databaseNow); err != nil {
+		return nil, err
+	}
+	if err = requireTeacherAcademicUnitInvitationAuthority(ctx, tx, invitation, databaseNow); err != nil {
+		return nil, err
+	}
+	effectiveStart := invitation.EffectiveStartsAt(databaseNow)
+	affiliation, err := ensureInvitationTeacherAffiliation(ctx, tx, input.Affiliation, user.ID, effectiveStart)
+	if err != nil {
+		return nil, err
+	}
+	member, err := ensureInvitationAcademicUnitMember(ctx, tx, invitation, input.AcademicUnitMember, user.ID, effectiveStart)
+	if err != nil {
+		return nil, err
+	}
+	binding, err := ensureInvitationRoleBinding(ctx, tx, invitation, input.RoleBinding, user.ID, member.ID, effectiveStart)
+	if err != nil {
+		return nil, err
+	}
+	if err = consumeTeacherAcademicUnitInvitation(ctx, tx, invitation, user.ID, affiliation.ID, member.ID, binding.ID, databaseNow); err != nil {
+		return nil, err
+	}
+	if err = recordTeacherAcademicUnitInvitationAcceptance(ctx, tx, input, invitation, user.ID, existingUser, payloadKeyID); err != nil {
+		return nil, err
+	}
+	return &store.TeacherAcademicUnitInvitationAcceptanceResult{Invitation: invitation, User: user, Affiliation: affiliation, AcademicUnitMember: member, RoleBinding: binding}, nil
+}
+
+// replayTeacherAcademicUnitInvitationAcceptance returns the recorded result of an already accepted teacher Invitation.
+func replayTeacherAcademicUnitInvitationAcceptance(ctx context.Context, tx *sqlxTxWrapper, input *store.TeacherAcademicUnitInvitationAcceptance, invitation *model.Invitation) (*store.TeacherAcademicUnitInvitationAcceptanceResult, error) {
+	result, replayErr := replayTeacherAcademicUnitInvitation(ctx, tx, invitation)
+	if replayErr != nil {
+		return nil, replayErr
+	}
+	if replayErr = completeBrowserInvitationTransaction(ctx, tx, input.BrowserTransaction, invitation, result.User.ID); replayErr != nil {
+		return nil, replayErr
+	}
+	return result, nil
+}
+
+// lockTeacherAcademicUnitInvitationAcceptancePaths takes the locks a teacher acceptance needs and reports whether the invited User already exists.
+func lockTeacherAcademicUnitInvitationAcceptancePaths(ctx context.Context, tx *sqlxTxWrapper, invitation *model.Invitation, payloadKeyID string) (bool, error) {
+	if err := lockSystemAdministratorAuthenticationPaths(ctx, tx); err != nil {
+		return false, err
+	}
+	if err := requireInvitationPolicy(ctx, tx); err != nil {
+		return false, err
+	}
+	if err := lockInvitationInviterBeforeHierarchy(ctx, tx, invitation.InviterUserID); err != nil {
+		return false, err
+	}
+	if err := lockInvitationMailbox(ctx, tx, invitation.TargetEmail); err != nil {
+		return false, err
+	}
+	var existingUser bool
+	if err := tx.Get(ctx, &existingUser, `SELECT EXISTS(SELECT 1 FROM users WHERE email=? AND archived_at IS NULL)`, invitation.TargetEmail); err != nil {
+		return false, fmt.Errorf("inspect invited teacher user: %w", err)
+	}
+	if !existingUser && payloadKeyID != "" {
+		if err := requireMailPayloadPrimary(ctx, tx, payloadKeyID); err != nil {
+			return false, err
+		}
+	}
+	return existingUser, nil
+}
+
+// consumeTeacherAcademicUnitInvitation marks a pending teacher Invitation accepted under its revision fence.
+func consumeTeacherAcademicUnitInvitation(ctx context.Context, tx *sqlxTxWrapper, invitation *model.Invitation, userID model.UserID,
+	affiliationID model.AffiliationID, memberID model.AcademicUnitMemberID, bindingID model.RoleBindingID, databaseNow time.Time,
+) error {
+	if err := invitation.AcceptTeacherAcademicUnit(userID, affiliationID, memberID, bindingID, invitationTransitionAt(databaseNow, invitation)); err != nil {
+		return store.NewErrConflict("invitation", "invitation_not_pending", err)
+	}
+	result, err := tx.Exec(ctx, `UPDATE invitations SET state=?,accepted_at=?,accepted_user_id=?,accepted_affiliation_id=?,accepted_academic_unit_member_id=?,accepted_role_binding_id=?,updated_at=?,revision=? WHERE id=? AND state='pending' AND revision=?`,
+		invitation.State, invitation.AcceptedAt.Time, userID.String(), affiliationID.String(), memberID.String(), bindingID.String(), invitation.UpdatedAt, invitation.Revision, invitation.ID.String(), invitation.Revision-1)
+	if err != nil {
+		return fmt.Errorf("consume teacher Invitation: %w", err)
+	}
+	if affected, affectedErr := result.RowsAffected(); affectedErr != nil || affected != 1 {
+		return store.NewErrConflict("invitation", "invitation_revision", affectedErr)
+	}
+	return suppressInvitationCredentialMail(ctx, tx, invitation.ID, model.MailDeliveryObsoleteCode, databaseNow)
+}
+
+// recordTeacherAcademicUnitInvitationAcceptance queues a new User's acceptance mail, inserts the audit event and completes the browser transaction.
+func recordTeacherAcademicUnitInvitationAcceptance(ctx context.Context, tx *sqlxTxWrapper, input *store.TeacherAcademicUnitInvitationAcceptance,
+	invitation *model.Invitation, userID model.UserID, existingUser bool, payloadKeyID string,
+) error {
+	if !existingUser {
+		occurrence := *input.Occurrence
+		occurrence.ActorUserID = invitation.InviterUserID
+		delivery := *input.Delivery
+		delivery.TargetUserID, delivery.TargetInvitationID = userID, ""
+		if err := insertInvitationMail(ctx, tx, &occurrence, &delivery, input.DeliveryJob, payloadKeyID); err != nil {
+			return err
+		}
+	}
+	event, err := invitationAcceptanceAuditEvent(input.AuditEvent, invitation, userID)
+	if err != nil {
+		return err
+	}
+	if _, err = insertAuditEvent(ctx, tx, event); err != nil {
+		return fmt.Errorf("insert teacher Invitation acceptance audit: %w", err)
+	}
+	return completeBrowserInvitationTransaction(ctx, tx, input.BrowserTransaction, invitation, userID)
+}
+
+// AcceptExternalIdentity consumes the Invitation admitted by a consumed
+// external login state, linking the external identity and granting what the
+// Invitation's purpose promises.
 func (s SQLInvitationStore) AcceptExternalIdentity(ctx context.Context, input *store.ExternalIdentityInvitationAcceptance) (*store.ExternalIdentityInvitationAcceptanceResult, error) {
+	provider, err := validateExternalIdentityInvitationAcceptance(input)
+	if err != nil {
+		return nil, err
+	}
+	return runSQLTransaction(ctx, s.GetMaster().Begin, "external identity Invitation acceptance", func(ctx context.Context, tx *sqlxTxWrapper) (*store.ExternalIdentityInvitationAcceptanceResult, error) {
+		return acceptExternalIdentityInvitation(ctx, tx, input, provider)
+	})
+}
+
+// validateExternalIdentityInvitationAcceptance checks the prepared acceptance package and returns its normalized provider.
+func validateExternalIdentityInvitationAcceptance(input *store.ExternalIdentityInvitationAcceptance) (string, error) {
 	if input == nil || !input.ExternalStateID.IsValid() || input.Identity == nil || !input.Identity.ID.IsZero() ||
 		input.User == nil || input.AuditEvent == nil ||
 		!input.AuditEvent.ID.IsZero() || !model.IsValidEmail(input.ProviderEmail) || !validAccessDeploymentCapabilities(input.Capabilities) {
-		return nil, store.NewErrInvalidInput("invitation", "external_identity_acceptance", nil)
+		return "", store.NewErrInvalidInput("invitation", "external_identity_acceptance", nil)
 	}
 	provider := normalizeProviderID(input.Identity.Provider)
 	if input.Identity.Provider != provider || input.Identity.Subject == "" || !input.Identity.LastSeenAt.Valid ||
 		input.User.Email == "" || !input.User.EmailVerified || input.Identity.UserID != input.User.ID ||
 		input.AuditEvent.ActorID != input.User.ID {
-		return nil, store.NewErrInvalidInput("invitation", "external_identity_acceptance", nil)
+		return "", store.NewErrInvalidInput("invitation", "external_identity_acceptance", nil)
 	}
-	return runSQLTransaction(ctx, s.GetMaster().Begin, "external identity Invitation acceptance", func(ctx context.Context, tx *sqlxTxWrapper) (*store.ExternalIdentityInvitationAcceptanceResult, error) {
-		if err := lockSystemAdministratorAuthenticationPaths(ctx, tx); err != nil {
-			return nil, err
+	return provider, nil
+}
+
+// externalInvitationLoginState is the consumed external login state that admits an Invitation.
+type externalInvitationLoginState struct {
+	CreatedAt    time.Time    `db:"created_at"`
+	InvitationID string       `db:"invitation_id"`
+	Provider     string       `db:"provider"`
+	Purpose      string       `db:"purpose"`
+	ExpiresAt    time.Time    `db:"expires_at"`
+	ConsumedAt   sql.NullTime `db:"consumed_at"`
+}
+
+// acceptExternalIdentityInvitation consumes the Invitation an external login admitted inside the acceptance transaction.
+func acceptExternalIdentityInvitation(ctx context.Context, tx *sqlxTxWrapper, input *store.ExternalIdentityInvitationAcceptance, provider string) (*store.ExternalIdentityInvitationAcceptanceResult, error) {
+	if err := lockSystemAdministratorAuthenticationPaths(ctx, tx); err != nil {
+		return nil, err
+	}
+	state, databaseNow, err := lockExternalInvitationLoginState(ctx, tx, input, provider)
+	if err != nil {
+		return nil, err
+	}
+	invitation, err := lockExternalInvitation(ctx, tx, input, state.InvitationID, provider, databaseNow)
+	if err != nil {
+		return nil, err
+	}
+	if err = requireExternalInvitationAdmission(ctx, tx, input, provider); err != nil {
+		return nil, err
+	}
+	if err = lockExternalInvitationParticipants(ctx, tx, input, invitation, provider); err != nil {
+		return nil, err
+	}
+	user, created, err := resolveExternalInvitationUser(ctx, tx, invitation, input, databaseNow)
+	if err != nil {
+		return nil, err
+	}
+	if err = requireExternalInvitationAuthenticationGeneration(ctx, tx, user.ID, state.CreatedAt); err != nil {
+		return nil, err
+	}
+	identity, err := linkExternalInvitationIdentity(ctx, tx, input.Identity, user.ID, provider, databaseNow)
+	if err != nil {
+		return nil, err
+	}
+	result := &store.ExternalIdentityInvitationAcceptanceResult{Invitation: invitation, Identity: identity, User: user}
+	if err = acceptExternalInvitationPurpose(ctx, tx, input, invitation, result, user.ID, created, databaseNow); err != nil {
+		return nil, err
+	}
+	if err = persistExternalInvitationAcceptance(ctx, tx, invitation); err != nil {
+		return nil, err
+	}
+	if err = suppressInvitationCredentialMail(ctx, tx, invitation.ID, model.MailDeliveryObsoleteCode, databaseNow); err != nil {
+		return nil, err
+	}
+	if err = insertExternalInvitationAcceptanceNotice(ctx, tx, input, invitation, user.ID, created); err != nil {
+		return nil, err
+	}
+	event, err := invitationAcceptanceAuditEvent(input.AuditEvent, invitation, user.ID)
+	if err != nil {
+		return nil, err
+	}
+	if _, err = insertAuditEvent(ctx, tx, event); err != nil {
+		return nil, err
+	}
+	result.Invitation = invitation
+	return result, nil
+}
+
+// lockExternalInvitationLoginState locks the consumed external login state and checks it admits an Invitation through provider.
+func lockExternalInvitationLoginState(ctx context.Context, tx *sqlxTxWrapper, input *store.ExternalIdentityInvitationAcceptance, provider string) (externalInvitationLoginState, time.Time, error) {
+	var state externalInvitationLoginState
+	if err := tx.Get(ctx, &state, `SELECT created_at,invitation_id,provider,purpose,expires_at,consumed_at FROM external_login_states WHERE id=? FOR UPDATE`, input.ExternalStateID.String()); err != nil {
+		return state, time.Time{}, translateError("external_login_state", input.ExternalStateID.String(), err)
+	}
+	databaseNow, err := jobDatabaseNow(ctx, tx)
+	if err != nil {
+		return state, time.Time{}, err
+	}
+	if state.Provider != provider || state.Purpose != string(model.ExternalAuthenticationPurposeInvitationAdmission) ||
+		state.InvitationID == "" || !state.ConsumedAt.Valid || !databaseNow.Before(state.ExpiresAt) {
+		return state, time.Time{}, store.NewErrConflict("invitation", "invitation_external_state", nil)
+	}
+	return state, databaseNow, nil
+}
+
+// lockExternalInvitation locks the admitted Invitation and checks the prepared audit event and its pending window.
+func lockExternalInvitation(ctx context.Context, tx *sqlxTxWrapper, input *store.ExternalIdentityInvitationAcceptance, invitationID, provider string, databaseNow time.Time) (*model.Invitation, error) {
+	var row invitationRow
+	if err := tx.Get(ctx, &row, `SELECT `+invitationColumns+` FROM invitations WHERE id=? FOR UPDATE`, invitationID); err != nil {
+		return nil, translateError("invitation", invitationID, err)
+	}
+	invitation, err := row.model()
+	if err != nil {
+		return nil, err
+	}
+	if err = validateExternalInvitationAudit(input.AuditEvent, invitation, provider); err != nil {
+		return nil, err
+	}
+	if err = requirePendingInvitation(invitation, databaseNow); err != nil {
+		return nil, err
+	}
+	return invitation, nil
+}
+
+// requireExternalInvitationAdmission requires the provider to be configured and the Access Policy to admit invitations through it.
+func requireExternalInvitationAdmission(ctx context.Context, tx *sqlxTxWrapper, input *store.ExternalIdentityInvitationAcceptance, provider string) error {
+	_, configured := input.Capabilities.Providers[provider]
+	if !configured {
+		return store.ErrAuthenticationMethodDisabled
+	}
+	policy, err := getAccessPolicy(ctx, tx, "FOR SHARE")
+	if err != nil {
+		return err
+	}
+	if !policy.InvitationAdmissionEnabled || policy.ProviderAdmissions[provider] != model.ProviderAdmissionInvitationRequired {
+		return store.ErrAuthenticationMethodDisabled
+	}
+	return nil
+}
+
+// lockExternalInvitationParticipants locks the inviter, the target and provider mailboxes in order, and the provider subject.
+func lockExternalInvitationParticipants(ctx context.Context, tx *sqlxTxWrapper, input *store.ExternalIdentityInvitationAcceptance, invitation *model.Invitation, provider string) error {
+	if err := lockInvitationInviterBeforeHierarchy(ctx, tx, invitation.InviterUserID); err != nil {
+		return err
+	}
+	mailboxes := []string{invitation.TargetEmail}
+	if input.ProviderEmail != invitation.TargetEmail {
+		mailboxes = append(mailboxes, input.ProviderEmail)
+		slices.Sort(mailboxes)
+	}
+	for _, mailbox := range mailboxes {
+		if err := lockInvitationMailbox(ctx, tx, mailbox); err != nil {
+			return err
 		}
-		var state struct {
-			CreatedAt    time.Time    `db:"created_at"`
-			InvitationID string       `db:"invitation_id"`
-			Provider     string       `db:"provider"`
-			Purpose      string       `db:"purpose"`
-			ExpiresAt    time.Time    `db:"expires_at"`
-			ConsumedAt   sql.NullTime `db:"consumed_at"`
+	}
+	return lockExternalIdentitySubject(ctx, tx, provider, input.Identity.Subject)
+}
+
+// requireExternalInvitationAuthenticationGeneration rejects a User awaiting MFA re-enrollment or reset after the login state began.
+func requireExternalInvitationAuthenticationGeneration(ctx context.Context, tx *sqlxTxWrapper, userID model.UserID, stateCreatedAt time.Time) error {
+	recovery, recoveryErr := getMFARecoveryState(ctx, tx, userID)
+	if recoveryErr != nil {
+		return recoveryErr
+	}
+	if recovery.ReenrollmentRequired {
+		return store.ErrMFAReenrollmentRequired
+	}
+	if recovery.ResetAt.Valid && stateCreatedAt.Before(recovery.ResetAt.Time) {
+		return store.ErrAuthenticationGenerationChanged
+	}
+	return nil
+}
+
+// acceptExternalInvitationPurpose grants the relationships the Invitation's purpose promises and accepts it in memory.
+func acceptExternalInvitationPurpose(ctx context.Context, tx *sqlxTxWrapper, input *store.ExternalIdentityInvitationAcceptance, invitation *model.Invitation,
+	result *store.ExternalIdentityInvitationAcceptanceResult, userID model.UserID, created bool, databaseNow time.Time,
+) error {
+	switch invitation.Purpose {
+	case model.InvitationPurposeStudentClass:
+		return acceptExternalStudentClassInvitation(ctx, tx, input, invitation, result, userID, created, databaseNow)
+	case model.InvitationPurposeTeacherAcademicUnit:
+		return acceptExternalTeacherAcademicUnitInvitation(ctx, tx, input, invitation, result, userID, created, databaseNow)
+	case model.InvitationPurposeAcademicUnitRole, model.InvitationPurposeInstitutionRole:
+		return acceptExternalScopedRoleInvitation(ctx, tx, input, invitation, result, userID, created, databaseNow)
+	default:
+		return store.NewErrConflict("invitation", "invitation_purpose", nil)
+	}
+}
+
+// acceptExternalStudentClassInvitation grants the student Affiliation and Class membership an external acceptance promises.
+func acceptExternalStudentClassInvitation(ctx context.Context, tx *sqlxTxWrapper, input *store.ExternalIdentityInvitationAcceptance, invitation *model.Invitation,
+	result *store.ExternalIdentityInvitationAcceptanceResult, userID model.UserID, created bool, databaseNow time.Time,
+) error {
+	if !slices.Equal(input.RequiredActions, []model.Action{model.ActionInvitationCreate, model.ActionClassMembersManage}) ||
+		input.Affiliation == nil || input.ClassMember == nil || (created && input.Notice == nil) {
+		return store.NewErrInvalidInput("invitation", "external_student_package", nil)
+	}
+	if err := validateStudentClassInvitationPackage(ctx, tx, invitation, databaseNow); err != nil {
+		return err
+	}
+	if err := requireStudentClassInvitationAuthority(ctx, tx, invitation.InviterUserID, invitation.ClassID, databaseNow); err != nil {
+		return err
+	}
+	effectiveStart := invitation.EffectiveStartsAt(databaseNow)
+	var err error
+	result.Affiliation, err = ensureInvitationStudentAffiliation(ctx, tx, input.Affiliation, userID, effectiveStart)
+	if err == nil {
+		result.ClassMember, err = ensureInvitationClassMember(ctx, tx, invitation, input.ClassMember, userID, effectiveStart)
+	}
+	if err == nil {
+		err = invitation.Accept(userID, result.Affiliation.ID, result.ClassMember.ID, invitationTransitionAt(databaseNow, invitation))
+	}
+	return err
+}
+
+// acceptExternalTeacherAcademicUnitInvitation grants the teacher Affiliation, membership and Role Binding an external acceptance promises.
+func acceptExternalTeacherAcademicUnitInvitation(ctx context.Context, tx *sqlxTxWrapper, input *store.ExternalIdentityInvitationAcceptance, invitation *model.Invitation,
+	result *store.ExternalIdentityInvitationAcceptanceResult, userID model.UserID, created bool, databaseNow time.Time,
+) error {
+	if !slices.Equal(input.RequiredActions, []model.Action{model.ActionInvitationCreate, model.ActionAcademicUnitMembersManage}) ||
+		input.Affiliation == nil || input.AcademicUnitMember == nil || input.RoleBinding == nil || (created && input.Notice == nil) {
+		return store.NewErrInvalidInput("invitation", "external_teacher_package", nil)
+	}
+	effectiveStart := invitation.EffectiveStartsAt(databaseNow)
+	err := validateTeacherAcademicUnitInvitationPackage(ctx, tx, invitation, databaseNow)
+	if err == nil {
+		err = requireTeacherAcademicUnitInvitationAuthority(ctx, tx, invitation, databaseNow)
+	}
+	if err == nil {
+		result.Affiliation, err = ensureInvitationTeacherAffiliation(ctx, tx, input.Affiliation, userID, effectiveStart)
+	}
+	if err == nil {
+		result.AcademicUnitMember, err = ensureInvitationAcademicUnitMember(ctx, tx, invitation, input.AcademicUnitMember, userID, effectiveStart)
+	}
+	if err == nil {
+		result.RoleBinding, err = ensureInvitationRoleBinding(ctx, tx, invitation, input.RoleBinding, userID, result.AcademicUnitMember.ID, effectiveStart)
+	}
+	if err == nil {
+		err = invitation.AcceptTeacherAcademicUnit(userID, result.Affiliation.ID, result.AcademicUnitMember.ID, result.RoleBinding.ID, invitationTransitionAt(databaseNow, invitation))
+	}
+	return err
+}
+
+// acceptExternalScopedRoleInvitation grants the scoped Role Binding an existing User's external acceptance promises.
+func acceptExternalScopedRoleInvitation(ctx context.Context, tx *sqlxTxWrapper, input *store.ExternalIdentityInvitationAcceptance, invitation *model.Invitation,
+	result *store.ExternalIdentityInvitationAcceptanceResult, userID model.UserID, created bool, databaseNow time.Time,
+) error {
+	if created || !slices.Equal(input.RequiredActions, []model.Action{model.ActionInvitationCreate, model.ActionRoleBindingManage}) ||
+		input.RoleBinding == nil || input.Notice != nil {
+		return store.NewErrConflict("invitation", "invitation_existing_user_required", nil)
+	}
+	effectiveStart := invitation.EffectiveStartsAt(databaseNow)
+	err := validateScopedRoleInvitationPackage(ctx, tx, invitation, databaseNow)
+	if err == nil {
+		err = requireScopedRoleInvitationAuthority(ctx, tx, invitation, databaseNow)
+	}
+	if err == nil {
+		result.RoleBinding, err = ensureScopedRoleInvitationBinding(ctx, tx, invitation, input.RoleBinding, userID, effectiveStart, databaseNow)
+	}
+	if err == nil {
+		err = invitation.AcceptScopedRole(userID, result.RoleBinding.ID, invitationTransitionAt(databaseNow, invitation))
+	}
+	return err
+}
+
+// insertExternalInvitationAcceptanceNotice queues the acceptance notice for a User the external acceptance created.
+func insertExternalInvitationAcceptanceNotice(ctx context.Context, tx *sqlxTxWrapper, input *store.ExternalIdentityInvitationAcceptance,
+	invitation *model.Invitation, userID model.UserID, created bool,
+) error {
+	if !created || input.Notice == nil || (invitation.Purpose != model.InvitationPurposeStudentClass && invitation.Purpose != model.InvitationPurposeTeacherAcademicUnit) {
+		return nil
+	}
+	payloadKeyID, keyErr := validateExternalInvitationNotice(input.Notice.Occurrence, input.Notice.Delivery, input.Notice.Job)
+	if keyErr != nil {
+		return keyErr
+	}
+	occurrence := *input.Notice.Occurrence
+	occurrence.ActorUserID = invitation.InviterUserID
+	delivery := *input.Notice.Delivery
+	delivery.TargetUserID, delivery.TargetInvitationID = userID, ""
+	if payloadKeyID != "" {
+		if keyErr = requireMailPayloadPrimary(ctx, tx, payloadKeyID); keyErr != nil {
+			return keyErr
 		}
-		if err := tx.Get(ctx, &state, `SELECT created_at,invitation_id,provider,purpose,expires_at,consumed_at FROM external_login_states WHERE id=? FOR UPDATE`, input.ExternalStateID.String()); err != nil {
-			return nil, translateError("external_login_state", input.ExternalStateID.String(), err)
-		}
-		databaseNow, err := jobDatabaseNow(ctx, tx)
-		if err != nil {
-			return nil, err
-		}
-		if state.Provider != provider || state.Purpose != string(model.ExternalAuthenticationPurposeInvitationAdmission) ||
-			state.InvitationID == "" || !state.ConsumedAt.Valid || !databaseNow.Before(state.ExpiresAt) {
-			return nil, store.NewErrConflict("invitation", "invitation_external_state", nil)
-		}
-		var row invitationRow
-		if err = tx.Get(ctx, &row, `SELECT `+invitationColumns+` FROM invitations WHERE id=? FOR UPDATE`, state.InvitationID); err != nil {
-			return nil, translateError("invitation", state.InvitationID, err)
-		}
-		invitation, err := row.model()
-		if err != nil {
-			return nil, err
-		}
-		if err = validateExternalInvitationAudit(input.AuditEvent, invitation, provider); err != nil {
-			return nil, err
-		}
-		if invitation.State != model.InvitationPending || !databaseNow.Before(invitation.ExpiresAt) ||
-			(invitation.IntendedEndsAt.Valid && !databaseNow.Before(invitation.IntendedEndsAt.Time)) {
-			return nil, store.NewErrConflict("invitation", "invitation_not_pending", nil)
-		}
-		_, configured := input.Capabilities.Providers[provider]
-		if !configured {
-			return nil, store.ErrAuthenticationMethodDisabled
-		}
-		policy, err := getAccessPolicy(ctx, tx, "FOR SHARE")
-		if err != nil {
-			return nil, err
-		}
-		if !policy.InvitationAdmissionEnabled || policy.ProviderAdmissions[provider] != model.ProviderAdmissionInvitationRequired {
-			return nil, store.ErrAuthenticationMethodDisabled
-		}
-		if err = lockInvitationInviterBeforeHierarchy(ctx, tx, invitation.InviterUserID); err != nil {
-			return nil, err
-		}
-		mailboxes := []string{invitation.TargetEmail}
-		if input.ProviderEmail != invitation.TargetEmail {
-			mailboxes = append(mailboxes, input.ProviderEmail)
-			slices.Sort(mailboxes)
-		}
-		for _, mailbox := range mailboxes {
-			if err = lockInvitationMailbox(ctx, tx, mailbox); err != nil {
-				return nil, err
-			}
-		}
-		if err = lockExternalIdentitySubject(ctx, tx, provider, input.Identity.Subject); err != nil {
-			return nil, err
-		}
-		user, created, err := resolveExternalInvitationUser(ctx, tx, invitation, input, databaseNow)
-		if err != nil {
-			return nil, err
-		}
-		recovery, recoveryErr := getMFARecoveryState(ctx, tx, user.ID)
-		if recoveryErr != nil {
-			return nil, recoveryErr
-		}
-		if recovery.ReenrollmentRequired {
-			return nil, store.ErrMFAReenrollmentRequired
-		}
-		if recovery.ResetAt.Valid && state.CreatedAt.Before(recovery.ResetAt.Time) {
-			return nil, store.ErrAuthenticationGenerationChanged
-		}
-		identity, err := linkExternalInvitationIdentity(ctx, tx, input.Identity, user.ID, provider, databaseNow)
-		if err != nil {
-			return nil, err
-		}
-		result := &store.ExternalIdentityInvitationAcceptanceResult{Invitation: invitation, Identity: identity, User: user}
-		effectiveStart := invitation.EffectiveStartsAt(databaseNow)
-		switch invitation.Purpose {
-		case model.InvitationPurposeStudentClass:
-			if !slices.Equal(input.RequiredActions, []model.Action{model.ActionInvitationCreate, model.ActionClassMembersManage}) ||
-				input.Affiliation == nil || input.ClassMember == nil || (created && input.Notice == nil) {
-				return nil, store.NewErrInvalidInput("invitation", "external_student_package", nil)
-			}
-			if err = validateStudentClassInvitationPackage(ctx, tx, invitation, databaseNow); err != nil {
-				return nil, err
-			}
-			if err = requireStudentClassInvitationAuthority(ctx, tx, invitation.InviterUserID, invitation.ClassID, databaseNow); err != nil {
-				return nil, err
-			}
-			result.Affiliation, err = ensureInvitationStudentAffiliation(ctx, tx, input.Affiliation, user.ID, effectiveStart)
-			if err == nil {
-				result.ClassMember, err = ensureInvitationClassMember(ctx, tx, invitation, input.ClassMember, user.ID, effectiveStart)
-			}
-			if err == nil {
-				err = invitation.Accept(user.ID, result.Affiliation.ID, result.ClassMember.ID, invitationTransitionAt(databaseNow, invitation))
-			}
-		case model.InvitationPurposeTeacherAcademicUnit:
-			if !slices.Equal(input.RequiredActions, []model.Action{model.ActionInvitationCreate, model.ActionAcademicUnitMembersManage}) ||
-				input.Affiliation == nil || input.AcademicUnitMember == nil || input.RoleBinding == nil || (created && input.Notice == nil) {
-				return nil, store.NewErrInvalidInput("invitation", "external_teacher_package", nil)
-			}
-			if err = validateTeacherAcademicUnitInvitationPackage(ctx, tx, invitation, databaseNow); err == nil {
-				err = requireTeacherAcademicUnitInvitationAuthority(ctx, tx, invitation, databaseNow)
-			}
-			if err == nil {
-				result.Affiliation, err = ensureInvitationTeacherAffiliation(ctx, tx, input.Affiliation, user.ID, effectiveStart)
-			}
-			if err == nil {
-				result.AcademicUnitMember, err = ensureInvitationAcademicUnitMember(ctx, tx, invitation, input.AcademicUnitMember, user.ID, effectiveStart)
-			}
-			if err == nil {
-				result.RoleBinding, err = ensureInvitationRoleBinding(ctx, tx, invitation, input.RoleBinding, user.ID, result.AcademicUnitMember.ID, effectiveStart)
-			}
-			if err == nil {
-				err = invitation.AcceptTeacherAcademicUnit(user.ID, result.Affiliation.ID, result.AcademicUnitMember.ID, result.RoleBinding.ID, invitationTransitionAt(databaseNow, invitation))
-			}
-		case model.InvitationPurposeAcademicUnitRole, model.InvitationPurposeInstitutionRole:
-			if created || !slices.Equal(input.RequiredActions, []model.Action{model.ActionInvitationCreate, model.ActionRoleBindingManage}) ||
-				input.RoleBinding == nil || input.Notice != nil {
-				return nil, store.NewErrConflict("invitation", "invitation_existing_user_required", nil)
-			}
-			if err = validateScopedRoleInvitationPackage(ctx, tx, invitation, databaseNow); err == nil {
-				err = requireScopedRoleInvitationAuthority(ctx, tx, invitation, databaseNow)
-			}
-			if err == nil {
-				result.RoleBinding, err = ensureScopedRoleInvitationBinding(ctx, tx, invitation, input.RoleBinding, user.ID, effectiveStart, databaseNow)
-			}
-			if err == nil {
-				err = invitation.AcceptScopedRole(user.ID, result.RoleBinding.ID, invitationTransitionAt(databaseNow, invitation))
-			}
-		default:
-			err = store.NewErrConflict("invitation", "invitation_purpose", nil)
-		}
-		if err != nil {
-			return nil, err
-		}
-		if err = persistExternalInvitationAcceptance(ctx, tx, invitation); err != nil {
-			return nil, err
-		}
-		if err = suppressInvitationCredentialMail(ctx, tx, invitation.ID, model.MailDeliveryObsoleteCode, databaseNow); err != nil {
-			return nil, err
-		}
-		if created && input.Notice != nil && (invitation.Purpose == model.InvitationPurposeStudentClass || invitation.Purpose == model.InvitationPurposeTeacherAcademicUnit) {
-			payloadKeyID, keyErr := validateExternalInvitationNotice(input.Notice.Occurrence, input.Notice.Delivery, input.Notice.Job)
-			if keyErr != nil {
-				return nil, keyErr
-			}
-			occurrence := *input.Notice.Occurrence
-			occurrence.ActorUserID = invitation.InviterUserID
-			delivery := *input.Notice.Delivery
-			delivery.TargetUserID, delivery.TargetInvitationID = user.ID, ""
-			if payloadKeyID != "" {
-				if keyErr = requireMailPayloadPrimary(ctx, tx, payloadKeyID); keyErr != nil {
-					return nil, keyErr
-				}
-			}
-			if err = insertInvitationMail(ctx, tx, &occurrence, &delivery, input.Notice.Job, payloadKeyID); err != nil {
-				return nil, err
-			}
-		}
-		event := input.AuditEvent.Clone()
-		event.ActorID = user.ID
-		encoded, encodeErr := model.EncodeAuditData(invitation.Auditable())
-		if encodeErr != nil {
-			return nil, encodeErr
-		}
-		event.Result = encoded
-		if _, err = insertAuditEvent(ctx, tx, event); err != nil {
-			return nil, err
-		}
-		result.Invitation = invitation
-		return result, nil
-	})
+	}
+	return insertInvitationMail(ctx, tx, &occurrence, &delivery, input.Notice.Job, payloadKeyID)
 }
 
 func resolveExternalInvitationUser(ctx context.Context, tx *sqlxTxWrapper, invitation *model.Invitation,
