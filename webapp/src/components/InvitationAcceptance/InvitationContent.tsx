@@ -19,6 +19,7 @@ import {
   TaskStateAnnouncement,
 } from "../TaskState/TaskState";
 import styles from "./InvitationAcceptance.module.css";
+import { passwordRejectionMessage } from "../../auth/passwordRejection";
 
 export interface InvitationContentProps {
   acceptAccount(
@@ -204,7 +205,14 @@ function InvitationAccountForm({
       setPassword("");
       onAccepted();
     } else if (result.kind === "password_rejected") {
-      setPasswordError(message("webapp.join.form.error.password_invalid"));
+      setPasswordError(
+        message(
+          passwordRejectionMessage(
+            result.reason,
+            "webapp.join.form.error.password_invalid",
+          ),
+        ),
+      );
       requestAnimationFrame(() => passwordRef.current?.focus());
     } else if (result.kind === "details_invalid") {
       setFormError(message("webapp.join.form.error.details_invalid"));

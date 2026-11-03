@@ -13,6 +13,7 @@ import { InputField, RequiredMark } from "../InputField/InputField";
 import { PasswordField } from "../InputField/PasswordField";
 import { Notice } from "../Notice/Notice";
 import styles from "./Registration.module.css";
+import { passwordRejectionMessage } from "../../auth/passwordRejection";
 
 type RegistrationField =
   | "firstName"
@@ -168,7 +169,12 @@ export function RegistrationForm({
         case "password_rejected":
           showFieldFailure(
             "password",
-            message("webapp.register.form.error.password_invalid"),
+            message(
+              passwordRejectionMessage(
+                result.reason,
+                "webapp.register.form.error.password_invalid",
+              ),
+            ),
           );
           return;
         case "details_invalid":

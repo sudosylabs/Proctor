@@ -4,6 +4,7 @@ import { readProblemValue } from "../../api/problem";
 import { isWireTimestamp } from "../../api/timestamp";
 import { requestPublicAccessDiscovery } from "../../auth/PublicAccessDiscovery";
 import type { PublicAccessDiscoveryResult } from "../../auth/PublicAccessDiscovery";
+import { passwordRejection, type PasswordRejection } from "../../auth/passwordRejection";
 
 export type InvitationTransaction =
   components["schemas"]["BrowserInvitationStartResponse"];
@@ -23,7 +24,7 @@ export interface InvitationAccountSubmission {
 
 export type InvitationAccountAcceptanceResult =
   | { kind: "accepted" }
-  | { kind: "password_rejected" }
+  | { kind: "password_rejected"; reason: PasswordRejection }
   | { kind: "details_invalid" }
   | { kind: "rate_limited" }
   | { kind: "unavailable" };
@@ -97,9 +98,12 @@ export async function acceptInvitationAccount(
     if (response.status === 200 && isInvitationAcceptance(data)) {
       return { kind: "accepted" };
     }
-    switch (readProblemValue(error)?.code) {
-      case "authentication.password.invalid":
-        return { kind: "password_rejected" };
+    const code = readProblemValue(error)?.code;
+    const rejection = passwordRejection(code);
+    if (rejection !== undefined) {
+      return { kind: "password_rejected", reason: rejection };
+    }
+    switch (code) {
       case "invitation.invalid":
       case "invitation.user_invalid":
         return { kind: "details_invalid" };

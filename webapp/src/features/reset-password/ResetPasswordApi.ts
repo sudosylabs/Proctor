@@ -1,10 +1,11 @@
 import { apiClient } from "../../api/client";
 import { readProblemValue } from "../../api/problem";
+import { passwordRejection, type PasswordRejection } from "../../auth/passwordRejection";
 
 export type PasswordResetCompletionResult =
   | { kind: "complete" }
   | { kind: "invalid" }
-  | { kind: "password_rejected" }
+  | { kind: "password_rejected"; reason: PasswordRejection }
   | { kind: "rate_limited" }
   | { kind: "unavailable" };
 
@@ -20,12 +21,15 @@ export async function completePasswordReset(
     if (response.status === 204) {
       return { kind: "complete" };
     }
-    switch (readProblemValue(error)?.code) {
+    const code = readProblemValue(error)?.code;
+    const rejection = passwordRejection(code);
+    if (rejection !== undefined) {
+      return { kind: "password_rejected", reason: rejection };
+    }
+    switch (code) {
       case "authentication.account_token.invalid":
       case "request.invalid":
         return { kind: "invalid" };
-      case "authentication.password.invalid":
-        return { kind: "password_rejected" };
       case "authentication.rate_limited":
         return { kind: "rate_limited" };
       default:

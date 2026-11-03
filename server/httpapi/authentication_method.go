@@ -19,6 +19,7 @@ import (
 type authenticationMethodApplication interface {
 	AuthenticationMethods(context.Context, invocation.Invocation) (app.AuthenticationMethodView, error)
 	EnrollPassword(context.Context, invocation.Invocation, string) error
+	ChangePassword(context.Context, invocation.Invocation, app.ChangePasswordCommand) error
 	RemovePassword(context.Context, invocation.Invocation) error
 	BeginProviderConnection(context.Context, invocation.Invocation, app.BeginProviderConnectionCommand) (*model.ExternalAuthenticationStart, error)
 	UnlinkExternalIdentity(context.Context, invocation.Invocation, model.ExternalIdentityID) error
@@ -30,6 +31,9 @@ type authenticationMethodResourceModule struct {
 }
 
 type enrollPasswordRequest struct {
+	Password string `json:"password"`
+}
+type changePasswordRequest struct {
 	Password string `json:"password"`
 }
 type beginProviderConnectionRequest struct {
@@ -56,11 +60,19 @@ func authenticationMethodResource(application authenticationMethodApplication, c
 	password := appendRoutePath(base, literal("password"))
 	return newResource("authentication-method",
 		sessionRoute(http.MethodGet, base, nil, m.list),
-		strongRecentSessionRoute(http.MethodPut, password, strongRecentAuthenticationMethodCodes("request.invalid", "authentication.password.invalid", "service.busy", "authentication.method.disabled", "authentication.method.conflict", "authentication.method.unavailable", "audit.unavailable"), m.enrollPassword),
+		strongRecentSessionRoute(http.MethodPut, password, strongRecentAuthenticationMethodCodes("request.invalid", "authentication.password.invalid", "authentication.password.pattern_invalid", "authentication.password.common_invalid", "authentication.password.identity_invalid", "service.busy", "authentication.method.disabled", "authentication.method.conflict", "authentication.method.unavailable", "audit.unavailable"), m.enrollPassword),
+		strongRecentSessionRoute(http.MethodPost, appendRoutePath(password, literal("change")), strongRecentAuthenticationMethodCodes(newPasswordErrorCodes("request.invalid", "service.busy", "authentication.method.not_found", "authentication.method.disabled", "authentication.method.conflict", "authentication.method.unavailable", "audit.unavailable")...), m.changePassword),
 		strongRecentSessionRoute(http.MethodDelete, password, []string{"authentication.method.last_usable", "authentication.method.not_found", "authentication.method.conflict", "authentication.method.unavailable", "audit.unavailable"}, m.removePassword),
 		strongRecentSessionRoute(http.MethodPost, appendRoutePath(base, literal("providers"), providerID("provider_id"), literal("connect")), []string{"request.invalid", "authentication.external.provider_not_found", "authentication.external.unavailable", "authentication.rate_limited", "authentication.rate_limit_unavailable", "authentication.internal", "audit.unavailable", "authentication.desktop_authorization.invalid", "authentication.external.account_not_linked", "authentication.external.rejected", "authentication.external.request.invalid"}, m.connect),
 		strongRecentSessionRoute(http.MethodDelete, appendRoutePath(base, literal("providers"), canonicalID("external_identity_id")), authenticationMethodRemovalCodes(), m.unlink),
 	)
+}
+
+// newPasswordErrorCodes appends the password-policy rejections every route
+// that sets a new password can return.
+func newPasswordErrorCodes(extra ...string) []string {
+	return append(extra, "authentication.password.invalid", "authentication.password.pattern_invalid",
+		"authentication.password.common_invalid", "authentication.password.identity_invalid")
 }
 
 func strongRecentAuthenticationMethodCodes(extra ...string) []string {
@@ -89,6 +101,17 @@ func (m authenticationMethodResourceModule) enrollPassword(request operationRequ
 		return operationResult{}, err
 	}
 	if err := m.application.EnrollPassword(request.context, request.invocation(), body.Password); err != nil {
+		return operationResult{}, err
+	}
+	return noContentResult(), nil
+}
+
+func (m authenticationMethodResourceModule) changePassword(request operationRequest) (operationResult, error) {
+	var body changePasswordRequest
+	if err := request.decodeJSON(&body); err != nil {
+		return operationResult{}, err
+	}
+	if err := m.application.ChangePassword(request.context, request.invocation(), app.ChangePasswordCommand{Password: body.Password}); err != nil {
 		return operationResult{}, err
 	}
 	return noContentResult(), nil

@@ -196,6 +196,11 @@ func (s *bootstrapService) BootstrapInstallation(ctx context.Context, invocation
 	if err != nil {
 		return nil, apperror.New("request.invalid").WithField("field", "bootstrap").Wrap(err)
 	}
+	if err := checkNewPassword(command.Password, passwordIdentity{Username: command.AdministratorUsername,
+		Email: command.AdministratorEmail, DisplayName: command.AdministratorDisplayName,
+		FirstName: command.AdministratorFirstName, LastName: command.AdministratorLastName}); err != nil {
+		return nil, err
+	}
 	hash, err := s.deps.Hasher.Hash(ctx, command.Password)
 	if err != nil {
 		return nil, passwordHashError(err, "installation.unavailable")

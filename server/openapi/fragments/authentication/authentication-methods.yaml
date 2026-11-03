@@ -56,6 +56,9 @@ paths:
         - authentication.reauthentication_required
         - request.invalid
         - authentication.password.invalid
+        - authentication.password.pattern_invalid
+        - authentication.password.common_invalid
+        - authentication.password.identity_invalid
         - authentication.method.disabled
         - authentication.method.conflict
         - authentication.method.unavailable
@@ -124,6 +127,71 @@ paths:
         - dpopAuth: []
         - sessionCookie: []
           csrfToken: []
+      responses:
+        "204":
+          $ref: '#/components/responses/SensitiveNoContent'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "409":
+          $ref: '#/components/responses/Conflict'
+        "500":
+          $ref: '#/components/responses/InternalError'
+        "503":
+          $ref: '#/components/responses/ServiceUnavailable'
+  /api/v1/authentication-methods/password/change:
+    post:
+      operationId: changePassword
+      summary: Replace the current User's local password after strong recent authentication
+      description: >-
+        Replaces the current User's existing local password when Access Policy permits local login and the interactive Session has strong recent assurance. The new password must satisfy the password policy: it must fit the configured length bounds and must not be a common password, a simple pattern, or derived from the account's username, email local part, or name. The calling Session stays signed in; every other Session of the User is revoked, outstanding password-reset links stop working, and the account address receives a password-changed notice.
+      x-codeSamples:
+        - lang: Shell
+          label: Change the local password
+          source: |-
+            curl --request POST \
+              --header "Authorization: Bearer $PROCTOR_TOKEN" \
+              --header "Content-Type: application/json" \
+              --data '{"password":"lantern-orchard-copper-tide"}' \
+              https://proctor.example.edu/api/v1/authentication-methods/password/change
+      tags:
+        - Authentication
+      x-proctor-auth: strong_recent_session_required
+      x-proctor-error-codes:
+        - service.busy
+        - authentication.required
+        - authentication.token_invalid
+        - authentication.credential_ambiguous
+        - authentication.csrf.invalid
+        - authentication.strong_required
+        - authentication.reauthentication_required
+        - request.invalid
+        - authentication.password.invalid
+        - authentication.password.pattern_invalid
+        - authentication.password.common_invalid
+        - authentication.password.identity_invalid
+        - authentication.method.not_found
+        - authentication.method.disabled
+        - authentication.method.conflict
+        - authentication.method.unavailable
+        - audit.unavailable
+        - authentication.dpop.invalid
+        - authentication.dpop.replayed
+        - authentication.dpop.use_nonce
+        - authentication.dpop.unavailable
+      x-proctor-idempotency: none
+      security:
+        - bearerAuth: []
+        - dpopAuth: []
+        - sessionCookie: []
+          csrfToken: []
+      requestBody:
+        $ref: '#/components/requestBodies/ChangePassword'
       responses:
         "204":
           $ref: '#/components/responses/SensitiveNoContent'
@@ -215,6 +283,15 @@ components:
             $ref: '#/components/schemas/EnrollPasswordRequest'
           example:
             password: correct-horse-battery-staple-2026
+    ChangePassword:
+      required: true
+      description: Supplies the new policy-compliant local password; clients must prevent it from entering logs, traces, or analytics.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ChangePasswordRequest'
+          example:
+            password: lantern-orchard-copper-tide
   responses:
     AuthenticationMethodListOK:
       description: Current User authentication methods without subjects or credential material
@@ -226,6 +303,14 @@ components:
           schema:
             $ref: '#/components/schemas/AuthenticationMethodResponse'
   schemas:
+    ChangePasswordRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - password
+      properties:
+        password:
+          type: string
     EnrollPasswordRequest:
       type: object
       additionalProperties: false

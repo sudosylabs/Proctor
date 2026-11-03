@@ -3242,6 +3242,12 @@ func (s *timedPasswordCredentialStore) Remove(arg0 context.Context, arg1 *store.
 	})
 }
 
+func (s *timedPasswordCredentialStore) Change(arg0 context.Context, arg1 *store.PasswordCredentialChange) (*store.AuthenticationMethodMutationResult, error) {
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregatePasswordCredential, methodChange), func(callCtx context.Context) (*store.AuthenticationMethodMutationResult, error) {
+		return s.next.Change(callCtx, arg1)
+	})
+}
+
 func (s *timedSessionStore) ReauthenticateExternal(arg0 context.Context, arg1 *store.SessionExternalReauthentication) (*store.SessionReauthenticationResult, error) {
 	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateSession, methodReauthenticateExternal), func(callCtx context.Context) (*store.SessionReauthenticationResult, error) {
 		return s.next.ReauthenticateExternal(callCtx, arg1)

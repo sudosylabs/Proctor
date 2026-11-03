@@ -41,7 +41,6 @@ describe("acceptInvitationAccount", () => {
   });
 
   it.each([
-    ["authentication.password.invalid", "password_rejected"],
     ["invitation.invalid", "details_invalid"],
     ["invitation.user_invalid", "details_invalid"],
     ["authentication.rate_limited", "rate_limited"],
@@ -51,6 +50,21 @@ describe("acceptInvitationAccount", () => {
       apiResult(400, { problemCode }),
     );
     await expect(acceptInvitationAccount(submission)).resolves.toEqual({ kind });
+  });
+
+  it.each([
+    ["authentication.password.invalid", "length"],
+    ["authentication.password.pattern_invalid", "pattern"],
+    ["authentication.password.common_invalid", "common"],
+    ["authentication.password.identity_invalid", "identity"],
+  ])("maps %s to a %s password rejection", async (problemCode, reason) => {
+    vi.spyOn(apiClient, "POST").mockResolvedValue(
+      apiResult(400, { problemCode }),
+    );
+    await expect(acceptInvitationAccount(submission)).resolves.toEqual({
+      kind: "password_rejected",
+      reason,
+    });
   });
 
   it("fails safely when the request rejects", async () => {

@@ -286,6 +286,20 @@ that were verified; it never changes the password-change time. A competing
 credential write fails the rehash with the ordinary generic login rejection.
 Password hashing and credential generation occur before persistence locks.
 
+New passwords follow NIST SP 800-63B: no composition rules and no forced
+rotation. Bootstrap, registration, Invitation acceptance, enrollment,
+self-service change, and reset each apply one application check before
+hashing: the configured length bounds, then distinct rejections for a single
+repeated character, short repeated unit, or simple sequence; a bundled
+common-password blocklist (case-folded, also matching a listed word followed
+only by digits and symbols); and the account's username, email local part, or
+name (letters and digits compared, attributes shorter than four characters
+ignored). A login rehash re-checks only the length bounds, so the policy never
+locks out an existing password. No password is ever sent to an external breach
+service. Self-service change keeps the calling Session, revokes the User's
+other Sessions, archives outstanding reset links, and queues the
+password-changed notice in one transaction.
+
 Ordinary Session creation and every Desktop Authorization authentication,
 approval, and exchange recheck current password proof. Password reset takes the
 same per-User Session lock before locking the token, User, or credential rows.

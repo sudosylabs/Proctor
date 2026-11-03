@@ -21,6 +21,7 @@ type PasswordCredentialStore interface {
 	Rehash(context.Context, *PasswordCredentialRehash) error
 	Enroll(context.Context, *PasswordCredentialEnrollment) (*AuthenticationMethodMutationResult, error)
 	Remove(context.Context, *PasswordCredentialRemoval) (*AuthenticationMethodMutationResult, error)
+	Change(context.Context, *PasswordCredentialChange) (*AuthenticationMethodMutationResult, error)
 }
 
 // PasswordCredentialRehash upgrades only the active credential whose encoded
@@ -58,6 +59,27 @@ type PasswordCredentialRemoval struct {
 	Capabilities     AccessDeploymentCapabilities
 	ChangedAt        time.Time
 	RevocationReason model.SessionRevocationReason
+	AuditEventID     model.AuditEventID
+	AuditAt          time.Time
+}
+
+// PasswordCredentialChange is the named self-service transition that replaces
+// an active User's existing password while local login is enabled. In one
+// transaction it takes the per-User Session lock, advances the credential
+// revision and change time at one database instant, invalidates outstanding
+// password-reset tokens, revokes every other live Session of the User with
+// RevocationReason (KeepSessionID stays live), queues the frozen
+// password-changed notice, and completes the audit attempt. A User without an
+// active credential returns ErrNotFound; an ineligible User returns a
+// conflict. Hashing occurs before this operation.
+type PasswordCredentialChange struct {
+	UserID           model.UserID
+	KeepSessionID    model.SessionID
+	PasswordHash     string
+	RevocationReason model.SessionRevocationReason
+	Occurrence       *model.MailOccurrence
+	Delivery         *model.MailDelivery
+	Job              *model.Job
 	AuditEventID     model.AuditEventID
 	AuditAt          time.Time
 }

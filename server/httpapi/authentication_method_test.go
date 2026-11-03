@@ -18,7 +18,7 @@ import (
 
 func TestAuthenticationMethodRoutesRequireSessionAndStrongRecentMutations(t *testing.T) {
 	resource := authenticationMethodResource(nil, browserCookies{})
-	require.Len(t, resource.routes, 5, "routes")
+	require.Len(t, resource.routes, 6, "routes")
 	got := map[string]AuthRequirement{}
 	for _, route := range resource.routes {
 		path, _, err := route.path.compile(model.APIURLSuffix)
@@ -33,5 +33,5 @@ func TestAuthenticationMethodRoutesRequireSessionAndStrongRecentMutations(t *tes
 			strong++
 		}
 	}
-	require.Equal(t, 4, strong, "strong recent routes")
+	require.Equal(t, 5, strong, "strong recent routes")
 }

@@ -19,6 +19,9 @@ paths:
         - service.busy
         - request.invalid
         - authentication.password.invalid
+        - authentication.password.pattern_invalid
+        - authentication.password.common_invalid
+        - authentication.password.identity_invalid
         - authentication.registration.invalid
         - authentication.registration.invitation_required
         - authentication.registration.unavailable

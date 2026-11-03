@@ -13,6 +13,7 @@ import {
   TaskStateAnnouncement,
 } from "../TaskState/TaskState";
 import styles from "./PasswordRecovery.module.css";
+import { passwordRejectionMessage } from "../../auth/passwordRejection";
 
 type ResetState = "ready" | "complete" | "invalid";
 
@@ -84,7 +85,14 @@ export function ResetPasswordContent({
       setState("invalid");
       setTransitioned(true);
     } else if (result.kind === "password_rejected") {
-      setPasswordError(message("webapp.reset_password.form.error.password_invalid"));
+      setPasswordError(
+        message(
+          passwordRejectionMessage(
+            result.reason,
+            "webapp.reset_password.form.error.password_invalid",
+          ),
+        ),
+      );
       requestAnimationFrame(() => passwordRef.current?.focus());
     } else if (result.kind === "rate_limited") {
       setFormError(message("webapp.reset_password.form.error.rate_limited"));

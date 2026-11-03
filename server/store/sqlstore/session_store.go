@@ -791,7 +791,21 @@ func revokeAllUserSessionsAt(
 	at time.Time,
 	reason model.SessionRevocationReason,
 ) ([]sessionRow, []string, error) {
+	return revokeUserSessionsExceptAt(ctx, executor, userID, "", at, reason)
+}
+
+// revokeUserSessionsExceptAt revokes every live Session of the User except
+// keep (none when keep is empty) and their live credentials at at.
+func revokeUserSessionsExceptAt(
+	ctx context.Context,
+	executor sqlxExecutor,
+	userID string,
+	keep model.SessionID,
+	at time.Time,
+	reason model.SessionRevocationReason,
+) ([]sessionRow, []string, error) {
 	at = model.TimeUTC(at)
+	kept := keep.String()
 	hashes := []string{}
 	if err := executor.Select(ctx, &hashes, `
 		SELECT credential.token_hash
@@ -802,8 +816,9 @@ func revokeAllUserSessionsAt(
 		   AND session.revoked_at IS NULL
 		   AND credential.archived_at IS NULL
 		   AND credential.revoked_at IS NULL
+		   AND (? = '' OR session.id <> ?)
 		 FOR UPDATE OF credential`,
-		userID,
+		userID, kept, kept,
 	); err != nil {
 		return nil, nil, fmt.Errorf("select user session credentials: %w", err)
 	}
@@ -817,9 +832,9 @@ func revokeAllUserSessionsAt(
 		       last_activity_at, idle_expires_at, expires_at, revoked_at,
 		       revocation_reason
 		  FROM sessions
-		 WHERE user_id = ? AND archived_at IS NULL AND revoked_at IS NULL
+		 WHERE user_id = ? AND archived_at IS NULL AND revoked_at IS NULL AND (? = '' OR id <> ?)
 		 FOR UPDATE`,
-		userID,
+		userID, kept, kept,
 	); err != nil {
 		return nil, nil, fmt.Errorf("select user sessions: %w", err)
 	}
@@ -832,10 +847,11 @@ func revokeAllUserSessionsAt(
 		   AND session.archived_at IS NULL
 		   AND session.revoked_at IS NULL
 		   AND credential.archived_at IS NULL
-		   AND credential.revoked_at IS NULL`,
+		   AND credential.revoked_at IS NULL
+		   AND (? = '' OR session.id <> ?)`,
 		at,
 		at,
-		userID,
+		userID, kept, kept,
 	); err != nil {
 		return nil, nil, fmt.Errorf("revoke user session credentials: %w", err)
 	}
@@ -844,11 +860,11 @@ func revokeAllUserSessionsAt(
 		   SET updated_at = GREATEST(updated_at, ?),
 		       revoked_at = GREATEST(created_at, ?),
 		       revocation_reason = ?
-		 WHERE user_id = ? AND archived_at IS NULL AND revoked_at IS NULL`,
+		 WHERE user_id = ? AND archived_at IS NULL AND revoked_at IS NULL AND (? = '' OR id <> ?)`,
 		at,
 		at,
 		string(reason),
-		userID,
+		userID, kept, kept,
 	); err != nil {
 		return nil, nil, fmt.Errorf("revoke user sessions: %w", err)
 	}

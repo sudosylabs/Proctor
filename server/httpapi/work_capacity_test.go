@@ -49,6 +49,7 @@ func TestOnlyExpensiveWorkRoutesDeclareCapacityRefusal(t *testing.T) {
 		"POST /api/v1/auth/password-reset/complete":                                          true,
 		"POST /api/v1/bootstrap":                                                             true,
 		"PUT /api/v1/authentication-methods/password":                                        true,
+		"POST /api/v1/authentication-methods/password/change":                                true,
 		"POST /api/v1/auth/browser/invitations/accept":                                       true,
 		"POST /api/v1/invitations/student-class/accept":                                      true,
 		"POST /api/v1/invitations/teacher-academic-unit/accept":                              true,

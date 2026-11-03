@@ -189,8 +189,14 @@ codes:
     description: "The multi-factor reset request is invalid."
   - code: authentication.mfa.unavailable
     description: "Multi-factor processing failed; retry later."
+  - code: authentication.password.common_invalid
+    description: "The new password appears on the bundled list of commonly used passwords, alone or followed only by digits and symbols."
+  - code: authentication.password.identity_invalid
+    description: "The new password equals or contains the account's username, email local part, or name."
   - code: authentication.password.invalid
-    description: "The password does not meet the password policy."
+    description: "The password is not valid UTF-8 or falls outside the configured length bounds."
+  - code: authentication.password.pattern_invalid
+    description: "The new password is a single repeated character, a short repeated unit, or a simple sequence."
   - code: authentication.rate_limit_unavailable
     description: "Authentication rate limiting is temporarily unavailable; retry later."
   - code: authentication.rate_limited

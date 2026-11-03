@@ -23,7 +23,6 @@ describe("completePasswordReset", () => {
   it.each([
     ["authentication.account_token.invalid", "invalid"],
     ["request.invalid", "invalid"],
-    ["authentication.password.invalid", "password_rejected"],
     ["authentication.rate_limited", "rate_limited"],
     ["unexpected.code", "unavailable"],
   ])("maps %s to %s", async (problemCode, kind) => {
@@ -32,6 +31,21 @@ describe("completePasswordReset", () => {
     );
     await expect(completePasswordReset("token", "password")).resolves.toEqual({
       kind,
+    });
+  });
+
+  it.each([
+    ["authentication.password.invalid", "length"],
+    ["authentication.password.pattern_invalid", "pattern"],
+    ["authentication.password.common_invalid", "common"],
+    ["authentication.password.identity_invalid", "identity"],
+  ])("maps %s to a %s password rejection", async (problemCode, reason) => {
+    vi.spyOn(apiClient, "POST").mockResolvedValue(
+      apiResult(400, { problemCode }),
+    );
+    await expect(completePasswordReset("token", "password")).resolves.toEqual({
+      kind: "password_rejected",
+      reason,
     });
   });
 

@@ -1,5 +1,6 @@
 import { apiClient } from "../../api/client";
 import { readProblemValue } from "../../api/problem";
+import { passwordRejection, type PasswordRejection } from "../../auth/passwordRejection";
 
 export type SetupStatus =
   | { kind: "loading" }
@@ -21,7 +22,7 @@ export interface SetupSubmission {
 export type SetupSubmissionResult =
   | { kind: "complete" }
   | { kind: "bootstrap_denied" }
-  | { kind: "password_rejected" }
+  | { kind: "password_rejected"; reason: PasswordRejection }
   | { kind: "rate_limited" }
   | { kind: "unavailable" };
 
@@ -74,13 +75,16 @@ export async function submitInstallation(
     if (response.status === 201 && isRecord(data)) {
       return { kind: "complete" };
     }
-    switch (readProblemValue(error)?.code) {
+    const code = readProblemValue(error)?.code;
+    const rejection = passwordRejection(code);
+    if (rejection !== undefined) {
+      return { kind: "password_rejected", reason: rejection };
+    }
+    switch (code) {
       case "installation.already_initialized":
         return { kind: "complete" };
       case "installation.bootstrap_denied":
         return { kind: "bootstrap_denied" };
-      case "authentication.password.invalid":
-        return { kind: "password_rejected" };
       case "authentication.rate_limited":
         return { kind: "rate_limited" };
       default:

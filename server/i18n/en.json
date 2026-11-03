@@ -1988,6 +1988,10 @@
     "translation": "Your session ended because an administrator reset your multi-factor authentication. Sign in again to set up a new authenticator."
   },
   {
+    "id": "session.revocation.password_changed",
+    "translation": "The password was changed from another session."
+  },
+  {
     "id": "session.revocation.password_removed",
     "translation": "Password authentication was removed."
   },
@@ -2802,6 +2806,18 @@
   {
     "id": "webapp.login.unavailable.heading",
     "translation": "Sign in is unavailable"
+  },
+  {
+    "id": "webapp.password_policy.common",
+    "translation": "That password is too common. Choose something longer or less predictable, such as several unrelated words."
+  },
+  {
+    "id": "webapp.password_policy.identity",
+    "translation": "Don’t use your name, username, or email address in your password."
+  },
+  {
+    "id": "webapp.password_policy.pattern",
+    "translation": "That password is a repeated character or a simple sequence. Choose something less predictable."
   },
   {
     "id": "webapp.reauthenticate.action",

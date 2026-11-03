@@ -1016,3 +1016,43 @@ in LICENSES/Apache-2.0.txt.
 Proctor places selection in the composition root, reads its own process-only
 environment variable once at startup, rejects unknown nonempty values, and
 passes an immutable Desktop compatibility policy into application services.
+
+Common-password blocklist
+-------------------------
+app/password_blocklist.txt is data copied from the Go module
+github.com/ccojocar/zxcvbn-go v1.0.4 (go.sum
+h1:FWnCIRMXPj43ukfX000kvBZvV6raSxakYr1nzyNrUcc=), file data/data/Passwords.json
+(SHA-256 53e63393c342bb9f843d8ff85d675e899e8c2525abef9a68f8722ab36f32bba7),
+the "List" array of 7,141 entries. That list is the frequency-ordered common
+password list zxcvbn-go ports from Dropbox's zxcvbn
+(https://github.com/dropbox/zxcvbn), which is also distributed under the MIT
+License.
+
+Proctor keeps the entries in their original order, one per line, lowercased
+and de-duplicated (no entry changed or was dropped). The server embeds the
+file and uses it only as an offline, exact-match blocklist for new passwords;
+it never queries an external breach service. No zxcvbn-go source code is
+copied, and Proctor does not depend on the module at run time.
+
+Governing license (zxcvbn-go LICENSE.txt):
+
+Copyright (c) Nathan Button
+
+Permission is hereby granted, free of charge, to any person obtaining
+a copy of this software and associated documentation files (the
+"Software"), to deal in the Software without restriction, including
+without limitation the rights to use, copy, modify, merge, publish,
+distribute, sublicense, and/or sell copies of the Software, and to
+permit persons to whom the Software is furnished to do so, subject to
+the following conditions:
+
+The above copyright notice and this permission notice shall be
+included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE
+LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.

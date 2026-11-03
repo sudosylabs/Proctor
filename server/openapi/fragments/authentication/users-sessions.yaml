@@ -450,6 +450,7 @@ components:
             - external_identity_unlinked
             - inactive_user
             - mfa_reset
+            - password_changed
             - password_removed
             - password_reset
             - refresh_replay

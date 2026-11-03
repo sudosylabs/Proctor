@@ -182,6 +182,8 @@ func sessionRevocationReasonPresentation(reason model.SessionRevocationReason) s
 		return "Multi-factor authentication was reset."
 	case model.SessionRevocationPasswordReset:
 		return "The password was reset."
+	case model.SessionRevocationPasswordChanged:
+		return "The password was changed from another session."
 	case model.SessionRevocationRefreshReplay:
 		return "Refresh credential replay was detected."
 	case model.SessionRevocationInactiveUser:
@@ -262,7 +264,7 @@ func authenticationResource(authentication authenticationEntryApplication, cooki
 		publicRoute(
 			http.MethodPost, apiPath(literal("auth"), literal("register")),
 			[]string{
-				"request.invalid", "authentication.password.invalid", "service.busy", "authentication.registration.invalid",
+				"request.invalid", "authentication.password.invalid", "authentication.password.pattern_invalid", "authentication.password.common_invalid", "authentication.password.identity_invalid", "service.busy", "authentication.registration.invalid",
 				"authentication.registration.invitation_required", "authentication.registration.unavailable",
 				"authentication.rate_limited", "authentication.rate_limit_unavailable",
 			},
@@ -302,7 +304,7 @@ func authenticationResource(authentication authenticationEntryApplication, cooki
 			http.MethodPost,
 			apiPath(literal("auth"), literal("password-reset"), literal("complete")),
 			[]string{
-				"request.invalid", "authentication.password.invalid", "service.busy", "authentication.rate_limited",
+				"request.invalid", "authentication.password.invalid", "authentication.password.pattern_invalid", "authentication.password.common_invalid", "authentication.password.identity_invalid", "service.busy", "authentication.rate_limited",
 				"authentication.rate_limit_unavailable", "authentication.account_token.invalid",
 				"authentication.account_recovery.unavailable",
 			},

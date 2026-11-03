@@ -15,6 +15,7 @@ import (
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/app/invocation"
+	"github.com/sudosylabs/proctor/server/app/mail"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -34,6 +35,8 @@ type AuthenticationProviderMethodView struct {
 // authenticationMethodServiceDependencies are the collaborators of authenticationMethodService;
 // newAuthenticationMethodService validates them once and authenticationMethodService keeps them in deps.
 type authenticationMethodServiceDependencies struct {
+	Users        store.UserStore
+	Mail         passwordChangedMailPreparer
 	Passwords    store.PasswordCredentialStore
 	Identities   store.ExternalIdentityStore
 	Providers    externalProviderSource
@@ -49,8 +52,19 @@ type authenticationMethodService struct {
 	deps authenticationMethodServiceDependencies
 }
 
+// passwordChangedMailPreparer freezes the security notice a self-service
+// password change sends to the account address.
+type passwordChangedMailPreparer interface {
+	PreparePasswordChanged(mail.NoticePreparation) (*store.PreparedMail, error)
+}
+
+// ChangePasswordCommand replaces the current User's existing local password.
+type ChangePasswordCommand struct {
+	Password string
+}
+
 func newAuthenticationMethodService(deps authenticationMethodServiceDependencies) (*authenticationMethodService, error) {
-	if deps.Passwords == nil || deps.Identities == nil || deps.Providers == nil || deps.Capabilities == nil ||
+	if deps.Users == nil || deps.Mail == nil || deps.Passwords == nil || deps.Identities == nil || deps.Providers == nil || deps.Capabilities == nil ||
 		deps.Hasher == nil || deps.Audit == nil || deps.Effects == nil || deps.RecentTTL <= 0 || deps.Now == nil {
 		return nil, errors.New("authentication method service dependencies are required")
 	}
@@ -98,11 +112,18 @@ func (s *authenticationMethodService) EnrollPassword(ctx context.Context, invoca
 	if err := s.require(invocation); err != nil {
 		return err
 	}
+	userID := invocation.Principal().UserID
+	user, err := s.deps.Users.Get(ctx, userID)
+	if err != nil {
+		return authenticationMethodStoreErrors.Translate(err)
+	}
+	if err := checkNewPassword(password, passwordIdentityOf(user)); err != nil {
+		return err
+	}
 	hash, err := s.deps.Hasher.Hash(ctx, password)
 	if err != nil {
 		return passwordHashError(err, "authentication.internal")
 	}
-	userID := invocation.Principal().UserID
 	_, appErr := runAuditedMutation(ctx, s.deps.Audit, mutationAttempt{Invocation: invocation,
 		Action: model.ActionExternalIdentityManage, Resource: model.Resource{Type: model.ResourceUser, ID: userID.String()},
 		Operation: "enroll_password", Value: map[string]any{"method": "password"}}, s.deps.Now,
@@ -111,6 +132,45 @@ func (s *authenticationMethodService) EnrollPassword(ctx context.Context, invoca
 				Credential:   &model.PasswordCredential{UserID: userID, PasswordHash: hash},
 				Capabilities: accessDeploymentCapabilities(s.deps.Capabilities.Snapshot()), AuditEventID: reference.ID, AuditAt: reference.MutationAt})
 		}, authenticationMethodStoreErrors.Translate)
+	return appErr
+}
+
+// ChangePassword replaces the current User's existing local password after
+// strong recent authentication. The calling Session stays live; every other
+// Session of the User is revoked, outstanding password-reset links stop
+// working, and the account address receives the password-changed notice.
+func (s *authenticationMethodService) ChangePassword(ctx context.Context, invocation invocation.Invocation, command ChangePasswordCommand) error {
+	if err := s.require(invocation); err != nil {
+		return err
+	}
+	principal := invocation.Principal()
+	user, err := s.deps.Users.Get(ctx, principal.UserID)
+	if err != nil {
+		return authenticationMethodStoreErrors.Translate(err)
+	}
+	if err := checkNewPassword(command.Password, passwordIdentityOf(user)); err != nil {
+		return err
+	}
+	hash, err := s.deps.Hasher.Hash(ctx, command.Password)
+	if err != nil {
+		return passwordHashError(err, "authentication.internal")
+	}
+	prepared, err := s.deps.Mail.PreparePasswordChanged(mail.NoticePreparation{Recipient: user, At: model.TimeUTC(s.deps.Now())})
+	if err != nil {
+		return apperror.New("authentication.method.unavailable").Wrap(err)
+	}
+	result, appErr := runAuditedMutation(ctx, s.deps.Audit, mutationAttempt{Invocation: invocation,
+		Action: model.ActionExternalIdentityManage, Resource: model.Resource{Type: model.ResourceUser, ID: user.ID.String()},
+		Operation: "change_password", Value: map[string]any{"method": "password"}}, s.deps.Now,
+		func(ctx context.Context, reference mutationAttemptReference) (*store.AuthenticationMethodMutationResult, error) {
+			return s.deps.Passwords.Change(ctx, &store.PasswordCredentialChange{UserID: user.ID, KeepSessionID: principal.SessionID,
+				PasswordHash: hash, RevocationReason: model.SessionRevocationPasswordChanged,
+				Occurrence: prepared.Occurrence, Delivery: prepared.Delivery, Job: prepared.Job,
+				AuditEventID: reference.ID, AuditAt: reference.MutationAt})
+		}, authenticationMethodStoreErrors.Translate)
+	if appErr == nil {
+		s.publishRevocations(ctx, user.ID, result)
+	}
 	return appErr
 }
 

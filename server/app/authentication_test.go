@@ -282,6 +282,10 @@ func (authenticationPasswordStore) Remove(context.Context, *store.PasswordCreden
 	return nil, errors.New("unused")
 }
 
+func (authenticationPasswordStore) Change(context.Context, *store.PasswordCredentialChange) (*store.AuthenticationMethodMutationResult, error) {
+	return nil, errors.New("unused")
+}
+
 type authenticationSessionStore struct{ root *authenticationStoreFake }
 
 func (s authenticationSessionStore) Save(

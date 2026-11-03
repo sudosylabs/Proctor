@@ -5,6 +5,7 @@ import {
   type PublicAccessDiscovery,
   type PublicAccessDiscoveryResult,
 } from "../../auth/PublicAccessDiscovery";
+import { passwordRejection, type PasswordRejection } from "../../auth/passwordRejection";
 
 export type Discovery = PublicAccessDiscovery;
 
@@ -27,7 +28,7 @@ export interface RegistrationSubmission {
 
 export type RegistrationSubmissionResult =
   | { kind: "accepted" }
-  | { kind: "password_rejected" }
+  | { kind: "password_rejected"; reason: PasswordRejection }
   | { kind: "details_invalid" }
   | { kind: "invitation_required" }
   | { kind: "admission_unavailable" }
@@ -78,9 +79,12 @@ export async function submitRegistration(
     if (response.status === 202) {
       return { kind: "accepted" };
     }
-    switch (readProblemValue(error)?.code) {
-      case "authentication.password.invalid":
-        return { kind: "password_rejected" };
+    const code = readProblemValue(error)?.code;
+    const rejection = passwordRejection(code);
+    if (rejection !== undefined) {
+      return { kind: "password_rejected", reason: rejection };
+    }
+    switch (code) {
       case "authentication.registration.invalid":
         return { kind: "details_invalid" };
       case "authentication.registration.invitation_required":

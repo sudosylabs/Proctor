@@ -113,6 +113,10 @@ func (s *publicRegistrationService) RegisterLocalUser(ctx context.Context, invoc
 	if err != nil {
 		return apperror.New("authentication.registration.invalid").Wrap(err)
 	}
+	if err := checkNewPassword(command.Password, passwordIdentity{Username: user.Username, Email: user.Email,
+		FirstName: user.FirstName, LastName: user.LastName}); err != nil {
+		return err
+	}
 	passwordHash, err := s.hasher.Hash(ctx, command.Password)
 	if err != nil {
 		return passwordHashError(err, "authentication.registration.unavailable")

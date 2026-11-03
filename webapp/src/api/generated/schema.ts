@@ -968,6 +968,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/authentication-methods/password/change": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Replace the current User's local password after strong recent authentication
+         * @description Replaces the current User's existing local password when Access Policy permits local login and the interactive Session has strong recent assurance. The new password must satisfy the password policy: it must fit the configured length bounds and must not be a common password, a simple pattern, or derived from the account's username, email local part, or name. The calling Session stays signed in; every other Session of the User is revoked, outstanding password-reset links stop working, and the account address receives a password-changed notice.
+         */
+        post: operations["changePassword"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/authentication-methods/providers/{external_identity_id}": {
         parameters: {
             query?: never;
@@ -6386,6 +6406,9 @@ export interface components {
             workspace_cursor: number;
             workspace_id: components["schemas"]["ID"];
         };
+        ChangePasswordRequest: {
+            password: string;
+        };
         /** @description New email address to store in an unverified state. */
         ChangeUserEmailRequest: {
             /**
@@ -9768,7 +9791,7 @@ export interface components {
             /** @description Localized presentation of revocation_reason_code. */
             revocation_reason?: string;
             /** @enum {string} */
-            revocation_reason_code?: "account_disabled" | "access_policy_changed" | "administrator_all_sessions" | "administrator_session" | "authentication_audit_failed" | "desktop_authorization_failed" | "desktop_registration_revoked" | "external_identity_unlinked" | "inactive_user" | "mfa_reset" | "password_removed" | "password_reset" | "refresh_replay" | "user_all_sessions" | "user_logout" | "user_session";
+            revocation_reason_code?: "account_disabled" | "access_policy_changed" | "administrator_all_sessions" | "administrator_session" | "authentication_audit_failed" | "desktop_authorization_failed" | "desktop_registration_revoked" | "external_identity_unlinked" | "inactive_user" | "mfa_reset" | "password_changed" | "password_removed" | "password_reset" | "refresh_replay" | "user_all_sessions" | "user_logout" | "user_session";
             /** Format: date-time */
             revoked_at?: string;
             /** Format: date-time */
@@ -9820,7 +9843,7 @@ export interface components {
             /** @description Localized presentation of revocation_reason_code. */
             revocation_reason?: string;
             /** @enum {string} */
-            revocation_reason_code?: "mfa_reset" | "account_disabled" | "access_policy_changed" | "administrator_all_sessions" | "administrator_session" | "authentication_audit_failed" | "desktop_authorization_failed" | "desktop_registration_revoked" | "external_identity_unlinked" | "inactive_user" | "password_removed" | "password_reset" | "refresh_replay" | "user_all_sessions" | "user_logout" | "user_session";
+            revocation_reason_code?: "mfa_reset" | "account_disabled" | "access_policy_changed" | "administrator_all_sessions" | "administrator_session" | "authentication_audit_failed" | "desktop_authorization_failed" | "desktop_registration_revoked" | "external_identity_unlinked" | "inactive_user" | "password_changed" | "password_removed" | "password_reset" | "refresh_replay" | "user_all_sessions" | "user_logout" | "user_session";
             /** Format: date-time */
             revoked_at?: string;
             /** Format: date-time */
@@ -12972,6 +12995,17 @@ export interface components {
                 "application/json": components["schemas"]["CancelExamSittingRequest"];
             };
         };
+        /** @description Supplies the new policy-compliant local password; clients must prevent it from entering logs, traces, or analytics. */
+        ChangePassword: {
+            content: {
+                /**
+                 * @example {
+                 *       "password": "lantern-orchard-copper-tide"
+                 *     }
+                 */
+                "application/json": components["schemas"]["ChangePasswordRequest"];
+            };
+        };
         /** @description Exact current control and policy revisions plus the intended state. Enabling also requires an unexpired preview for that policy revision. */
         ChangeRetentionControl: {
             content: {
@@ -15513,6 +15547,25 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            204: components["responses"]["SensitiveNoContent"];
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    changePassword: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: components["requestBodies"]["ChangePassword"];
         responses: {
             204: components["responses"]["SensitiveNoContent"];
             400: components["responses"]["BadRequest"];

@@ -39,7 +39,6 @@ describe("submitInstallation", () => {
   it.each([
     ["installation.already_initialized", "complete"],
     ["installation.bootstrap_denied", "bootstrap_denied"],
-    ["authentication.password.invalid", "password_rejected"],
     ["authentication.rate_limited", "rate_limited"],
     ["unexpected.code", "unavailable"],
   ])("maps %s to %s", async (problemCode, kind) => {
@@ -47,6 +46,21 @@ describe("submitInstallation", () => {
       apiResult(400, { problemCode }),
     );
     await expect(submitInstallation(submission)).resolves.toEqual({ kind });
+  });
+
+  it.each([
+    ["authentication.password.invalid", "length"],
+    ["authentication.password.pattern_invalid", "pattern"],
+    ["authentication.password.common_invalid", "common"],
+    ["authentication.password.identity_invalid", "identity"],
+  ])("maps %s to a %s password rejection", async (problemCode, reason) => {
+    vi.spyOn(apiClient, "POST").mockResolvedValue(
+      apiResult(400, { problemCode }),
+    );
+    await expect(submitInstallation(submission)).resolves.toEqual({
+      kind: "password_rejected",
+      reason,
+    });
   });
 
   it("fails safely when the request rejects", async () => {

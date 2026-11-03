@@ -85,7 +85,7 @@ func browserInvitationResource(application BrowserInvitationApplication, cookies
 			[]string{
 				"request.invalid", "authentication.rate_limited", "authentication.rate_limit_unavailable",
 				"invitation.invalid", "invitation.user_invalid", "invitation.mail_unavailable",
-				"invitation.unavailable", "authentication.password.invalid", "service.busy",
+				"invitation.unavailable", "authentication.password.invalid", "authentication.password.pattern_invalid", "authentication.password.common_invalid", "authentication.password.identity_invalid", "service.busy",
 			},
 			module.accept,
 		),

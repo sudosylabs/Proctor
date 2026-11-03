@@ -19,5 +19,11 @@ presentation as optional, and Desktop authorization combines the validated
 Institution with its authenticated User check. Tests use an in-memory
 transport behind the same loader interface as the production HTTP adapter.
 
+`passwordRejection.ts` is the one mapping from the server's new-password
+rejection codes (length, simple pattern, common password, account identity)
+to a closed reason. Every page that sets a password reports the reason on its
+password field; length keeps the page's own wording and the other reasons
+share one explanation each, so the pages never disagree about the policy.
+
 Fragment extraction, CSRF behavior, and navigation remain separately owned by
 their narrow modules in this directory.

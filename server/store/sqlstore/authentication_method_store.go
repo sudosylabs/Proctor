@@ -242,6 +242,73 @@ func (s SQLPasswordCredentialStore) Remove(ctx context.Context, input *store.Pas
 	})
 }
 
+// Change replaces the active User's password, invalidates outstanding
+// password-reset tokens, revokes the User's other Sessions, and queues the
+// password-changed notice in one transaction at one database instant.
+func (s SQLPasswordCredentialStore) Change(ctx context.Context, input *store.PasswordCredentialChange) (*store.AuthenticationMethodMutationResult, error) {
+	if input == nil || !input.UserID.IsValid() || !input.KeepSessionID.IsValid() || !model.IsValidPasswordHash(input.PasswordHash) ||
+		!input.RevocationReason.IsValid() || !input.AuditEventID.IsValid() || input.AuditAt.IsZero() {
+		return nil, store.NewErrInvalidInput("password_credential", "change", nil)
+	}
+	keyID, err := validateUserEmailMail(input.UserID, input.Occurrence, input.Delivery, input.Job, model.MailOccurrenceSecurityNotice, model.MailTemplateIdentityPasswordChanged)
+	if err != nil {
+		return nil, err
+	}
+	return runSQLTransaction(ctx, s.GetMaster().Begin, "change password credential", func(ctx context.Context, tx *sqlxTxWrapper) (*store.AuthenticationMethodMutationResult, error) {
+		if err := lockUserSessions(ctx, tx, input.UserID.String()); err != nil {
+			return nil, err
+		}
+		if err := requireMFARecoveryAuthenticationMethodSource(ctx, tx, input.UserID, input.AuditEventID); err != nil {
+			return nil, err
+		}
+		if err := requireActiveUser(ctx, tx, input.UserID.String(), false); err != nil {
+			return nil, err
+		}
+		if err := requireCurrentLocalLogin(ctx, tx); err != nil {
+			return nil, err
+		}
+		credential, err := getPasswordCredentialForUpdate(ctx, tx, input.UserID.String())
+		if err != nil {
+			return nil, err
+		}
+		databaseNow, err := jobDatabaseNow(ctx, tx)
+		if err != nil {
+			return nil, err
+		}
+		at := transitionInstant(databaseNow, credential.UpdatedAt, credential.PasswordChangedAt)
+		occurrence, delivery, job, err := recoveryMailAt(input.Occurrence, input.Delivery, input.Job, at)
+		if err != nil {
+			return nil, err
+		}
+		if _, err = tx.Exec(ctx, `UPDATE password_credentials SET updated_at=GREATEST(updated_at, ?), password_hash=?, password_changed_at=GREATEST(password_changed_at, ?), revision=revision+1 WHERE id=? AND user_id=? AND archived_at IS NULL`,
+			at, input.PasswordHash, at, credential.ID.String(), input.UserID.String()); err != nil {
+			return nil, fmt.Errorf("change password credential: %w", err)
+		}
+		credential.Revision++
+		credential.PasswordHash = input.PasswordHash
+		credential.PasswordChangedAt = latestTime(credential.PasswordChangedAt, at)
+		credential.UpdatedAt = latestTime(credential.UpdatedAt, at)
+		if _, err = tx.Exec(ctx, `UPDATE user_tokens SET updated_at=GREATEST(updated_at, ?), archived_at=GREATEST(created_at, ?) WHERE user_id=? AND purpose='password_reset' AND archived_at IS NULL AND consumed_at IS NULL`, at, at, input.UserID.String()); err != nil {
+			return nil, fmt.Errorf("invalidate password recovery state: %w", err)
+		}
+		rows, hashes, err := revokeUserSessionsExceptAt(ctx, tx, input.UserID.String(), input.KeepSessionID, at, input.RevocationReason)
+		if err != nil {
+			return nil, err
+		}
+		sessions, err := revokedSessionModelsAt(rows, at, input.RevocationReason)
+		if err != nil {
+			return nil, err
+		}
+		if err := insertRecoveryMail(ctx, tx, occurrence, delivery, job, keyID); err != nil {
+			return nil, err
+		}
+		if err := completeAuthenticationMethodAudit(ctx, tx, input.AuditEventID, input.AuditAt, credential.Auditable()); err != nil {
+			return nil, err
+		}
+		return &store.AuthenticationMethodMutationResult{PasswordCredential: credential, RevokedSessions: sessions, RevokedTokenHashes: hashes}, nil
+	})
+}
+
 func requireActiveUser(ctx context.Context, tx *sqlxTxWrapper, userID string, requireVerifiedEmail bool) error {
 	var active bool
 	err := tx.Get(ctx, &active, `SELECT archived_at IS NULL AND disabled_at IS NULL AND (NOT ? OR email_verified) FROM users WHERE id=? FOR UPDATE`, requireVerifiedEmail, userID)

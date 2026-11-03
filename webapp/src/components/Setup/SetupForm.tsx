@@ -11,6 +11,7 @@ import { InputField } from "../InputField/InputField";
 import { PasswordField } from "../InputField/PasswordField";
 import { Notice } from "../Notice/Notice";
 import styles from "./Setup.module.css";
+import { passwordRejectionMessage } from "../../auth/passwordRejection";
 
 type SetupField =
   | "bootstrap_secret"
@@ -169,7 +170,12 @@ export function SetupForm({ onComplete, submitSetup }: SetupFormProps) {
         case "password_rejected":
           showFieldFailure(
             "password",
-            message("webapp.setup.form.error.password_invalid"),
+            message(
+              passwordRejectionMessage(
+                result.reason,
+                "webapp.setup.form.error.password_invalid",
+              ),
+            ),
           );
           return;
         case "rate_limited":

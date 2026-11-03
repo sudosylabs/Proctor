@@ -41,6 +41,9 @@ paths:
         - installation.unavailable
         - installation.bootstrap_denied
         - authentication.password.invalid
+        - authentication.password.pattern_invalid
+        - authentication.password.common_invalid
+        - authentication.password.identity_invalid
         - service.busy
         - authentication.rate_limited
         - administration.unavailable

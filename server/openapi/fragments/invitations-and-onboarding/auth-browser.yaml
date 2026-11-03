@@ -53,6 +53,9 @@ paths:
         - invitation.mail_unavailable
         - invitation.unavailable
         - authentication.password.invalid
+        - authentication.password.pattern_invalid
+        - authentication.password.common_invalid
+        - authentication.password.identity_invalid
       x-proctor-idempotency: none
       security: []
       requestBody:

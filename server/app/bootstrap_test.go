@@ -216,7 +216,7 @@ func TestBootstrapAlreadyInitialized(t *testing.T) {
 	}, err: store.NewErrConflict("installation", "already", nil)}, Hasher: &passwordHasherFake{events: &events}, Attempts: bootstrapAttemptAccounting(t, &bootstrapAttemptCacheFake{events: &events}), RateLimit: bootstrapRateLimitPolicy(10), Protection: bootstrapProtection(), NodeID: "node-a", Now: time.Now, RecoveryPolicy: administratorRecoveryPolicy{}})
 	_, err := service.BootstrapInstallation(context.Background(), invocation.Invocation{}, BootstrapInstallationCommand{
 		InstitutionName: "northbridge", InstitutionDisplayName: "Northbridge",
-		AdministratorUsername: "admin", AdministratorEmail: "admin@example.com", Password: "x",
+		AdministratorUsername: "admin", AdministratorEmail: "admin@example.com", Password: "violet-harbor-lantern",
 		BootstrapSecret: bootstrapProtection().Secret,
 	})
 	require.True(t, apperror.Is(err, "installation.already_initialized"), "error = %v", err)
@@ -234,7 +234,7 @@ func TestBootstrapConflictMapsToAlreadyInitialized(t *testing.T) {
 	}, Hasher: &passwordHasherFake{events: &events, hash: "encoded"}, Attempts: bootstrapAttemptAccounting(t, &bootstrapAttemptCacheFake{events: &events}), RateLimit: bootstrapRateLimitPolicy(10), Protection: bootstrapProtection(), NodeID: "node-a", Now: time.Now, RecoveryPolicy: administratorRecoveryPolicy{}})
 	_, err := service.BootstrapInstallation(context.Background(), invocation.Invocation{}, BootstrapInstallationCommand{
 		InstitutionName: "northbridge", InstitutionDisplayName: "Northbridge",
-		AdministratorUsername: "admin", AdministratorEmail: "admin@example.com", Password: "x",
+		AdministratorUsername: "admin", AdministratorEmail: "admin@example.com", Password: "violet-harbor-lantern",
 		BootstrapSecret: bootstrapProtection().Secret,
 	})
 	require.True(t, apperror.Is(err, "installation.already_initialized"), "error = %v", err)

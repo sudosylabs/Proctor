@@ -41,6 +41,7 @@ const (
 	SessionRevocationExternalIdentityUnlinked   SessionRevocationReason = "external_identity_unlinked"
 	SessionRevocationMFAReset                   SessionRevocationReason = "mfa_reset"
 	SessionRevocationPasswordReset              SessionRevocationReason = "password_reset"
+	SessionRevocationPasswordChanged            SessionRevocationReason = "password_changed"
 	SessionRevocationRefreshReplay              SessionRevocationReason = "refresh_replay"
 	SessionRevocationInactiveUser               SessionRevocationReason = "inactive_user"
 	SessionRevocationAuthenticationAuditFailed  SessionRevocationReason = "authentication_audit_failed"
@@ -62,6 +63,7 @@ func (r SessionRevocationReason) IsValid() bool {
 		SessionRevocationPasswordRemoved,
 		SessionRevocationExternalIdentityUnlinked,
 		SessionRevocationMFAReset, SessionRevocationPasswordReset,
+		SessionRevocationPasswordChanged,
 		SessionRevocationRefreshReplay,
 		SessionRevocationInactiveUser,
 		SessionRevocationAuthenticationAuditFailed,
@@ -104,6 +106,7 @@ func AllSessionRevocationReasons() []SessionRevocationReason {
 		SessionRevocationExpired,
 		SessionRevocationExternalIdentityUnlinked,
 		SessionRevocationInactiveUser,
+		SessionRevocationPasswordChanged,
 		SessionRevocationPasswordRemoved,
 		SessionRevocationMFAReset, SessionRevocationPasswordReset,
 		SessionRevocationRefreshReplay,

@@ -110,7 +110,7 @@ func constructIdentity(
 	if err != nil {
 		return identityConstruction{}, err
 	}
-	authenticationMethods, err := newAuthenticationMethodService(authenticationMethodServiceDependencies{Passwords: deps.Store.PasswordCredential(), Identities: deps.Store.ExternalIdentity(), Providers: deps.Registry, Capabilities: capabilities, Hasher: foundation.hasher, Audit: mutationAuditAdapter{audit: foundation.audit}, Effects: foundation.realtime, RecentTTL: deps.RecentAuthenticationTTL, Now: time.Now})
+	authenticationMethods, err := newAuthenticationMethodService(authenticationMethodServiceDependencies{Users: deps.Store.User(), Mail: accountMail, Passwords: deps.Store.PasswordCredential(), Identities: deps.Store.ExternalIdentity(), Providers: deps.Registry, Capabilities: capabilities, Hasher: foundation.hasher, Audit: mutationAuditAdapter{audit: foundation.audit}, Effects: foundation.realtime, RecentTTL: deps.RecentAuthenticationTTL, Now: time.Now})
 	if err != nil {
 		return identityConstruction{}, err
 	}

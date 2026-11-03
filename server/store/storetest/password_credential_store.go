@@ -12,7 +12,9 @@ package storetest
 
 import (
 	"context"
+	"slices"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -107,6 +109,77 @@ func TestPasswordCredentialStore(t *testing.T, ss store.Store) {
 		require.NoError(t, err)
 		require.Equal(t, result.PasswordCredential.ID, unchanged.ID)
 	})
+	t.Run("ChangeKeepsTheCallingSessionAndRevokesTheOthers", func(t *testing.T) {
+		ctx := context.Background()
+		user := saveUser(t, ctx, ss)
+		// #nosec G101 -- Nonfunctional password hashes used only to exercise the Store change.
+		credential, err := ss.PasswordCredential().Save(ctx, &model.PasswordCredential{UserID: user.ID, PasswordHash: "$argon2id$before-change"})
+		require.NoError(t, err)
+		kept, keptCredentials, _ := newSession(user.ID.String())
+		kept, _, err = SaveSession(ctx, ss, testSessionCreation(t, ctx, ss, kept, keptCredentials, 10))
+		require.NoError(t, err)
+		other, otherCredentials, _ := newSession(user.ID.String())
+		other, _, err = SaveSession(ctx, ss, testSessionCreation(t, ctx, ss, other, otherCredentials, 10))
+		require.NoError(t, err)
+		resetToken := newUserToken(user, model.UserTokenPasswordReset)
+		_, err = issueUserToken(t, ss, ctx, resetToken, userTokenAudit(string(model.ActionAuthenticationPasswordResetRequest), user.ID.String(), model.NewID()))
+		require.NoError(t, err)
+
+		attempt := saveAuthenticationMethodAuditAttempt(t, ctx, ss, user.ID.String(), "change_password")
+		at := model.NowUTC()
+		occurrence, delivery, job := userTokenMailFixture(t, user.ID, model.NewMailOccurrenceID(), model.MailOccurrenceSecurityNotice, model.MailTemplateIdentityPasswordChanged, model.JobTypeMailDeliver, at, at.Add(24*time.Hour))
+		result, err := ss.PasswordCredential().Change(ctx, &store.PasswordCredentialChange{UserID: user.ID, KeepSessionID: kept.ID,
+			PasswordHash: "$argon2id$after-change", RevocationReason: model.SessionRevocationPasswordChanged,
+			Occurrence: occurrence, Delivery: delivery, Job: job, AuditEventID: attempt.ID, AuditAt: at})
+		require.NoError(t, err)
+		require.Equal(t, credential.ID, result.PasswordCredential.ID)
+		require.Equal(t, credential.Revision+1, result.PasswordCredential.Revision)
+		require.Len(t, result.RevokedSessions, 1)
+		require.Equal(t, other.ID, result.RevokedSessions[0].ID)
+		require.Len(t, result.RevokedTokenHashes, 2)
+
+		stored, err := ss.PasswordCredential().GetByUser(ctx, user.ID)
+		require.NoError(t, err)
+		require.Equal(t, "$argon2id$after-change", stored.PasswordHash)
+		require.Equal(t, credential.Revision+1, stored.Revision)
+		require.False(t, stored.PasswordChangedAt.Before(credential.PasswordChangedAt))
+		retained, err := ss.Session().Get(ctx, kept.ID)
+		require.NoError(t, err)
+		require.False(t, retained.RevokedAt.Valid)
+		revoked, err := ss.Session().Get(ctx, other.ID)
+		require.NoError(t, err)
+		require.True(t, revoked.RevokedAt.Valid)
+		require.Equal(t, model.SessionRevocationPasswordChanged, revoked.RevocationReason)
+		reset, err := ss.UserToken().Get(ctx, resetToken.ID)
+		require.NoError(t, err)
+		require.True(t, reset.ArchivedAt.Valid, "an outstanding password-reset token survived the change")
+		terminal, err := ss.Audit().Get(ctx, attempt.ID)
+		require.NoError(t, err)
+		require.Equal(t, model.AuditStatusSuccess, terminal.Status)
+		notices, err := ss.Mail().ListDeliveries(ctx, store.MailDeliveryListOptions{TemplateKeys: []model.MailTemplateKey{model.MailTemplateIdentityPasswordChanged}, Limit: 200})
+		require.NoError(t, err)
+		require.True(t, slices.ContainsFunc(notices, func(notice *model.MailDelivery) bool { return notice.ID == delivery.ID }), "the password-changed notice was not queued")
+
+		staleSession, staleCredentials, _ := newSession(user.ID.String())
+		_, _, err = SaveSession(ctx, ss, &store.SessionCreation{Session: staleSession, Credentials: staleCredentials, MaximumActive: 10,
+			PasswordProof: store.PasswordCredentialProof{ID: credential.ID, Revision: credential.Revision}})
+		require.ErrorIs(t, err, store.ErrPasswordCredentialChanged, "the replaced password still proves a new Session")
+	})
+
+	t.Run("ChangeWithoutActiveCredentialIsNotFound", func(t *testing.T) {
+		ctx := context.Background()
+		user := saveUser(t, ctx, ss)
+		attempt := saveAuthenticationMethodAuditAttempt(t, ctx, ss, user.ID.String(), "change_password")
+		at := model.NowUTC()
+		occurrence, delivery, job := userTokenMailFixture(t, user.ID, model.NewMailOccurrenceID(), model.MailOccurrenceSecurityNotice, model.MailTemplateIdentityPasswordChanged, model.JobTypeMailDeliver, at, at.Add(24*time.Hour))
+		_, err := ss.PasswordCredential().Change(ctx, &store.PasswordCredentialChange{UserID: user.ID, KeepSessionID: model.NewSessionID(),
+			PasswordHash: "$argon2id$after-change", RevocationReason: model.SessionRevocationPasswordChanged,
+			Occurrence: occurrence, Delivery: delivery, Job: job, AuditEventID: attempt.ID, AuditAt: at})
+		require.True(t, store.IsNotFound(err), "Change() without a credential = %v", err)
+		_, err = ss.Mail().GetDelivery(ctx, delivery.ID)
+		require.True(t, store.IsNotFound(err), "a refused change queued its notice: %v", err)
+	})
+
 	t.Run("RehashPreservesPasswordRevisionAndLifecycle", func(t *testing.T) {
 		ctx := context.Background()
 		user := saveUser(t, ctx, ss)

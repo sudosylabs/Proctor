@@ -158,6 +158,7 @@ components:
             - desktop_registration_revoked
             - external_identity_unlinked
             - inactive_user
+            - password_changed
             - password_removed
             - password_reset
             - refresh_replay

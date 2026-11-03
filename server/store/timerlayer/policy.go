@@ -119,6 +119,7 @@ const (
 	methodAccess                                    methodName = "access"
 	methodActivate                                  methodName = "activate"
 	methodBootstrap                                 methodName = "bootstrap"
+	methodChange                                    methodName = "change"
 	methodCheckpoint                                methodName = "checkpoint"
 	methodChangeState                               methodName = "change_state"
 	methodClaimObjectsForCleanup                    methodName = "claim_objects_for_cleanup"
