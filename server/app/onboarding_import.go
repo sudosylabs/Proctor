@@ -651,36 +651,10 @@ func (s *onboardingImportService) parseCSV(ctx context.Context, invocation invoc
 	if err != nil || len(header) < 1 || len(header) > store.OnboardingImportMaximumColumns {
 		return nil, nil, "", invalidOnboardingImportFile("invalid CSV header")
 	}
-	indexes := make(map[string]int, len(header))
-	ignored := make([]string, 0)
-	for index, raw := range header {
-		name := strings.ToLower(strings.TrimSpace(raw))
-		if name == "" || len(name) > 128 || model.SanitizeUnicode(name) != name {
-			return nil, nil, "", invalidOnboardingImportFile("invalid CSV header")
-		}
-		if _, exists := indexes[name]; exists {
-			return nil, nil, "", invalidOnboardingImportFile("duplicate CSV header")
-		}
-		indexes[name] = index
-		if current.Mode == model.OnboardingImportAcademicAdministration {
-			if _, globallyKnown := onboardingImportKnownHeaders[name]; globallyKnown {
-				if _, allowed := academicAdministrationImportHeaders[name]; !allowed {
-					return nil, nil, "", invalidOnboardingImportFile("header is not allowed for academic administration")
-				}
-			}
-		}
-		if _, known := onboardingImportKnownHeaders[name]; !known {
-			ignored = append(ignored, name)
-		}
+	indexes, ignored, err := parseOnboardingImportHeader(current.Mode, header)
+	if err != nil {
+		return nil, nil, "", err
 	}
-	if current.Mode == model.OnboardingImportAcademicAdministration {
-		if _, exists := indexes["operation"]; !exists {
-			return nil, nil, "", invalidOnboardingImportFile("operation header is required")
-		}
-	} else if _, exists := indexes["email"]; !exists {
-		return nil, nil, "", invalidOnboardingImportFile("email header is required")
-	}
-	slices.Sort(ignored)
 	rows := make([]store.OnboardingImportRow, 0)
 	for number := 1; ; number++ {
 		record, readErr := reader.Read()
@@ -690,47 +664,104 @@ func (s *onboardingImportService) parseCSV(ctx context.Context, invocation invoc
 		if readErr != nil || len(record) != len(header) || number > store.OnboardingImportMaximumRows {
 			return nil, nil, "", invalidOnboardingImportFile("invalid CSV row")
 		}
-		values := make(map[string]string, len(indexes))
-		for name, index := range indexes {
-			value := strings.TrimSpace(record[index])
-			if len(value) > store.OnboardingImportMaximumField || model.SanitizeUnicode(value) != value {
-				return nil, nil, "", invalidOnboardingImportFile("invalid CSV field")
-			}
-			values[name] = value
-		}
-		row := store.OnboardingImportRow{ImportID: current.ID, RowNumber: number, Reference: values["reference"], ScopeType: current.ScopeType, ScopeID: current.ScopeID, Email: strings.ToLower(values["email"]),
-			UserID: model.UserID(values["user_id"]), RelationshipID: values["relationship_id"], AffiliationKind: model.AffiliationKind(values["affiliation_kind"]),
-			Username: values["username"], DisplayName: values["display_name"], FirstName: values["first_name"], LastName: values["last_name"], Locale: values["locale"], Timezone: values["timezone"], UpdatedAt: model.TimeUTC(s.deps.Now())}
-		if values["role_id"] != "" {
-			row.RoleID = model.RoleID(values["role_id"])
-		}
-		if row.Reference == "" {
-			row.Reference = strconv.Itoa(number)
-		}
-		if len(row.Reference) > 128 {
-			row.Reference = strconv.Itoa(number)
-		}
-		if len(row.Email) > model.UserEmailMaxLength {
-			row.Email = ""
-		}
-		row.StartsAt, row.EndsAt, err = parseOnboardingImportBounds(values["start_at"], values["end_at"])
-		boundsErr := err
-		resolveErr := s.resolveAndValidateImportRow(ctx, invocation, current, values, &row)
-		if onboardingImportRetryableError(resolveErr) {
-			return nil, nil, "", resolveErr
-		}
-		if boundsErr != nil {
-			row.PreviewStatus, row.Status, row.PreviewCode = model.OnboardingImportRowInvalid, model.OnboardingImportRowInvalid, "request.invalid"
-		} else if resolveErr != nil {
-			row.PreviewStatus, row.Status, row.PreviewCode = model.OnboardingImportRowInvalid, model.OnboardingImportRowInvalid, onboardingImportPreviewErrorCode(resolveErr)
-		} else {
-			row.PreviewStatus, row.Status = model.OnboardingImportRowValid, model.OnboardingImportRowValid
+		row, rowErr := s.parseOnboardingImportRow(ctx, invocation, current, number, indexes, record)
+		if rowErr != nil {
+			return nil, nil, "", rowErr
 		}
 		rows = append(rows, row)
 	}
 	if len(rows) == 0 {
 		return nil, nil, "", invalidOnboardingImportFile("CSV has no data rows")
 	}
+	markOnboardingImportDuplicates(rows)
+	digest, err := onboardingImportDigest(ignored, rows)
+	if err != nil {
+		return nil, nil, "", err
+	}
+	return rows, ignored, digest, nil
+}
+
+// parseOnboardingImportHeader validates the CSV header for the import mode and returns the column indexes and the
+// sorted names of ignored columns.
+func parseOnboardingImportHeader(mode model.OnboardingImportMode, header []string) (map[string]int, []string, error) {
+	indexes := make(map[string]int, len(header))
+	ignored := make([]string, 0)
+	for index, raw := range header {
+		name := strings.ToLower(strings.TrimSpace(raw))
+		if name == "" || len(name) > 128 || model.SanitizeUnicode(name) != name {
+			return nil, nil, invalidOnboardingImportFile("invalid CSV header")
+		}
+		if _, exists := indexes[name]; exists {
+			return nil, nil, invalidOnboardingImportFile("duplicate CSV header")
+		}
+		indexes[name] = index
+		if mode == model.OnboardingImportAcademicAdministration {
+			if _, globallyKnown := onboardingImportKnownHeaders[name]; globallyKnown {
+				if _, allowed := academicAdministrationImportHeaders[name]; !allowed {
+					return nil, nil, invalidOnboardingImportFile("header is not allowed for academic administration")
+				}
+			}
+		}
+		if _, known := onboardingImportKnownHeaders[name]; !known {
+			ignored = append(ignored, name)
+		}
+	}
+	if mode == model.OnboardingImportAcademicAdministration {
+		if _, exists := indexes["operation"]; !exists {
+			return nil, nil, invalidOnboardingImportFile("operation header is required")
+		}
+	} else if _, exists := indexes["email"]; !exists {
+		return nil, nil, invalidOnboardingImportFile("email header is required")
+	}
+	slices.Sort(ignored)
+	return indexes, ignored, nil
+}
+
+// parseOnboardingImportRow validates one CSV record, builds its import row, and resolves its preview status; the
+// returned error is either an invalid-file error or a retryable resolution error.
+func (s *onboardingImportService) parseOnboardingImportRow(ctx context.Context, invocation invocation.Invocation, current *store.OnboardingImport,
+	number int, indexes map[string]int, record []string) (store.OnboardingImportRow, error) {
+	values := make(map[string]string, len(indexes))
+	for name, index := range indexes {
+		value := strings.TrimSpace(record[index])
+		if len(value) > store.OnboardingImportMaximumField || model.SanitizeUnicode(value) != value {
+			return store.OnboardingImportRow{}, invalidOnboardingImportFile("invalid CSV field")
+		}
+		values[name] = value
+	}
+	row := store.OnboardingImportRow{ImportID: current.ID, RowNumber: number, Reference: values["reference"], ScopeType: current.ScopeType, ScopeID: current.ScopeID, Email: strings.ToLower(values["email"]),
+		UserID: model.UserID(values["user_id"]), RelationshipID: values["relationship_id"], AffiliationKind: model.AffiliationKind(values["affiliation_kind"]),
+		Username: values["username"], DisplayName: values["display_name"], FirstName: values["first_name"], LastName: values["last_name"], Locale: values["locale"], Timezone: values["timezone"], UpdatedAt: model.TimeUTC(s.deps.Now())}
+	if values["role_id"] != "" {
+		row.RoleID = model.RoleID(values["role_id"])
+	}
+	if row.Reference == "" {
+		row.Reference = strconv.Itoa(number)
+	}
+	if len(row.Reference) > 128 {
+		row.Reference = strconv.Itoa(number)
+	}
+	if len(row.Email) > model.UserEmailMaxLength {
+		row.Email = ""
+	}
+	var boundsErr error
+	row.StartsAt, row.EndsAt, boundsErr = parseOnboardingImportBounds(values["start_at"], values["end_at"])
+	resolveErr := s.resolveAndValidateImportRow(ctx, invocation, current, values, &row)
+	if onboardingImportRetryableError(resolveErr) {
+		return store.OnboardingImportRow{}, resolveErr
+	}
+	if boundsErr != nil {
+		row.PreviewStatus, row.Status, row.PreviewCode = model.OnboardingImportRowInvalid, model.OnboardingImportRowInvalid, "request.invalid"
+	} else if resolveErr != nil {
+		row.PreviewStatus, row.Status, row.PreviewCode = model.OnboardingImportRowInvalid, model.OnboardingImportRowInvalid, onboardingImportPreviewErrorCode(resolveErr)
+	} else {
+		row.PreviewStatus, row.Status = model.OnboardingImportRowValid, model.OnboardingImportRowValid
+	}
+	return row, nil
+}
+
+// markOnboardingImportDuplicates marks every row whose duplicate key occurs more than once as a duplicate.
+func markOnboardingImportDuplicates(rows []store.OnboardingImportRow) {
 	duplicates := make(map[string]int, len(rows))
 	for _, row := range rows {
 		if key := onboardingImportDuplicateKey(row); key != "" {
@@ -742,6 +773,11 @@ func (s *onboardingImportService) parseCSV(ctx context.Context, invocation invoc
 			rows[index].PreviewStatus, rows[index].Status, rows[index].PreviewCode = model.OnboardingImportRowDuplicate, model.OnboardingImportRowDuplicate, "onboarding_batch.duplicate"
 		}
 	}
+}
+
+// onboardingImportDigest computes the hex SHA-256 digest of the ignored headers and the import-independent row
+// content.
+func onboardingImportDigest(ignored []string, rows []store.OnboardingImportRow) (string, error) {
 	digestRows := make([]store.OnboardingImportRow, len(rows))
 	copy(digestRows, rows)
 	for index := range digestRows {
@@ -754,10 +790,10 @@ func (s *onboardingImportService) parseCSV(ctx context.Context, invocation invoc
 		Rows    []store.OnboardingImportRow `json:"rows"`
 	}{1, ignored, digestRows})
 	if err != nil {
-		return nil, nil, "", err
+		return "", err
 	}
 	digest := sha256.Sum256(document)
-	return rows, ignored, hex.EncodeToString(digest[:]), nil
+	return hex.EncodeToString(digest[:]), nil
 }
 
 func invalidOnboardingImportFile(message string) error {
