@@ -174,49 +174,14 @@ func (s *roleBindingService) CreateRoleBinding(ctx context.Context, invocation i
 	if command.EndAt > 0 {
 		candidate.EndsAt = model.OptionalTimeFromMillis(command.EndAt)
 	}
-	var role *model.Role
-	if command.batchRetainedOutcome {
-		role, err = s.deps.Roles.GetIncludingArchived(ctx, candidate.RoleID)
-	} else {
-		role, err = s.deps.Roles.Get(ctx, candidate.RoleID)
-	}
+	role, delegatedPermissions, err := s.authorizeRoleDelegation(ctx, invocation, command, candidate)
 	if err != nil {
-		return nil, roleBindingStoreErrors.Translate(err)
-	}
-	if role.Name == model.SystemAdministratorRoleName &&
-		candidate.ScopeType != model.RoleScopeInstitution {
-		return nil, apperror.New("role_binding.system_admin_scope_invalid")
-	}
-	delegatedPermissions := role.Permissions
-	if role.BuiltIn && role.Name == model.SystemAdministratorRoleName {
-		// Downgrade-preserved unknown permissions remain dormant and must not
-		// make the protected administrator Role impossible to bind. Every
-		// action recognized by this binary is still checked.
-		delegatedPermissions = model.AllActions()
-	}
-	if err = s.deps.Authorization.AuthorizeActionDelegation(
-		ctx, invocation, delegatedPermissions, candidate.ScopeType, candidate.ScopeID,
-	); err != nil {
 		return nil, err
 	}
 	mailAt := model.TimeUTC(s.deps.Now())
-	recipient := &model.User{ID: userID, Revision: 1}
-	var notice *store.PreparedMail
-	if !command.batchRetainedOutcome {
-		recipient, err = s.deps.Users.Get(ctx, userID)
-		if err != nil {
-			return nil, roleBindingStoreErrors.Translate(err)
-		}
-		key := model.MailTemplateAuthorizationScopedRoleAssigned
-		if candidate.ScopeType == model.RoleScopeInstitution {
-			key = model.MailTemplateAuthorizationInstitutionRoleAssigned
-		}
-		notice, err = s.deps.Mail.PrepareRelationshipTransition(mail.RelationshipTransitionPreparation{
-			Recipient: recipient, OccurrenceID: model.NewMailOccurrenceID(), TemplateKey: key, ActionAt: mailAt,
-		})
-		if err != nil {
-			return nil, apperror.New("mail.unavailable").Wrap(err)
-		}
+	recipient, notice, err := s.prepareRoleAssignmentNotice(ctx, command, candidate, mailAt)
+	if err != nil {
+		return nil, err
 	}
 	idempotency, err := idempotency.Prepare(invocation, "role_binding.create", command.IdempotencyKey, struct {
 		UserID    string              `json:"user_id"`
@@ -269,6 +234,65 @@ func (s *roleBindingService) CreateRoleBinding(ctx context.Context, invocation i
 	}
 	s.deps.Effects.AuthorizationChangedForUser(ctx, saved.UserID)
 	return saved, nil
+}
+
+// authorizeRoleDelegation loads the bound Role and authorizes delegating its permissions at the candidate scope.
+func (s *roleBindingService) authorizeRoleDelegation(
+	ctx context.Context, invocation invocation.Invocation, command CreateRoleBindingCommand, candidate *model.RoleBinding,
+) (*model.Role, []string, error) {
+	var role *model.Role
+	var err error
+	if command.batchRetainedOutcome {
+		role, err = s.deps.Roles.GetIncludingArchived(ctx, candidate.RoleID)
+	} else {
+		role, err = s.deps.Roles.Get(ctx, candidate.RoleID)
+	}
+	if err != nil {
+		return nil, nil, roleBindingStoreErrors.Translate(err)
+	}
+	if role.Name == model.SystemAdministratorRoleName &&
+		candidate.ScopeType != model.RoleScopeInstitution {
+		return nil, nil, apperror.New("role_binding.system_admin_scope_invalid")
+	}
+	delegatedPermissions := role.Permissions
+	if role.BuiltIn && role.Name == model.SystemAdministratorRoleName {
+		// Downgrade-preserved unknown permissions remain dormant and must not
+		// make the protected administrator Role impossible to bind. Every
+		// action recognized by this binary is still checked.
+		delegatedPermissions = model.AllActions()
+	}
+	if err = s.deps.Authorization.AuthorizeActionDelegation(
+		ctx, invocation, delegatedPermissions, candidate.ScopeType, candidate.ScopeID,
+	); err != nil {
+		return nil, nil, err
+	}
+	return role, delegatedPermissions, nil
+}
+
+// prepareRoleAssignmentNotice loads the recipient and prepares the Role assignment mail unless the batch retained the outcome.
+func (s *roleBindingService) prepareRoleAssignmentNotice(
+	ctx context.Context, command CreateRoleBindingCommand, candidate *model.RoleBinding, mailAt time.Time,
+) (*model.User, *store.PreparedMail, error) {
+	recipient := &model.User{ID: candidate.UserID, Revision: 1}
+	var notice *store.PreparedMail
+	if !command.batchRetainedOutcome {
+		var err error
+		recipient, err = s.deps.Users.Get(ctx, candidate.UserID)
+		if err != nil {
+			return nil, nil, roleBindingStoreErrors.Translate(err)
+		}
+		key := model.MailTemplateAuthorizationScopedRoleAssigned
+		if candidate.ScopeType == model.RoleScopeInstitution {
+			key = model.MailTemplateAuthorizationInstitutionRoleAssigned
+		}
+		notice, err = s.deps.Mail.PrepareRelationshipTransition(mail.RelationshipTransitionPreparation{
+			Recipient: recipient, OccurrenceID: model.NewMailOccurrenceID(), TemplateKey: key, ActionAt: mailAt,
+		})
+		if err != nil {
+			return nil, nil, apperror.New("mail.unavailable").Wrap(err)
+		}
+	}
+	return recipient, notice, nil
 }
 
 func (s *roleBindingService) EndRoleBinding(ctx context.Context, invocation invocation.Invocation, command EndRoleBindingCommand) (*model.RoleBinding, error) {
