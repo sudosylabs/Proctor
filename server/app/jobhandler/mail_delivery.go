@@ -84,19 +84,8 @@ func (h mailDeliveryHandler) Run(ctx context.Context, execution job.Execution) j
 	case model.MailDeliveryFailed:
 		return job.PermanentFailure(nonemptyMailCode(delivery.PublicFailureCode, "mail.delivery.failed"), errors.New("mail delivery is failed"))
 	}
-	now := model.TimeUTC(h.now())
-	if !now.Before(delivery.Deadline) {
-		return h.expire(ctx, delivery, now)
-	}
-	if !h.sender.Enabled() {
-		return h.suppress(ctx, delivery, model.MailDeliveryDisabledCode, now)
-	}
-	relevant, relevanceErr := h.isRelevant(ctx, delivery)
-	if relevanceErr != nil {
-		return job.RetryableFailure("mail.delivery.unavailable", relevanceErr)
-	}
-	if !relevant {
-		return h.suppress(ctx, delivery, model.MailDeliveryObsoleteCode, now)
+	if _, outcome, settled := h.fence(ctx, delivery); settled {
+		return outcome
 	}
 	if h.sealer == nil {
 		return job.RetryableFailure("mail.delivery.unavailable", errors.New("mail payload sealing is unavailable"))
@@ -116,19 +105,9 @@ func (h mailDeliveryHandler) Run(ctx context.Context, execution job.Execution) j
 	if delivery.State == model.MailDeliveryFailed {
 		return job.PermanentFailure(nonemptyMailCode(delivery.PublicFailureCode, "mail.delivery.failed"), errors.New("mail delivery is failed"))
 	}
-	now = model.TimeUTC(h.now())
-	if !now.Before(delivery.Deadline) {
-		return h.expire(ctx, delivery, now)
-	}
-	if !h.sender.Enabled() {
-		return h.suppress(ctx, delivery, model.MailDeliveryDisabledCode, now)
-	}
-	relevant, relevanceErr = h.isRelevant(ctx, delivery)
-	if relevanceErr != nil {
-		return job.RetryableFailure("mail.delivery.unavailable", relevanceErr)
-	}
-	if !relevant {
-		return h.suppress(ctx, delivery, model.MailDeliveryObsoleteCode, now)
+	now, outcome, settled := h.fence(ctx, delivery)
+	if settled {
+		return outcome
 	}
 	if delivery.State == model.MailDeliverySending && delivery.AttemptCount >= model.MailMaximumAttempts {
 		// The last send attempt lost its worker mid-send. Its outcome is
@@ -143,6 +122,32 @@ func (h mailDeliveryHandler) Run(ctx context.Context, execution job.Execution) j
 	if sending.State == model.MailDeliverySuppressed || sending.State == model.MailDeliveryCanceled || sending.State == model.MailDeliveryAccepted {
 		return mailDeliverySucceeded(sending)
 	}
+	return h.send(ctx, execution, sending)
+}
+
+// fence expires, suppresses as disabled, or suppresses as obsolete a delivery that must not be sent now; settled
+// reports whether outcome ends the run, and now is the instant the checks used.
+func (h mailDeliveryHandler) fence(ctx context.Context, delivery *model.MailDelivery) (now time.Time, outcome job.Outcome, settled bool) {
+	now = model.TimeUTC(h.now())
+	if !now.Before(delivery.Deadline) {
+		return now, h.expire(ctx, delivery, now), true
+	}
+	if !h.sender.Enabled() {
+		return now, h.suppress(ctx, delivery, model.MailDeliveryDisabledCode, now), true
+	}
+	relevant, relevanceErr := h.isRelevant(ctx, delivery)
+	if relevanceErr != nil {
+		return now, job.RetryableFailure("mail.delivery.unavailable", relevanceErr), true
+	}
+	if !relevant {
+		return now, h.suppress(ctx, delivery, model.MailDeliveryObsoleteCode, now), true
+	}
+	return now, job.Outcome{}, false
+}
+
+// send opens the started delivery's sealed message, hands it to the transport, and records acceptance or the
+// transport failure.
+func (h mailDeliveryHandler) send(ctx context.Context, execution job.Execution, sending *model.MailDelivery) job.Outcome {
 	h.recordAttempt(ctx, sending)
 	message, err := mail.OpenDelivery(h.sealer, sending)
 	if err != nil {
@@ -153,26 +158,7 @@ func (h mailDeliveryHandler) Run(ctx context.Context, execution job.Execution) j
 	}
 	classification, err := h.sender.Send(ctx, message)
 	if err != nil {
-		completedAt := model.TimeUTC(h.now())
-		if !completedAt.Before(sending.Deadline) {
-			return h.expire(ctx, sending, completedAt)
-		}
-		code := mailTransportFailureCode(classification)
-		if h.health != nil && classification != mail.TransportPermanent {
-			h.health.SetJobMailHealth("mail.smtp_outage")
-		}
-		// The delivery and its Job count attempts separately. On the Job's last
-		// attempt a requeued delivery would be left Queued with no Job, so it
-		// fails now and stays available to an operator retry.
-		lastJobAttempt := execution.Job.AttemptCount >= execution.Job.MaximumAttempts
-		if classification == mail.TransportPermanent || sending.AttemptCount >= model.MailMaximumAttempts || lastJobAttempt {
-			return h.failAt(ctx, sending, code, err, completedAt)
-		}
-		if _, transitionErr := h.deliveries.CompleteDelivery(ctx, &store.MailDeliveryCompletion{DeliveryID: sending.ID, ExpectedRevision: sending.Revision, Kind: store.MailDeliveryCompletionRetry, PublicFailureCode: code, At: completedAt}); transitionErr != nil {
-			return mailDeliveryDependencyOutcome(transitionErr)
-		}
-		h.record(ctx, sending, model.MailDeliveryQueued, code, completedAt)
-		return job.RetryableFailure(code, err)
+		return h.transportFailed(ctx, execution, sending, classification, err)
 	}
 	accepted, err := h.deliveries.CompleteDelivery(ctx, &store.MailDeliveryCompletion{DeliveryID: sending.ID, ExpectedRevision: sending.Revision, Kind: store.MailDeliveryCompletionAccepted, At: model.TimeUTC(h.now())})
 	if err != nil {
@@ -183,6 +169,31 @@ func (h mailDeliveryHandler) Run(ctx context.Context, execution job.Execution) j
 	}
 	h.record(ctx, accepted, accepted.State, "mail.accepted", accepted.UpdatedAt)
 	return mailDeliverySucceeded(accepted)
+}
+
+// transportFailed expires, fails, or requeues the sending delivery after a transport error.
+func (h mailDeliveryHandler) transportFailed(ctx context.Context, execution job.Execution, sending *model.MailDelivery,
+	classification mail.TransportOutcome, err error) job.Outcome {
+	completedAt := model.TimeUTC(h.now())
+	if !completedAt.Before(sending.Deadline) {
+		return h.expire(ctx, sending, completedAt)
+	}
+	code := mailTransportFailureCode(classification)
+	if h.health != nil && classification != mail.TransportPermanent {
+		h.health.SetJobMailHealth("mail.smtp_outage")
+	}
+	// The delivery and its Job count attempts separately. On the Job's last
+	// attempt a requeued delivery would be left Queued with no Job, so it
+	// fails now and stays available to an operator retry.
+	lastJobAttempt := execution.Job.AttemptCount >= execution.Job.MaximumAttempts
+	if classification == mail.TransportPermanent || sending.AttemptCount >= model.MailMaximumAttempts || lastJobAttempt {
+		return h.failAt(ctx, sending, code, err, completedAt)
+	}
+	if _, transitionErr := h.deliveries.CompleteDelivery(ctx, &store.MailDeliveryCompletion{DeliveryID: sending.ID, ExpectedRevision: sending.Revision, Kind: store.MailDeliveryCompletionRetry, PublicFailureCode: code, At: completedAt}); transitionErr != nil {
+		return mailDeliveryDependencyOutcome(transitionErr)
+	}
+	h.record(ctx, sending, model.MailDeliveryQueued, code, completedAt)
+	return job.RetryableFailure(code, err)
 }
 
 func (h mailDeliveryHandler) isRelevant(ctx context.Context, delivery *model.MailDelivery) (bool, error) {
