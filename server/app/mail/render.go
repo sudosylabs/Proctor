@@ -203,137 +203,201 @@ func (r *templateRenderer) render(request renderRequest) (renderedMessage, error
 		}
 	}
 	properties := templateProperties{Copy: copy, ActionURL: actionURL}
-	patKey := isPersonalAccessTokenTemplate(request.Key)
-	if patKey != (request.PersonalAccessToken != nil) {
-		return renderedMessage{}, fmt.Errorf("mail template %q has invalid PAT details", request.Key)
+	if err = applyPresentationProperties(request, copy, &properties); err != nil {
+		return renderedMessage{}, err
 	}
-	if request.PersonalAccessToken != nil {
-		if copy.PersonalAccessToken == nil || !validPersonalAccessTokenDetails(request.PersonalAccessToken) {
-			return renderedMessage{}, fmt.Errorf("mail template %q has invalid PAT details", request.Key)
-		}
-		scope := copy.PersonalAccessToken.InstitutionScope
-		if request.PersonalAccessToken.AcademicUnitScoped {
-			scope = copy.PersonalAccessToken.AcademicUnitScope
-		}
-		properties.PersonalAccessToken = &personalAccessTokenProperties{
-			Description: request.PersonalAccessToken.Description,
-			ExpiresAt:   request.PersonalAccessToken.ExpiresAt.UTC().Format(time.RFC3339),
-			ActionAt:    request.PersonalAccessToken.ActionAt.UTC().Format(time.RFC3339),
-			Scope:       scope,
-			ActionCount: request.PersonalAccessToken.ActionCount,
-		}
-	}
-	examManagerKey := isExamManagerTemplate(request.Key)
-	if examManagerKey != (request.ExamManager != nil) {
-		return renderedMessage{}, fmt.Errorf("mail template %q has invalid Exam Manager details", request.Key)
-	}
-	if request.ExamManager != nil {
-		if copy.ExamManager == nil || !validExamManagerDetails(request.ExamManager) {
-			return renderedMessage{}, fmt.Errorf("mail template %q has invalid Exam Manager details", request.Key)
-		}
-		var relationship string
-		switch request.ExamManager.Relationship {
-		case "manager":
-			relationship = copy.ExamManager.Manager
-		case "owner":
-			relationship = copy.ExamManager.Owner
-		case "no_longer_manager":
-			relationship = copy.ExamManager.NoLongerManager
-		}
-		properties.ExamManager = &examManagerProperties{
-			Title: strings.TrimSpace(request.ExamManager.Title), Relationship: relationship,
-			ActionAt: request.ExamManager.ActionAt.UTC().Format(time.RFC3339),
-		}
-	}
-	sittingKey := isSittingScheduleTemplate(request.Key)
-	if sittingKey != (request.SittingSchedule != nil) {
-		return renderedMessage{}, fmt.Errorf("mail template %q has invalid Sitting schedule details", request.Key)
-	}
-	if request.SittingSchedule != nil {
-		if copy.SittingSchedule == nil || !validSittingScheduleDetails(request.SittingSchedule) {
-			return renderedMessage{}, fmt.Errorf("mail template %q has invalid Sitting schedule details", request.Key)
-		}
-		properties.SittingSchedule = &sittingScheduleProperties{
-			ExamTitle:        strings.TrimSpace(request.SittingSchedule.ExamTitle),
-			ClassDisplayName: strings.TrimSpace(request.SittingSchedule.ClassDisplayName),
-			StartsAt:         request.SittingSchedule.StartsAt.UTC().Format(time.RFC3339),
-			EndsAt:           request.SittingSchedule.EndsAt.UTC().Format(time.RFC3339),
-			Timezone:         copy.SittingSchedule.TimezoneUTC,
-		}
-	}
-	classKey := isClassTransitionTemplate(request.Key)
-	if classKey != (request.ClassTransition != nil) {
-		return renderedMessage{}, fmt.Errorf("mail template %q has invalid Class transition details", request.Key)
-	}
-	if request.ClassTransition != nil {
-		if copy.ClassTransition == nil || !validClassTransitionDetails(request.Key, request.ClassTransition) {
-			return renderedMessage{}, fmt.Errorf("mail template %q has invalid Class transition details", request.Key)
-		}
-		endsAt := copy.ClassTransition.NoScheduledEnd
-		if !request.ClassTransition.EndsAt.IsZero() {
-			endsAt = request.ClassTransition.EndsAt.UTC().Format(time.RFC3339)
-		}
-		properties.ClassTransition = &classTransitionProperties{
-			PreviousClassDisplayName: strings.TrimSpace(request.ClassTransition.PreviousClassDisplayName),
-			ClassDisplayName:         strings.TrimSpace(request.ClassTransition.ClassDisplayName),
-			StartsAt:                 request.ClassTransition.StartsAt.UTC().Format(time.RFC3339), EndsAt: endsAt,
-			Timezone: copy.ClassTransition.TimezoneUTC,
-		}
-	}
-	submissionReceiptKey := isSubmissionReceiptTemplate(request.Key)
-	if submissionReceiptKey != (request.SubmissionReceipt != nil) {
-		return renderedMessage{}, fmt.Errorf("mail template %q has invalid Submission receipt details", request.Key)
-	}
-	if request.SubmissionReceipt != nil {
-		if copy.SubmissionReceipt == nil || !validSubmissionReceiptDetails(request.SubmissionReceipt) {
-			return renderedMessage{}, fmt.Errorf("mail template %q has invalid Submission receipt details", request.Key)
-		}
-		properties.SubmissionReceipt = &submissionReceiptProperties{
-			ExamTitle:    strings.TrimSpace(request.SubmissionReceipt.ExamTitle),
-			SittingID:    request.SubmissionReceipt.SittingID.String(),
-			SubmissionID: request.SubmissionReceipt.SubmissionID.String(),
-			SealedAt:     request.SubmissionReceipt.SealedAt.UTC().Format(time.RFC3339),
-			Timezone:     copy.SubmissionReceipt.TimezoneUTC,
-		}
-	}
-	definition, definitionOK := definitionFor(request.Key)
-	resultReleaseKey := definitionOK && definition.presentation == presentationResultRelease
-	if resultReleaseKey != (request.ResultRelease != nil) {
-		return renderedMessage{}, fmt.Errorf("mail template %q has invalid result release details", request.Key)
-	}
-	if request.ResultRelease != nil {
-		if copy.ResultRelease == nil || request.ResultRelease.ReleasedAt.IsZero() ||
-			!validBoundedMailLabel(request.ResultRelease.ExamTitle) {
-			return renderedMessage{}, fmt.Errorf("mail template %q has invalid result release details", request.Key)
-		}
-		properties.ResultRelease = &resultReleaseProperties{ExamTitle: strings.TrimSpace(request.ResultRelease.ExamTitle),
-			ReleasedAt: request.ResultRelease.ReleasedAt.UTC().Format(time.RFC3339),
-			Timezone:   copy.ResultRelease.TimezoneUTC}
-	}
-
-	htmlValue, ok := r.html[request.Key]
-	if !ok {
-		return renderedMessage{}, fmt.Errorf("HTML mail template %q is unavailable", request.Key)
-	}
-	textValue, ok := r.text[request.Key]
-	if !ok {
-		return renderedMessage{}, fmt.Errorf("text mail template %q is unavailable", request.Key)
-	}
-	var htmlOutput bytes.Buffer
-	if err := htmlValue.Execute(&htmlOutput, properties); err != nil {
-		return renderedMessage{}, fmt.Errorf("render HTML mail template %q: %w", request.Key, err)
-	}
-	var textOutput bytes.Buffer
-	if err := textValue.Execute(&textOutput, properties); err != nil {
-		return renderedMessage{}, fmt.Errorf("render text mail template %q: %w", request.Key, err)
-	}
-	if htmlOutput.Len()+textOutput.Len() > maxRenderedMessageBytes {
-		return renderedMessage{}, fmt.Errorf("rendered mail template %q exceeds %d bytes", request.Key, maxRenderedMessageBytes)
+	text, html, err := r.executeTemplates(request.Key, properties)
+	if err != nil {
+		return renderedMessage{}, err
 	}
 	return renderedMessage{
 		Key: request.Key, Locale: locale, Subject: copy.Subject,
-		Text: textOutput.String(), HTML: htmlOutput.String(),
+		Text: text, HTML: html,
 	}, nil
+}
+
+// applyPresentationProperties validates every presentation detail against the template key, in a fixed order, and
+// sets the matching template properties.
+func applyPresentationProperties(request renderRequest, copy templateCopy, properties *templateProperties) error {
+	var err error
+	if properties.PersonalAccessToken, err = personalAccessTokenTemplateProperties(request, copy); err != nil {
+		return err
+	}
+	if properties.ExamManager, err = examManagerTemplateProperties(request, copy); err != nil {
+		return err
+	}
+	if properties.SittingSchedule, err = sittingScheduleTemplateProperties(request, copy); err != nil {
+		return err
+	}
+	if properties.ClassTransition, err = classTransitionTemplateProperties(request, copy); err != nil {
+		return err
+	}
+	if properties.SubmissionReceipt, err = submissionReceiptTemplateProperties(request, copy); err != nil {
+		return err
+	}
+	properties.ResultRelease, err = resultReleaseTemplateProperties(request, copy)
+	return err
+}
+
+// personalAccessTokenTemplateProperties validates and formats the Personal Access Token details for the template.
+func personalAccessTokenTemplateProperties(request renderRequest, copy templateCopy) (*personalAccessTokenProperties, error) {
+	patKey := isPersonalAccessTokenTemplate(request.Key)
+	if patKey != (request.PersonalAccessToken != nil) {
+		return nil, fmt.Errorf("mail template %q has invalid PAT details", request.Key)
+	}
+	if request.PersonalAccessToken == nil {
+		return nil, nil
+	}
+	if copy.PersonalAccessToken == nil || !validPersonalAccessTokenDetails(request.PersonalAccessToken) {
+		return nil, fmt.Errorf("mail template %q has invalid PAT details", request.Key)
+	}
+	scope := copy.PersonalAccessToken.InstitutionScope
+	if request.PersonalAccessToken.AcademicUnitScoped {
+		scope = copy.PersonalAccessToken.AcademicUnitScope
+	}
+	return &personalAccessTokenProperties{
+		Description: request.PersonalAccessToken.Description,
+		ExpiresAt:   request.PersonalAccessToken.ExpiresAt.UTC().Format(time.RFC3339),
+		ActionAt:    request.PersonalAccessToken.ActionAt.UTC().Format(time.RFC3339),
+		Scope:       scope,
+		ActionCount: request.PersonalAccessToken.ActionCount,
+	}, nil
+}
+
+// examManagerTemplateProperties validates and formats the Exam Manager details for the template.
+func examManagerTemplateProperties(request renderRequest, copy templateCopy) (*examManagerProperties, error) {
+	examManagerKey := isExamManagerTemplate(request.Key)
+	if examManagerKey != (request.ExamManager != nil) {
+		return nil, fmt.Errorf("mail template %q has invalid Exam Manager details", request.Key)
+	}
+	if request.ExamManager == nil {
+		return nil, nil
+	}
+	if copy.ExamManager == nil || !validExamManagerDetails(request.ExamManager) {
+		return nil, fmt.Errorf("mail template %q has invalid Exam Manager details", request.Key)
+	}
+	var relationship string
+	switch request.ExamManager.Relationship {
+	case "manager":
+		relationship = copy.ExamManager.Manager
+	case "owner":
+		relationship = copy.ExamManager.Owner
+	case "no_longer_manager":
+		relationship = copy.ExamManager.NoLongerManager
+	}
+	return &examManagerProperties{
+		Title: strings.TrimSpace(request.ExamManager.Title), Relationship: relationship,
+		ActionAt: request.ExamManager.ActionAt.UTC().Format(time.RFC3339),
+	}, nil
+}
+
+// sittingScheduleTemplateProperties validates and formats the Sitting schedule details for the template.
+func sittingScheduleTemplateProperties(request renderRequest, copy templateCopy) (*sittingScheduleProperties, error) {
+	sittingKey := isSittingScheduleTemplate(request.Key)
+	if sittingKey != (request.SittingSchedule != nil) {
+		return nil, fmt.Errorf("mail template %q has invalid Sitting schedule details", request.Key)
+	}
+	if request.SittingSchedule == nil {
+		return nil, nil
+	}
+	if copy.SittingSchedule == nil || !validSittingScheduleDetails(request.SittingSchedule) {
+		return nil, fmt.Errorf("mail template %q has invalid Sitting schedule details", request.Key)
+	}
+	return &sittingScheduleProperties{
+		ExamTitle:        strings.TrimSpace(request.SittingSchedule.ExamTitle),
+		ClassDisplayName: strings.TrimSpace(request.SittingSchedule.ClassDisplayName),
+		StartsAt:         request.SittingSchedule.StartsAt.UTC().Format(time.RFC3339),
+		EndsAt:           request.SittingSchedule.EndsAt.UTC().Format(time.RFC3339),
+		Timezone:         copy.SittingSchedule.TimezoneUTC,
+	}, nil
+}
+
+// classTransitionTemplateProperties validates and formats the Class transition details for the template.
+func classTransitionTemplateProperties(request renderRequest, copy templateCopy) (*classTransitionProperties, error) {
+	classKey := isClassTransitionTemplate(request.Key)
+	if classKey != (request.ClassTransition != nil) {
+		return nil, fmt.Errorf("mail template %q has invalid Class transition details", request.Key)
+	}
+	if request.ClassTransition == nil {
+		return nil, nil
+	}
+	if copy.ClassTransition == nil || !validClassTransitionDetails(request.Key, request.ClassTransition) {
+		return nil, fmt.Errorf("mail template %q has invalid Class transition details", request.Key)
+	}
+	endsAt := copy.ClassTransition.NoScheduledEnd
+	if !request.ClassTransition.EndsAt.IsZero() {
+		endsAt = request.ClassTransition.EndsAt.UTC().Format(time.RFC3339)
+	}
+	return &classTransitionProperties{
+		PreviousClassDisplayName: strings.TrimSpace(request.ClassTransition.PreviousClassDisplayName),
+		ClassDisplayName:         strings.TrimSpace(request.ClassTransition.ClassDisplayName),
+		StartsAt:                 request.ClassTransition.StartsAt.UTC().Format(time.RFC3339), EndsAt: endsAt,
+		Timezone: copy.ClassTransition.TimezoneUTC,
+	}, nil
+}
+
+// submissionReceiptTemplateProperties validates and formats the Submission receipt details for the template.
+func submissionReceiptTemplateProperties(request renderRequest, copy templateCopy) (*submissionReceiptProperties, error) {
+	submissionReceiptKey := isSubmissionReceiptTemplate(request.Key)
+	if submissionReceiptKey != (request.SubmissionReceipt != nil) {
+		return nil, fmt.Errorf("mail template %q has invalid Submission receipt details", request.Key)
+	}
+	if request.SubmissionReceipt == nil {
+		return nil, nil
+	}
+	if copy.SubmissionReceipt == nil || !validSubmissionReceiptDetails(request.SubmissionReceipt) {
+		return nil, fmt.Errorf("mail template %q has invalid Submission receipt details", request.Key)
+	}
+	return &submissionReceiptProperties{
+		ExamTitle:    strings.TrimSpace(request.SubmissionReceipt.ExamTitle),
+		SittingID:    request.SubmissionReceipt.SittingID.String(),
+		SubmissionID: request.SubmissionReceipt.SubmissionID.String(),
+		SealedAt:     request.SubmissionReceipt.SealedAt.UTC().Format(time.RFC3339),
+		Timezone:     copy.SubmissionReceipt.TimezoneUTC,
+	}, nil
+}
+
+// resultReleaseTemplateProperties validates and formats the result release details for the template.
+func resultReleaseTemplateProperties(request renderRequest, copy templateCopy) (*resultReleaseProperties, error) {
+	definition, definitionOK := definitionFor(request.Key)
+	resultReleaseKey := definitionOK && definition.presentation == presentationResultRelease
+	if resultReleaseKey != (request.ResultRelease != nil) {
+		return nil, fmt.Errorf("mail template %q has invalid result release details", request.Key)
+	}
+	if request.ResultRelease == nil {
+		return nil, nil
+	}
+	if copy.ResultRelease == nil || request.ResultRelease.ReleasedAt.IsZero() ||
+		!validBoundedMailLabel(request.ResultRelease.ExamTitle) {
+		return nil, fmt.Errorf("mail template %q has invalid result release details", request.Key)
+	}
+	return &resultReleaseProperties{ExamTitle: strings.TrimSpace(request.ResultRelease.ExamTitle),
+		ReleasedAt: request.ResultRelease.ReleasedAt.UTC().Format(time.RFC3339),
+		Timezone:   copy.ResultRelease.TimezoneUTC}, nil
+}
+
+// executeTemplates executes the HTML and text templates for the key and enforces the rendered size bound.
+func (r *templateRenderer) executeTemplates(key model.MailTemplateKey, properties templateProperties) (text, html string, err error) {
+	htmlValue, ok := r.html[key]
+	if !ok {
+		return "", "", fmt.Errorf("HTML mail template %q is unavailable", key)
+	}
+	textValue, ok := r.text[key]
+	if !ok {
+		return "", "", fmt.Errorf("text mail template %q is unavailable", key)
+	}
+	var htmlOutput bytes.Buffer
+	if err := htmlValue.Execute(&htmlOutput, properties); err != nil {
+		return "", "", fmt.Errorf("render HTML mail template %q: %w", key, err)
+	}
+	var textOutput bytes.Buffer
+	if err := textValue.Execute(&textOutput, properties); err != nil {
+		return "", "", fmt.Errorf("render text mail template %q: %w", key, err)
+	}
+	if htmlOutput.Len()+textOutput.Len() > maxRenderedMessageBytes {
+		return "", "", fmt.Errorf("rendered mail template %q exceeds %d bytes", key, maxRenderedMessageBytes)
+	}
+	return textOutput.String(), htmlOutput.String(), nil
 }
 
 func (r *templateRenderer) Render(request RenderRequest) (FrozenContent, error) {
