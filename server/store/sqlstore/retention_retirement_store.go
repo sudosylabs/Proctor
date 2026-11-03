@@ -68,119 +68,158 @@ func (row retentionRetirementRow) retirement() (*model.RetentionRetirement, erro
 	return r, nil
 }
 
+// ReconcileSubmission cancels, schedules or commits the retention retirements
+// of one Submission's records under the current policy and control, and
+// completes the input audit.
 func (s *SQLRetentionStore) ReconcileSubmission(ctx context.Context, input *store.RetentionReconciliation) (*store.RetentionReconciliationResult, error) {
 	if input == nil || !input.SubmissionID.IsValid() || !input.AuditEventID.IsValid() || input.AuditAt.IsZero() {
 		return nil, store.NewErrInvalidInput("retention_retirement", "reconciliation", nil)
 	}
 	return runSQLTransaction(ctx, s.GetMaster().Begin, "retention reconciliation", func(ctx context.Context, tx *sqlxTxWrapper) (*store.RetentionReconciliationResult, error) {
-		policy, err := getRetentionPolicy(ctx, tx, "FOR UPDATE OF p,i")
-		if err != nil {
-			return nil, err
-		}
-		control, err := getRetentionControl(ctx, tx, policy.InstitutionID, true)
-		if err != nil {
-			return nil, err
-		}
-		var facts retentionFactsRow
-		if err = tx.Get(ctx, &facts, retentionFactsQuery+` AND sub.id=?`, policy.InstitutionID.String(), input.SubmissionID.String()); err != nil {
-			return nil, translateError("submission", input.SubmissionID.String(), err)
-		}
-		var id string
-		if err = tx.Get(ctx, &id, `SELECT id FROM exams WHERE id=? FOR UPDATE`, facts.ExamID); err != nil {
-			return nil, err
-		}
-		if err = tx.Get(ctx, &id, `SELECT id FROM exam_sittings WHERE id=? FOR UPDATE`, facts.SittingID); err != nil {
-			return nil, err
-		}
-		if err = tx.Get(ctx, &id, `SELECT id FROM exam_submissions WHERE id=? FOR UPDATE`, input.SubmissionID.String()); err != nil {
-			return nil, err
-		}
-		var at time.Time
-		if err = tx.Get(ctx, &at, `SELECT clock_timestamp()`); err != nil {
-			return nil, err
-		}
-		at = model.TimeUTC(at)
-		expiredCanceled, err := settleRetiringDeliveries(ctx, tx, input.SubmissionID, at)
-		if err != nil {
-			return nil, err
-		}
-		// Re-read after the same Exam/Sitting fences used by holds, completion,
-		// late evidence, and export source selection.
-		if err = tx.Get(ctx, &facts, retentionFactsQuery+` AND sub.id=?`, policy.InstitutionID.String(), input.SubmissionID.String()); err != nil {
-			return nil, err
-		}
-		result := &store.RetentionReconciliationResult{Canceled: expiredCanceled}
-		records := facts.records()
-		// Integrity retires first. Work may never disappear while its retained
-		// integrity still depends on it, even when both grace periods have ended.
-		for _, index := range []int{1, 0, 2, 3} {
-			record := records[index]
-			eligibility, err := record.Eligibility(policy, at)
-			if err != nil {
-				return nil, err
-			}
-			retirement, err := getActiveRetirement(ctx, tx, record.Scope.SubmissionID, record.Category)
-			if err != nil {
-				return nil, err
-			}
-			if record.RetiredAt.Valid {
-				continue
-			}
-			if retirement != nil && retirement.State == model.RetentionRetirementGrace &&
-				(!control.Permits(policy) || eligibility.Blocker != model.RetentionBlockerNone ||
-					retirement.PolicyRevision != policy.Revision || retirement.ControlRevision != control.Revision || retirement.CompletionRevision != record.CompletionRevision) {
-				if err := cancelOneRetirement(ctx, tx, retirement.ID, at, "eligibility_changed"); err != nil {
-					return nil, err
-				}
-				result.Canceled++
-				retirement = nil
-			}
-			if !control.Permits(policy) || eligibility.Blocker != model.RetentionBlockerNone {
-				continue
-			}
-			if retirement == nil {
-				if err = scheduleRetention(ctx, tx, policy, control, record, at); err != nil {
-					return nil, err
-				}
-				result.Scheduled++
-				continue
-			}
-			if retirement.State != model.RetentionRetirementGrace || at.Before(retirement.RetireAfter) {
-				continue
-			}
-			// Await the finite expiry pass when accepted records still await
-			// interpretation; deleting them could erase a future evidence copy.
-			var pendingInterpretation bool
-			if err := tx.Get(ctx, &pendingInterpretation, `SELECT EXISTS(SELECT 1 FROM browser_activity_events WHERE exam_attempt_id=(SELECT exam_attempt_id FROM exam_submissions WHERE id=?) AND interpretation_state=0) OR EXISTS(SELECT 1 FROM exam_native_delivery_batches b JOIN exam_attempt_security_owners o USING(participation_id) WHERE o.exam_attempt_id=(SELECT exam_attempt_id FROM exam_submissions WHERE id=?) AND NOT b.processed)`, input.SubmissionID.String(), input.SubmissionID.String()); err != nil {
-				return nil, err
-			}
-			if pendingInterpretation {
-				continue
-			}
-			if record.Category == model.RetentionCategoryWork && record.HasIntegrity {
-				var integrityRetired bool
-				if err = tx.Get(ctx, &integrityRetired, `SELECT integrity_retired_at IS NOT NULL FROM exam_submissions WHERE id=?`, input.SubmissionID.String()); err != nil {
-					return nil, err
-				}
-				if !integrityRetired {
-					continue
-				}
-			}
-			if err = commitRetention(ctx, tx, retirement, at); err != nil {
-				return nil, err
-			}
-			result.Retired++
-		}
-		encoded, err := model.EncodeAuditData(map[string]any{"submission_id": input.SubmissionID.String(), "policy_revision": policy.Revision,
-			"control_revision": control.Revision, "scheduled": result.Scheduled, "canceled": result.Canceled, "retired": result.Retired})
-		if err != nil {
-			return nil, err
-		}
-		if _, err = completeAuditEvent(ctx, tx, input.AuditEventID, model.AuditStatusSuccess, "", encoded, input.AuditAt); err != nil {
-			return nil, err
-		}
-		return result, nil
+		return reconcileSubmissionRetention(ctx, tx, input)
 	})
+}
+
+// reconcileSubmissionRetention locks the retention fence and the Submission's
+// Exam, Sitting and row, settles retiring deliveries, and reconciles each
+// record, integrity first.
+func reconcileSubmissionRetention(ctx context.Context, tx *sqlxTxWrapper, input *store.RetentionReconciliation) (*store.RetentionReconciliationResult, error) {
+	policy, err := getRetentionPolicy(ctx, tx, "FOR UPDATE OF p,i")
+	if err != nil {
+		return nil, err
+	}
+	control, err := getRetentionControl(ctx, tx, policy.InstitutionID, true)
+	if err != nil {
+		return nil, err
+	}
+	facts, err := lockRetentionSubmission(ctx, tx, input.SubmissionID, policy)
+	if err != nil {
+		return nil, err
+	}
+	var at time.Time
+	if err = tx.Get(ctx, &at, `SELECT clock_timestamp()`); err != nil {
+		return nil, err
+	}
+	at = model.TimeUTC(at)
+	expiredCanceled, err := settleRetiringDeliveries(ctx, tx, input.SubmissionID, at)
+	if err != nil {
+		return nil, err
+	}
+	// Re-read after the same Exam/Sitting fences used by holds, completion,
+	// late evidence, and export source selection.
+	if err = tx.Get(ctx, &facts, retentionFactsQuery+` AND sub.id=?`, policy.InstitutionID.String(), input.SubmissionID.String()); err != nil {
+		return nil, err
+	}
+	result := &store.RetentionReconciliationResult{Canceled: expiredCanceled}
+	records := facts.records()
+	// Integrity retires first. Work may never disappear while its retained
+	// integrity still depends on it, even when both grace periods have ended.
+	for _, index := range []int{1, 0, 2, 3} {
+		if err = reconcileRetentionRecord(ctx, tx, input.SubmissionID, policy, control, records[index], at, result); err != nil {
+			return nil, err
+		}
+	}
+	encoded, err := model.EncodeAuditData(map[string]any{"submission_id": input.SubmissionID.String(), "policy_revision": policy.Revision,
+		"control_revision": control.Revision, "scheduled": result.Scheduled, "canceled": result.Canceled, "retired": result.Retired})
+	if err != nil {
+		return nil, err
+	}
+	if _, err = completeAuditEvent(ctx, tx, input.AuditEventID, model.AuditStatusSuccess, "", encoded, input.AuditAt); err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+// lockRetentionSubmission reads the Submission's retention facts and locks
+// its Exam, Sitting and Submission rows in that order.
+func lockRetentionSubmission(ctx context.Context, tx *sqlxTxWrapper, submissionID model.SubmissionID, policy *model.RetentionPolicy) (retentionFactsRow, error) {
+	var facts retentionFactsRow
+	if err := tx.Get(ctx, &facts, retentionFactsQuery+` AND sub.id=?`, policy.InstitutionID.String(), submissionID.String()); err != nil {
+		return facts, translateError("submission", submissionID.String(), err)
+	}
+	var id string
+	if err := tx.Get(ctx, &id, `SELECT id FROM exams WHERE id=? FOR UPDATE`, facts.ExamID); err != nil {
+		return facts, err
+	}
+	if err := tx.Get(ctx, &id, `SELECT id FROM exam_sittings WHERE id=? FOR UPDATE`, facts.SittingID); err != nil {
+		return facts, err
+	}
+	if err := tx.Get(ctx, &id, `SELECT id FROM exam_submissions WHERE id=? FOR UPDATE`, submissionID.String()); err != nil {
+		return facts, err
+	}
+	return facts, nil
+}
+
+// reconcileRetentionRecord cancels a record's grace retirement that is no
+// longer eligible, schedules an eligible unscheduled record, and commits a
+// retirement whose grace period has ended.
+func reconcileRetentionRecord(ctx context.Context, tx *sqlxTxWrapper, submissionID model.SubmissionID, policy *model.RetentionPolicy, control *model.RetentionControl, record model.RetentionRecord, at time.Time, result *store.RetentionReconciliationResult) error {
+	eligibility, err := record.Eligibility(policy, at)
+	if err != nil {
+		return err
+	}
+	retirement, err := getActiveRetirement(ctx, tx, record.Scope.SubmissionID, record.Category)
+	if err != nil {
+		return err
+	}
+	if record.RetiredAt.Valid {
+		return nil
+	}
+	if retirement != nil && retirement.State == model.RetentionRetirementGrace &&
+		(!control.Permits(policy) || eligibility.Blocker != model.RetentionBlockerNone ||
+			retirement.PolicyRevision != policy.Revision || retirement.ControlRevision != control.Revision || retirement.CompletionRevision != record.CompletionRevision) {
+		if err = cancelOneRetirement(ctx, tx, retirement.ID, at, "eligibility_changed"); err != nil {
+			return err
+		}
+		result.Canceled++
+		retirement = nil
+	}
+	if !control.Permits(policy) || eligibility.Blocker != model.RetentionBlockerNone {
+		return nil
+	}
+	if retirement == nil {
+		if err = scheduleRetention(ctx, tx, policy, control, record, at); err != nil {
+			return err
+		}
+		result.Scheduled++
+		return nil
+	}
+	if retirement.State != model.RetentionRetirementGrace || at.Before(retirement.RetireAfter) {
+		return nil
+	}
+	ready, err := retentionRetirementReady(ctx, tx, submissionID, record)
+	if err != nil || !ready {
+		return err
+	}
+	if err = commitRetention(ctx, tx, retirement, at); err != nil {
+		return err
+	}
+	result.Retired++
+	return nil
+}
+
+// retentionRetirementReady reports whether no accepted evidence still awaits
+// interpretation and, for Work with integrity, whether integrity has retired.
+func retentionRetirementReady(ctx context.Context, tx *sqlxTxWrapper, submissionID model.SubmissionID, record model.RetentionRecord) (bool, error) {
+	// Await the finite expiry pass when accepted records still await
+	// interpretation; deleting them could erase a future evidence copy.
+	var pendingInterpretation bool
+	if err := tx.Get(ctx, &pendingInterpretation, `SELECT EXISTS(SELECT 1 FROM browser_activity_events WHERE exam_attempt_id=(SELECT exam_attempt_id FROM exam_submissions WHERE id=?) AND interpretation_state=0) OR EXISTS(SELECT 1 FROM exam_native_delivery_batches b JOIN exam_attempt_security_owners o USING(participation_id) WHERE o.exam_attempt_id=(SELECT exam_attempt_id FROM exam_submissions WHERE id=?) AND NOT b.processed)`, submissionID.String(), submissionID.String()); err != nil {
+		return false, err
+	}
+	if pendingInterpretation {
+		return false, nil
+	}
+	if record.Category == model.RetentionCategoryWork && record.HasIntegrity {
+		var integrityRetired bool
+		if err := tx.Get(ctx, &integrityRetired, `SELECT integrity_retired_at IS NOT NULL FROM exam_submissions WHERE id=?`, submissionID.String()); err != nil {
+			return false, err
+		}
+		if !integrityRetired {
+			return false, nil
+		}
+	}
+	return true, nil
 }
 
 func cancelOneRetirement(ctx context.Context, tx *sqlxTxWrapper, id model.RetentionRetirementID, at time.Time, reason string) error {
