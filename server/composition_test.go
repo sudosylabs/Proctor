@@ -41,7 +41,7 @@ func (c *compositionCloser) close() error {
 type compositionPlatform struct{ closer *compositionCloser }
 
 func (p compositionPlatform) Start(context.Context) error { return nil }
-func (p compositionPlatform) Close() error                { return p.closer.close() }
+func (p compositionPlatform) Close(context.Context) error { return p.closer.close() }
 
 type compositionTransport struct{ closer *compositionCloser }
 

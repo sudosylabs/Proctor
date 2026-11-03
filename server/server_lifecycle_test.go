@@ -48,6 +48,8 @@ type lifecyclePlatform struct {
 	closeErr   error
 	events     *lifecycleEvents
 	afterStart func()
+	// closeDeadline records the shutdown budget Close received.
+	closeDeadline atomic.Pointer[time.Time]
 }
 
 func (p *lifecyclePlatform) Start(context.Context) error {
@@ -58,8 +60,11 @@ func (p *lifecyclePlatform) Start(context.Context) error {
 	return p.startErr
 }
 
-func (p *lifecyclePlatform) Close() error {
+func (p *lifecyclePlatform) Close(ctx context.Context) error {
 	p.events.record("platform-close")
+	if deadline, ok := ctx.Deadline(); ok {
+		p.closeDeadline.Store(&deadline)
+	}
 	return p.closeErr
 }
 
@@ -224,10 +229,19 @@ type lifecycleHTTP struct {
 	keepServing      bool
 	drainUntilDone   bool
 	stoppedErr       error
-	once             sync.Once
+	// onExit, when set, runs as Serve returns.
+	onExit func()
+	once   sync.Once
 }
 
-func (s *lifecycleHTTP) Serve(_ net.Listener, accept func() bool) error {
+func (s *lifecycleHTTP) Serve(listener net.Listener, accept func() bool) error {
+	if s.onExit != nil {
+		defer s.onExit()
+	}
+	return s.serve(listener, accept)
+}
+
+func (s *lifecycleHTTP) serve(_ net.Listener, accept func() bool) error {
 	s.events.record("http-serve")
 	close(s.started)
 	if s.immediateFailure {
@@ -250,7 +264,22 @@ func (s *lifecycleHTTP) Serve(_ net.Listener, accept func() bool) error {
 	return http.ErrServerClosed
 }
 
-func (s *lifecycleHTTP) Shutdown(ctx context.Context) error {
+// Stop models standardHTTPRuntime: drain until ctx ends, then close what
+// remains; an ended ctx closes at once.
+func (s *lifecycleHTTP) Stop(ctx context.Context) error {
+	var drainErr error
+	if ctx.Err() == nil {
+		drainErr = s.drain(ctx)
+		if drainErr == nil {
+			return nil
+		}
+	}
+	s.events.record("http-force-close")
+	s.once.Do(func() { close(s.stopped) })
+	return errors.Join(drainErr, s.closeErr)
+}
+
+func (s *lifecycleHTTP) drain(ctx context.Context) error {
 	s.events.record("http-shutdown")
 	if s.afterShutdown != nil {
 		s.afterShutdown()
@@ -263,12 +292,6 @@ func (s *lifecycleHTTP) Shutdown(ctx context.Context) error {
 		s.once.Do(func() { close(s.stopped) })
 	}
 	return s.shutdownErr
-}
-
-func (s *lifecycleHTTP) Close() error {
-	s.events.record("http-force-close")
-	s.once.Do(func() { close(s.stopped) })
-	return s.closeErr
 }
 
 type lifecycleListener struct {

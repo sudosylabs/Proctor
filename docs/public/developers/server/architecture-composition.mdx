@@ -125,19 +125,28 @@ lifecycle and cannot make an otherwise ready server fail.
 
 ## Understand Reverse Shutdown
 
-Normal shutdown first makes the node unready, then drains consumers before
-their dependencies:
+Every way a node stops (cancellation, `Close`, a startup failure, a serving
+failure, or a lost dependency) goes through one ordered shutdown sequence. It
+first makes the node unready, then drains consumers before their dependencies:
 
 ```text
 public readiness off
         ↓
-HTTP drain → Jobs → WebSocket → HTTP transport → serving lease → Platform
+listener → HTTP drain → Jobs → WebSocket → HTTP transport → serving lease → metrics → tracing → Platform
 ```
+
+One budget of `Server.ShutdownTimeout`, measured from the moment shutdown
+starts, bounds the HTTP drain and the wait for serving to end; the tracing
+flush and then Platform, for the cluster's graceful leave, receive what
+remains of it. Jobs, WebSocket,
+and metrics close within their own bounds. The run reports why it stopped and
+whether HTTP must drain or close at once; the sequence decides nothing else.
 
 Only stages that successfully started need active drain behavior, but every
 constructed owner must be disposed exactly once. Close-before-start, partial
 startup failure, concurrent close, and repeated close are normal test cases,
-not edge cases to leave undefined.
+not edge cases to leave undefined. Run and every Close return the same
+shutdown result.
 
 A serving-lease renewal failure follows a stricter path: make the node unready
 and force-stop HTTP before the lease can expire. Do not withdraw a failed lease

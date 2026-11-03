@@ -36,8 +36,7 @@ type reloadingHTTPRuntime struct {
 }
 
 func (r *reloadingHTTPRuntime) Serve(net.Listener, func() bool) error { return nil }
-func (r *reloadingHTTPRuntime) Shutdown(context.Context) error        { return nil }
-func (r *reloadingHTTPRuntime) Close() error                          { return nil }
+func (r *reloadingHTTPRuntime) Stop(context.Context) error            { return nil }
 func (r *reloadingHTTPRuntime) ReloadCertificates() error {
 	r.reloads++
 	return r.err

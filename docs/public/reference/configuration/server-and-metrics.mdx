@@ -31,7 +31,7 @@ Defaults shown here are the values compiled into Proctor and represented in the
 | `Server.ReadTimeout`<br />Default: `30s` | Maximum time to read the complete request. Authenticated streaming uploads extend it by the time their route body limit takes at 64 KiB/s. Must be greater than zero. |
 | `Server.WriteTimeout`<br />Default: `30s` | Maximum response-write time. Streaming uploads and binary downloads extend it by the time their declared size takes at 64 KiB/s. Must be greater than zero. |
 | `Server.IdleTimeout`<br />Default: `2m` | Maximum keep-alive idle time. Must be greater than zero. |
-| `Server.ShutdownTimeout`<br />Default: `15s` | Grace period for the public server and owned infrastructure during shutdown. Must be greater than zero. |
+| `Server.ShutdownTimeout`<br />Default: `15s` | One shutdown budget, measured from when shutdown starts, for draining HTTP, waiting for serving to end, flushing spans, and the cluster's graceful leave. The WebSocket hub uses the same length for its own drain. Must be greater than zero. |
 | `Server.MaxHeaderBytes`<br />Default: `1048576` (1 MiB) | Maximum request-header size. Must be between `1024` and `16777216` bytes. |
 | `Server.MaxBodyBytes`<br />Default: `1048576` (1 MiB) | Global HTTP request-body ceiling before narrower route limits. Must be between `1024` and `104857600` bytes. |
 | `Server.TrustedProxies[]`<br />Default: empty list | Reverse-proxy peers, as IP addresses or CIDR prefixes, whose `X-Forwarded-For` and `X-Request-ID` headers are accepted. At most 256 entries. Empty trusts no proxy: the connection address is the client and every request ID is server-generated. A listed proxy must overwrite any client-supplied `X-Request-ID`, because the server accepts the value it forwards. |
@@ -102,7 +102,7 @@ below it or raise the timeout for the diagnosis.
 | `Tracing.EndpointURL`<br />Default: `http://127.0.0.1:4318/v1/traces` | Complete OTLP/HTTP traces URL, normally a collector on the node or its network. Must be an absolute `http` or `https` URL without credentials, query, or fragment. |
 | `Tracing.SampleRatio`<br />Default: `1` | Fraction of new root traces recorded, from `0` to `1`. A request continued from a trusted proxy follows the proxy's sampling decision. |
 | `Tracing.ExportTimeout`<br />Default: `10s` | Deadline for one export request to the collector. Must be positive and at most `1m`. |
-| `Tracing.ShutdownTimeout`<br />Default: `5s` | Time allowed to flush buffered spans at shutdown. Must be positive and at most `1m`. |
+| `Tracing.ShutdownTimeout`<br />Default: `5s` | Time allowed to flush buffered spans at shutdown; the flush also ends when the shared `Server.ShutdownTimeout` budget runs out. Must be positive and at most `1m`. |
 
 Proctor continues an inbound W3C `traceparent` only from a peer listed in
 `Server.TrustedProxies`, the same rule that admits its request ID; any other

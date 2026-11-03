@@ -208,7 +208,7 @@ func TestSMTPOutageDoesNotFailPlatformReadiness(t *testing.T) {
 	resources.Mailer = unavailableMailer{}
 	service, err := acceptForTest(resources)
 	require.NoError(t, err)
-	t.Cleanup(func() { _ = service.Close() })
+	t.Cleanup(func() { _ = service.Close(context.Background()) })
 	err = service.CheckDependencies(context.Background())
 	require.NoError(t, err)
 	err = service.Start(context.Background())
@@ -286,7 +286,7 @@ func TestAcceptReturnsTheValidatedConstructionSnapshot(t *testing.T) {
 	resources := completeOwnedResources(t, configuration)
 	service, snapshot, err := Accept(context.Background(), resources)
 	require.NoError(t, err)
-	t.Cleanup(func() { _ = service.Close() })
+	t.Cleanup(func() { _ = service.Close(context.Background()) })
 	updated := configuration.Get()
 	updated.Server.PublicURL = "https://updated.example.test"
 	_, _, err = configuration.Set(context.Background(), updated)
@@ -532,7 +532,7 @@ func TestServiceReconfiguresLoggerFromSharedConfiguration(t *testing.T) {
 	logger := resources.Logger
 	service, err := acceptForTest(resources)
 	require.NoError(t, err)
-	t.Cleanup(func() { _ = service.Close() })
+	t.Cleanup(func() { _ = service.Close(context.Background()) })
 	logger.Info("first target")
 	require.NoError(t, logger.Flush())
 
@@ -585,7 +585,7 @@ func TestServiceAtomicallyReconfiguresExternalProviders(t *testing.T) {
 	providers := resources.ExternalAuthentication
 	service, err := acceptForTest(resources)
 	require.NoError(t, err)
-	t.Cleanup(func() { _ = service.Close() })
+	t.Cleanup(func() { _ = service.Close(context.Background()) })
 	descriptors := providers.Descriptors()
 	require.Len(t, descriptors, 1)
 	require.Equal(t, "campus-cas", descriptors[0].ID)
@@ -682,7 +682,7 @@ func TestServiceOwnsClusterLifecycle(t *testing.T) {
 	require.False(t, cluster.started.Load(), "cluster transport started during construction before handlers can be registered")
 	require.NoError(t, service.Start(context.Background()))
 	require.True(t, cluster.started.Load(), "platform did not start cluster transport")
-	require.NoError(t, service.Close())
+	require.NoError(t, service.Close(context.Background()))
 	require.True(t, cluster.stopped.Load(), "platform did not stop cluster transport")
 }
 
@@ -704,7 +704,7 @@ func TestServiceDoesNotClosePersistenceBeforeClusterStopReturns(t *testing.T) {
 	require.NoError(t, err)
 
 	closed := make(chan error, 1)
-	go func() { closed <- service.Close() }()
+	go func() { closed <- service.Close(context.Background()) }()
 	<-cluster.entered
 	require.False(t, persistence.closed.Load(), "persistence closed while the owned cluster stop was still running")
 	close(cluster.release)
@@ -743,7 +743,7 @@ func TestServiceReloadRollsBackEveryConsumerWhenOneCannotApply(t *testing.T) {
 	providers := resources.ExternalAuthentication
 	service, err := acceptForTest(resources)
 	require.NoError(t, err)
-	t.Cleanup(func() { _ = service.Close() })
+	t.Cleanup(func() { _ = service.Close(context.Background()) })
 
 	// The provider change applies first; the logger then refuses its change
 	// because it has already shut down.

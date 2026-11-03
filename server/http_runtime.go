@@ -318,21 +318,10 @@ func normalizeHTTPServeResult(name string, err error) error {
 	return fmt.Errorf("serve %s: %w", name, err)
 }
 
-func (r *standardHTTPRuntime) Shutdown(ctx context.Context) error {
+// Stop drains both owned servers concurrently until ctx ends, then closes the
+// connections that remain. A ctx that has already ended closes at once.
+func (r *standardHTTPRuntime) Stop(ctx context.Context) error {
 	r.stopping.Store(true)
-	return r.stopServers(func(server *http.Server) error {
-		return server.Shutdown(ctx)
-	})
-}
-
-func (r *standardHTTPRuntime) Close() error {
-	r.stopping.Store(true)
-	return r.stopServers(func(server *http.Server) error {
-		return server.Close()
-	})
-}
-
-func (r *standardHTTPRuntime) stopServers(stop func(*http.Server) error) error {
 	servers := []*http.Server{r.primary}
 	if r.forwarding != nil {
 		servers = append(servers, r.forwarding)
@@ -343,7 +332,7 @@ func (r *standardHTTPRuntime) stopServers(stop func(*http.Server) error) error {
 	for _, server := range servers {
 		go func() {
 			defer wait.Done()
-			errorsByServer <- stop(server)
+			errorsByServer <- stopHTTPServer(ctx, server)
 		}()
 	}
 	wait.Wait()
@@ -353,4 +342,17 @@ func (r *standardHTTPRuntime) stopServers(stop func(*http.Server) error) error {
 		result = errors.Join(result, err)
 	}
 	return result
+}
+
+func stopHTTPServer(ctx context.Context, server *http.Server) error {
+	if ctx.Err() != nil {
+		if err := server.Close(); err != nil {
+			return fmt.Errorf("close HTTP: %w", err)
+		}
+		return nil
+	}
+	if err := server.Shutdown(ctx); err != nil {
+		return errors.Join(fmt.Errorf("drain HTTP: %w", err), server.Close())
+	}
+	return nil
 }

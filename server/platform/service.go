@@ -70,7 +70,9 @@ func Accept(
 	accepted := false
 	defer func() {
 		if !accepted {
-			resultErr = errors.Join(resultErr, closeOwnedResources(resources))
+			stopCtx, cancelStop := context.WithTimeout(context.Background(), shutdownTimeout(resources.Configuration))
+			defer cancelStop()
+			resultErr = errors.Join(resultErr, closeOwnedResources(stopCtx, resources))
 		}
 	}()
 	if err := validateOwnedResources(resources); err != nil {
@@ -216,16 +218,15 @@ func newService(
 	return service, nil
 }
 
-func closeOwnedResources(resources OwnedResources) error {
-	shutdownTimeout := 15 * time.Second
-	if resources.Configuration != nil {
-		shutdownTimeout = resources.Configuration.Get().Server.ShutdownTimeout.Duration
-	}
-	stopCtx, cancelStop := context.WithTimeout(context.Background(), shutdownTimeout)
-	defer cancelStop()
+// closeOwnedResources is Platform's one disposal sequence, shared by a failed
+// Accept and Service.Close. The cluster leaves first, while persistence is
+// still open for lease withdrawal, within the caller's shutdown budget. The
+// logger flushes last under its own bound, so a spent shutdown budget never
+// discards the final shutdown records.
+func closeOwnedResources(ctx context.Context, resources OwnedResources) error {
 	var clusterErr error
 	if resources.Cluster != nil {
-		clusterErr = resources.Cluster.Stop(stopCtx)
+		clusterErr = resources.Cluster.Stop(ctx)
 	}
 	var vfsErr error
 	if closer, ok := resources.VFS.(interface{ Close() error }); ok {
@@ -245,7 +246,9 @@ func closeOwnedResources(resources OwnedResources) error {
 	}
 	var loggerErr error
 	if resources.Logger != nil {
-		loggerErr = resources.Logger.Shutdown(stopCtx)
+		flushCtx, cancelFlush := context.WithTimeout(context.Background(), shutdownTimeout(resources.Configuration))
+		loggerErr = resources.Logger.Shutdown(flushCtx)
+		cancelFlush()
 	}
 	var configurationErr error
 	if resources.Configuration != nil {
@@ -260,6 +263,15 @@ func closeOwnedResources(resources OwnedResources) error {
 		loggerErr,
 		configurationErr,
 	)
+}
+
+// shutdownTimeout is the configured Server.ShutdownTimeout, or its default
+// before a configuration store exists.
+func shutdownTimeout(configuration *config.Store) time.Duration {
+	if configuration == nil {
+		return config.Default().Server.ShutdownTimeout.Duration
+	}
+	return configuration.Get().Server.ShutdownTimeout.Duration
 }
 
 func (s *Service) Start(ctx context.Context) error {
@@ -326,37 +338,20 @@ func (s *Service) ReloadConfiguration(ctx context.Context) (config.ReloadResult,
 	return s.configStore.Reload(ctx)
 }
 
-func (s *Service) Close() error {
+// Close disposes every owned resource exactly once. ctx is the caller's
+// shutdown budget and bounds the cluster's graceful leave; repeated and
+// concurrent callers observe the first result.
+func (s *Service) Close(ctx context.Context) error {
 	s.shutdownOnce.Do(func() {
 		for _, id := range s.configListeners {
 			s.configStore.RemoveListener(id)
 		}
-		stopCtx, cancelStop := context.WithTimeout(
-			context.Background(),
-			s.configStore.Get().Server.ShutdownTimeout.Duration,
-		)
-		defer cancelStop()
-		s.shutdownErr = errors.Join(
-			s.cluster.Stop(stopCtx),
-			s.closeInfrastructure(),
-			s.store.Close(),
-			s.logger.Shutdown(stopCtx),
-			s.configStore.Close(),
-		)
+		s.shutdownErr = closeOwnedResources(ctx, OwnedResources{
+			Configuration: s.configStore, Logger: s.logger, Persistence: s.store,
+			Cache: s.cache, Cluster: s.cluster, Mailer: s.mailer, VFS: s.vfs,
+		})
 	})
 	return s.shutdownErr
-}
-
-func (s *Service) closeInfrastructure() error {
-	var vfsErr error
-	if closer, ok := s.vfs.(interface{ Close() error }); ok {
-		vfsErr = closer.Close()
-	}
-	return errors.Join(
-		vfsErr,
-		s.mailer.Close(),
-		s.cache.Close(),
-	)
 }
 
 func configureLogger(logger *logging.Logger, settings config.Log) error {

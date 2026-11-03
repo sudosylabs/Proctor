@@ -30,7 +30,7 @@ func recordingModule(t *testing.T, ratio float64) (*Module, *tracetest.SpanRecor
 	settings.SampleRatio = ratio
 	recorder := tracetest.NewSpanRecorder()
 	module := newModule(settings, Identity{Version: "test", NodeID: "node-a"}, recorder)
-	t.Cleanup(func() { require.NoError(t, module.Close()) })
+	t.Cleanup(func() { require.NoError(t, module.Close(context.Background())) })
 	return module, recorder
 }
 
@@ -172,8 +172,8 @@ func TestDisabledModuleStartsNothing(t *testing.T) {
 	span.End(http.StatusOK)
 	_, _, ok := Correlation(ctx)
 	require.False(t, ok, "disabled tracing produced a correlatable span")
-	require.NoError(t, module.Close())
-	require.NoError(t, module.Close())
+	require.NoError(t, module.Close(context.Background()))
+	require.NoError(t, module.Close(context.Background()))
 }
 
 func TestEnabledModuleConstructsAnExporterWithoutConnecting(t *testing.T) {
@@ -185,6 +185,6 @@ func TestEnabledModuleConstructsAnExporterWithoutConnecting(t *testing.T) {
 	module, err := New(settings, Identity{Version: "test", NodeID: "node-a"}, nil)
 	require.NoError(t, err)
 	require.True(t, module.Enabled())
-	require.NoError(t, module.Close(), "closing with no buffered spans needs no collector")
-	require.NoError(t, module.Close())
+	require.NoError(t, module.Close(context.Background()), "closing with no buffered spans needs no collector")
+	require.NoError(t, module.Close(context.Background()))
 }

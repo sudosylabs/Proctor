@@ -253,7 +253,10 @@ WebSockets. The detailed delivery, authentication, and recovery contract is
 
 The composition root starts dependencies before consumers and marks readiness
 only after mandatory dependencies are usable. Shutdown reverses ownership under
-bounded deadlines. Every goroutine, client, queue, channel, and closer has an
+bounded deadlines through one ordered sequence (`server/shutdown.go`) that
+every stop path enters: listener, HTTP, Jobs, WebSocket, transport, serving
+lease, metrics, tracing, Platform. Its single `Server.ShutdownTimeout` budget starts
+with shutdown; do not add a second drain timer or a per-path close sequence. Every goroutine, client, queue, channel, and closer has an
 owner and shutdown path; request/event fan-out is bounded with an explicit
 backpressure, drop, or disconnect policy.
 
@@ -314,7 +317,8 @@ OTLP/HTTP exporter; it never installs a global provider. It is built with the
 metrics module, hands composition-built adapters to three consumer-owned ports
 (`httpapi.Tracing`, `timerlayer.Tracer`, `job.Tracer`), and closes after every
 span producer and before `platform.Service`, flushing within
-`Tracing.ShutdownTimeout`. Request spans are renamed to the sealed route
+`Tracing.ShutdownTimeout` or what remains of the shared shutdown budget,
+whichever ends first. Request spans are renamed to the sealed route
 template once routed and end at a WebSocket hijack; store spans exist only
 inside a recording trace; each Job execution is a new root. Inbound W3C trace
 context is continued only from a trusted proxy. The logging core's context

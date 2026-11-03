@@ -464,7 +464,7 @@ func (i *ownedInfrastructure) acceptPlatform(
 	*i = ownedInfrastructure{}
 	service, snapshot, err := platform.Accept(ctx, resources)
 	if err != nil {
-		return nil, config.Config{}, constructionCapabilities{}, errors.Join(err, capabilities.metrics.Close(), capabilities.tracing.Close())
+		return nil, config.Config{}, constructionCapabilities{}, errors.Join(err, capabilities.metrics.Close(), capabilities.tracing.Close(context.Background()))
 	}
 	return service, snapshot, capabilities, nil
 }
@@ -514,7 +514,7 @@ func (i *ownedInfrastructure) release() error {
 	}
 	var tracingErr error
 	if i.tracing != nil {
-		tracingErr = i.tracing.Close()
+		tracingErr = i.tracing.Close(context.Background())
 	}
 	return errors.Join(
 		metricsErr,

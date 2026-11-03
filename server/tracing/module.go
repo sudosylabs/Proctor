@@ -100,14 +100,15 @@ func newModule(settings config.Tracing, identity Identity, processor sdktrace.Sp
 // Enabled reports whether spans are recorded and exported.
 func (m *Module) Enabled() bool { return m != nil && m.provider != nil }
 
-// Close flushes buffered spans and stops the exporter within the configured
-// shutdown timeout. It is idempotent and safe on a disabled module.
-func (m *Module) Close() error {
+// Close flushes buffered spans and stops the exporter. The flush ends when ctx,
+// the caller's shutdown budget, ends or after the configured shutdown timeout,
+// whichever comes first. It is idempotent and safe on a disabled module.
+func (m *Module) Close(ctx context.Context) error {
 	if m == nil || m.provider == nil {
 		return nil
 	}
 	m.closeOnce.Do(func() {
-		ctx, cancel := context.WithTimeout(context.Background(), m.settings.ShutdownTimeout.Duration)
+		ctx, cancel := context.WithTimeout(ctx, m.settings.ShutdownTimeout.Duration)
 		defer cancel()
 		if err := m.provider.Shutdown(ctx); err != nil {
 			m.closeErr = fmt.Errorf("shut down tracer provider: %w", err)

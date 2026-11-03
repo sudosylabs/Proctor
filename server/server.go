@@ -25,7 +25,6 @@ import (
 	"github.com/sudosylabs/proctor/server/config"
 	"github.com/sudosylabs/proctor/server/logging"
 	"github.com/sudosylabs/proctor/server/model"
-	"github.com/sudosylabs/proctor/server/tracing"
 )
 
 type options struct {
@@ -45,8 +44,6 @@ func withCurrentSchemaRequired() Option {
 		return nil
 	}
 }
-
-var errHTTPServerStopTimeout = errors.New("HTTP server did not stop after graceful shutdown")
 
 // Option configures construction without exposing infrastructure or transport
 // implementation types.
@@ -83,15 +80,21 @@ func WithReadyNotifier(notify ReadyNotifier) Option {
 	}
 }
 
-// runtimeComponent is the one lifecycle shape the Server drives: the
-// infrastructure Platform, durable Jobs, and the WebSocket transport.
-// Construction is inert; Start enters runtime work and Close drains it. Jobs
-// start only after the authoritative store is ready and drain before
-// transports and infrastructure close, so handlers never outlive their VFS or
-// persistence dependencies.
+// runtimeComponent is the lifecycle shape of durable Jobs and the WebSocket
+// transport. Construction is inert; Start enters runtime work and Close drains
+// it within the component's own bound. Jobs start only after the
+// authoritative store is ready and drain before transports and infrastructure
+// close, so handlers never outlive their VFS or persistence dependencies.
 type runtimeComponent interface {
 	Start(context.Context) error
 	Close() error
+}
+
+// runtimePlatform is the infrastructure owner. It starts first and closes
+// last, within the remainder of the shutdown budget it is handed.
+type runtimePlatform interface {
+	Start(context.Context) error
+	Close(context.Context) error
 }
 
 // monitoredRuntimeComponent additionally reports asynchronous runtime
@@ -139,6 +142,12 @@ type runtimeAdministratorRecovery interface {
 	ResetAdministratorMFA(context.Context, invocation.System, app.AdministratorMFAResetCommand) (*app.AdministratorMFAResetResult, error)
 }
 
+// runtimeTracing is the span exporter's lifecycle: Close flushes buffered
+// spans within the shutdown budget it is handed.
+type runtimeTracing interface {
+	Close(context.Context) error
+}
+
 type runtimeReadiness interface {
 	Ready() bool
 	SetReady(bool)
@@ -146,8 +155,9 @@ type runtimeReadiness interface {
 
 type httpRuntime interface {
 	Serve(net.Listener, func() bool) error
-	Shutdown(context.Context) error
-	Close() error
+	// Stop drains in-flight requests until ctx ends and then closes the
+	// connections that remain; an ended ctx closes at once.
+	Stop(context.Context) error
 }
 
 // ownershipListener transfers the bound listener at the first HTTP accept.
@@ -261,7 +271,7 @@ func canonicalPublicURLAuthority(publicURL *url.URL) string {
 }
 
 type runtimeComponents struct {
-	platform              runtimeComponent
+	platform              runtimePlatform
 	reconciler            runtimeReconciler
 	administratorRecovery runtimeAdministratorRecovery
 	settings              runtimeSettings
@@ -270,7 +280,7 @@ type runtimeComponents struct {
 	servingLease          monitoredRuntimeComponent
 	metrics               runtimeMetrics
 	// tracing flushes and stops span export; nil when tracing was never built.
-	tracing   *tracing.Module
+	tracing   runtimeTracing
 	transport runtimeTransport
 	websocket runtimeComponent
 	readiness runtimeReadiness
@@ -321,20 +331,18 @@ type Server struct {
 	// component. It has no lifecycle and is invoked only after readiness.
 	readyNotifier ReadyNotifier
 
-	lifecycleMu  sync.Mutex
-	state        nodeState
-	runCancel    context.CancelFunc
-	runDone      chan struct{}
-	milestones   lifecycleMilestones
-	listener     net.Listener
-	lifecycleErr error
+	lifecycleMu sync.Mutex
+	state       nodeState
+	runCancel   context.CancelFunc
+	runDone     chan struct{}
+	milestones  lifecycleMilestones
+	listener    net.Listener
 
-	httpMu sync.Mutex
-	http   httpRuntime
-	// httpShutdownErr is retained so the Close call that requested shutdown and
-	// every later Close observe the same drain failure as Run.
-	httpShutdownErr error
+	httpMu    sync.Mutex
+	http      httpRuntime
+	serveExit <-chan error
 
+	// closeErr is the one shutdown result shared by Run and every Close.
 	closeOnce sync.Once
 	closeErr  error
 }
@@ -403,139 +411,205 @@ func New(ctx context.Context, optionValues ...Option) (*Server, error) {
 // marks the node ready only after both have started, and blocks until
 // cancellation or serving failure. It returns an error when the server is
 // closed, was already run, cannot start a dependency or listener, or stops
-// unexpectedly. Every exit path closes the assembled runtime.
+// unexpectedly. Every exit path goes through the one shutdown sequence.
 func (s *Server) Run(ctx context.Context) (resultErr error) {
+	runCtx, endRun, err := s.beginRun(ctx)
+	if err != nil {
+		return err
+	}
+	var stop stopPlan
+	defer func() {
+		resultErr = errors.Join(stop.cause, s.endRun(stop, endRun))
+	}()
+	stop = s.serve(runCtx)
+	return nil
+}
+
+// beginRun moves an inert node to starting and returns the run context that
+// cancellation and Close end.
+func (s *Server) beginRun(ctx context.Context) (context.Context, context.CancelFunc, error) {
 	s.lifecycleMu.Lock()
+	defer s.lifecycleMu.Unlock()
 	if s.state == nodeClosed {
-		s.lifecycleMu.Unlock()
-		return errors.New("server is closed")
+		return nil, nil, errors.New("server is closed")
 	}
 	if s.state != nodeInert {
-		s.lifecycleMu.Unlock()
-		return errors.New("server has already been run")
+		return nil, nil, errors.New("server has already been run")
 	}
 	runCtx, runCancel := context.WithCancel(ctx)
 	s.state = nodeStarting
 	s.runCancel = runCancel
 	s.runDone = make(chan struct{})
-	runDone := s.runDone
+	return runCtx, runCancel, nil
+}
+
+// serve runs startup, HTTP handoff, readiness, and steady-state serving, and
+// returns how the shutdown sequence must stop the node.
+func (s *Server) serve(runCtx context.Context) stopPlan {
+	if err := s.startRuntime(runCtx); err != nil {
+		return stopAfter(err)
+	}
+	listener, err := s.bindListener(runCtx)
+	if err != nil {
+		return stopAfter(err)
+	}
+	serving := s.startHTTP(runCtx, listener)
+	if stop, handedOff := s.awaitHandoff(runCtx, serving); !handedOff {
+		return stop
+	}
+	s.announceReady(runCtx, listener)
+	return s.awaitStop(runCtx, serving)
+}
+
+// endRun shuts the node down and releases Close callers waiting for Run.
+func (s *Server) endRun(stop stopPlan, endRun context.CancelFunc) error {
+	err := s.shutdown(stop, endRun)
+	s.lifecycleMu.Lock()
+	s.state = nodeClosed
+	close(s.runDone)
 	s.lifecycleMu.Unlock()
+	return err
+}
 
-	defer func() {
-		runCancel()
-		resultErr = errors.Join(resultErr, s.closeRuntime())
-		s.lifecycleMu.Lock()
-		s.state = nodeClosed
-		close(runDone)
-		s.lifecycleMu.Unlock()
-	}()
+// errStopRequested ends startup without a failure: the run was canceled.
+var errStopRequested = errors.New("stop requested during startup")
 
-	if err := s.components.platform.Start(runCtx); err != nil {
-		if gracefulCancellation(err, runCtx.Err()) {
-			return nil
-		}
-		return fmt.Errorf("start platform: %w", err)
+func stopAfter(err error) stopPlan {
+	if errors.Is(err, errStopRequested) {
+		return stopPlan{}
 	}
-	s.recordStarted(func(m *lifecycleMilestones) { m.platformStarted = true })
+	return stopPlan{cause: err}
+}
+
+// startupStage is one ordered step of node startup. verify reports a runtime
+// failure that became observable while the stage started.
+type startupStage struct {
+	name    string
+	start   func(context.Context) error
+	entered func(context.Context)
+	verify  func() error
+}
+
+func (s *Server) startupStages() []startupStage {
+	stages := []startupStage{{
+		name:    "start platform",
+		start:   s.components.platform.Start,
+		entered: func(context.Context) { s.recordStarted(func(m *lifecycleMilestones) { m.platformStarted = true }) },
+	}}
 	if s.components.metrics != nil {
-		if err := s.components.metrics.Start(runCtx); err != nil {
-			if gracefulCancellation(err, runCtx.Err()) {
-				return nil
-			}
-			return fmt.Errorf("start metrics: %w", err)
-		}
-		if err := s.currentMetricsFailure(); err != nil {
-			return fmt.Errorf("serve metrics: %w", err)
-		}
-	}
-	if runCtx.Err() != nil {
-		return nil
+		stages = append(stages, startupStage{
+			name: "start metrics", start: s.components.metrics.Start, verify: s.verifyMetrics,
+		})
 	}
 	if s.components.servingLease != nil {
-		if err := s.components.servingLease.Start(runCtx); err != nil {
-			if gracefulCancellation(err, runCtx.Err()) {
-				return nil
-			}
-			return fmt.Errorf("start serving node lease: %w", err)
-		}
-		if err := s.currentServingNodeLeaseFailure(); err != nil {
-			return fmt.Errorf("maintain serving node lease: %w", err)
-		}
-		s.components.logger.InfoContext(runCtx, "serving node lease started")
+		stages = append(stages, startupStage{
+			name: "start serving node lease", start: s.components.servingLease.Start, verify: s.verifyServingNodeLease,
+			entered: func(ctx context.Context) { s.components.logger.InfoContext(ctx, "serving node lease started") },
+		})
 	}
-	if s.components.reconciler != nil {
-		if err := s.components.reconciler.ReconcileSystemAdministratorRole(runCtx, startupReconciliation); err != nil {
-			if gracefulCancellation(err, runCtx.Err()) {
-				return nil
-			}
-			return fmt.Errorf("reconcile protected built-in roles: %w", err)
-		}
-		if runCtx.Err() != nil {
-			return nil
-		}
-		if err := s.components.reconciler.ReconcileAdministratorRecovery(runCtx, startupReconciliation); err != nil {
-			if gracefulCancellation(err, runCtx.Err()) {
-				return nil
-			}
-			return fmt.Errorf("reconcile offline administrator recovery: %w", err)
-		}
-		if runCtx.Err() != nil {
-			return nil
-		}
-		if err := s.currentServingNodeLeaseFailure(); err != nil {
-			return fmt.Errorf("maintain serving node lease: %w", err)
-		}
-		s.components.logger.InfoContext(runCtx, "startup reconciliation complete")
+	if reconciler := s.components.reconciler; reconciler != nil {
+		stages = append(stages, startupStage{
+			name: "reconcile protected built-in roles",
+			start: func(ctx context.Context) error {
+				return reconciler.ReconcileSystemAdministratorRole(ctx, startupReconciliation)
+			},
+		}, startupStage{
+			name: "reconcile offline administrator recovery",
+			start: func(ctx context.Context) error {
+				return reconciler.ReconcileAdministratorRecovery(ctx, startupReconciliation)
+			},
+			entered: func(ctx context.Context) { s.components.logger.InfoContext(ctx, "startup reconciliation complete") },
+			verify:  s.verifyServingNodeLease,
+		})
 	}
 	if s.components.jobs != nil {
-		if err := s.components.jobs.Start(runCtx); err != nil {
-			if gracefulCancellation(err, runCtx.Err()) {
-				return nil
-			}
-			return fmt.Errorf("start durable jobs: %w", err)
-		}
-		s.recordStarted(func(m *lifecycleMilestones) { m.jobsStarted = true })
-		s.components.logger.InfoContext(runCtx, "durable jobs started")
-		if runCtx.Err() != nil {
-			return nil
-		}
-		if err := s.currentServingNodeLeaseFailure(); err != nil {
-			return fmt.Errorf("maintain serving node lease: %w", err)
-		}
+		stages = append(stages, startupStage{
+			name: "start durable jobs", start: s.components.jobs.Start, verify: s.verifyServingNodeLease,
+			entered: func(ctx context.Context) {
+				s.recordStarted(func(m *lifecycleMilestones) { m.jobsStarted = true })
+				s.components.logger.InfoContext(ctx, "durable jobs started")
+			},
+		})
 	}
 	if s.components.websocket != nil {
-		if err := s.components.websocket.Start(runCtx); err != nil {
-			if gracefulCancellation(err, runCtx.Err()) {
-				return nil
+		stages = append(stages, startupStage{
+			name: "start WebSocket", start: s.components.websocket.Start, verify: s.verifyServingNodeLease,
+			entered: func(ctx context.Context) {
+				s.recordStarted(func(m *lifecycleMilestones) { m.websocketStarted = true })
+				s.components.logger.InfoContext(ctx, "WebSocket service started")
+			},
+		})
+	}
+	return stages
+}
+
+// startRuntime enters every startup stage in dependency order. Cancellation
+// between or during stages stops startup without a failure; a dependency
+// failure wins over a concurrent cancellation.
+func (s *Server) startRuntime(ctx context.Context) error {
+	for _, stage := range s.startupStages() {
+		if err := stage.start(ctx); err != nil {
+			if gracefulCancellation(err, ctx.Err()) {
+				return errStopRequested
 			}
-			return fmt.Errorf("start WebSocket: %w", err)
+			return fmt.Errorf("%s: %w", stage.name, err)
 		}
-		s.recordStarted(func(m *lifecycleMilestones) { m.websocketStarted = true })
-		s.components.logger.InfoContext(runCtx, "WebSocket service started")
-		if runCtx.Err() != nil {
-			return nil
+		if stage.entered != nil {
+			stage.entered(ctx)
 		}
-		if err := s.currentServingNodeLeaseFailure(); err != nil {
-			return fmt.Errorf("maintain serving node lease: %w", err)
+		if stage.verify != nil {
+			if err := stage.verify(); err != nil {
+				return err
+			}
+		}
+		if ctx.Err() != nil {
+			return errStopRequested
 		}
 	}
+	return nil
+}
 
-	settings := s.components.settings
-	listener, err := s.components.listen("tcp", settings.listenAddress)
+func (s *Server) verifyMetrics() error {
+	if err := s.currentMetricsFailure(); err != nil {
+		return fmt.Errorf("serve metrics: %w", err)
+	}
+	return nil
+}
+
+func (s *Server) verifyServingNodeLease() error {
+	if err := s.currentServingNodeLeaseFailure(); err != nil {
+		return fmt.Errorf("maintain serving node lease: %w", err)
+	}
+	return nil
+}
+
+// bindListener binds the client-facing listener. Until HTTP accepts it, the
+// Server owns the listener and the shutdown sequence closes it.
+func (s *Server) bindListener(ctx context.Context) (net.Listener, error) {
+	address := s.components.settings.listenAddress
+	listener, err := s.components.listen("tcp", address)
 	if err != nil {
-		return fmt.Errorf("listen on %s: %w", settings.listenAddress, err)
+		return nil, fmt.Errorf("listen on %s: %w", address, err)
 	}
 	s.lifecycleMu.Lock()
 	s.listener = listener
 	s.milestones.listenerBound = true
 	s.lifecycleMu.Unlock()
-	if runCtx.Err() != nil {
-		if err := s.closeOwnedListener(); err != nil {
-			return fmt.Errorf("close listener after canceled startup: %w", err)
-		}
-		return nil
+	if ctx.Err() != nil {
+		return nil, errStopRequested
 	}
+	return listener, nil
+}
 
+// httpServe is one running Serve call: its exit result and whether it
+// accepted the listener handoff.
+type httpServe struct {
+	exit    <-chan error
+	handoff <-chan bool
+}
+
+func (s *Server) startHTTP(runCtx context.Context, listener net.Listener) httpServe {
+	settings := s.components.settings
 	httpServer := s.components.newHTTP(httpServerSettings{
 		handler:           s.components.transport,
 		errorLog:          s.components.logger.StdLogger(slog.LevelError),
@@ -547,14 +621,13 @@ func (s *Server) Run(ctx context.Context) (resultErr error) {
 		idleTimeout:       settings.idleTimeout,
 		maxHeaderBytes:    settings.maxHeaderBytes,
 	})
-	s.httpMu.Lock()
-	s.http = httpServer
-	s.httpMu.Unlock()
-
-	serveErrors := make(chan error, 1)
+	exit := make(chan error, 1)
 	handoff := make(chan bool, 1)
+	s.httpMu.Lock()
+	s.http, s.serveExit = httpServer, exit
+	s.httpMu.Unlock()
 	go func() {
-		serveErrors <- httpServer.Serve(listener, func() bool {
+		exit <- httpServer.Serve(listener, func() bool {
 			s.lifecycleMu.Lock()
 			accepted := s.state == nodeStarting && runCtx.Err() == nil && s.listener == listener
 			if accepted {
@@ -567,133 +640,94 @@ func (s *Server) Run(ctx context.Context) (resultErr error) {
 			return accepted
 		})
 	}()
-	// The listener is bound, every mandatory runtime dependency is running, and
-	// the HTTP runtime has accepted the listener for serving. An implementation
-	// that rejects the listener reports that error instead of acknowledging it.
+	return httpServe{exit: exit, handoff: handoff}
+}
+
+// awaitHandoff waits until HTTP accepts the listener. The listener is bound
+// and every mandatory runtime dependency is running; an HTTP runtime that
+// rejects the listener reports that error instead of acknowledging it.
+func (s *Server) awaitHandoff(runCtx context.Context, serving httpServe) (stopPlan, bool) {
 	select {
-	case serveErr := <-serveErrors:
+	case serveErr := <-serving.exit:
+		stop := stopPlan{serveExited: true}
 		// Close marks the node stopping before it cancels runCtx, so a
 		// refused handoff can surface the closed listener first.
-		if s.handoffRefusedForShutdown(runCtx, serveErr) {
-			return nil
+		if !s.handoffRefusedForShutdown(runCtx, serveErr) && serveErr != nil && !errors.Is(serveErr, http.ErrServerClosed) {
+			stop.cause = fmt.Errorf("serve HTTP: %w", serveErr)
 		}
-		var shutdownErr error
-		if s.httpServing() {
-			shutdownErr = s.shutdownHTTP(settings.shutdownTimeout)
-		}
-		if serveErr != nil && !errors.Is(serveErr, http.ErrServerClosed) {
-			return errors.Join(fmt.Errorf("serve HTTP: %w", serveErr), shutdownErr)
-		}
-		return shutdownErr
-	case accepted := <-handoff:
+		return stop, false
+	case accepted := <-serving.handoff:
 		if !accepted {
-			return nil
+			return stopPlan{}, false
 		}
 	case <-runCtx.Done():
-		if err := s.closeOwnedListener(); err != nil {
-			return fmt.Errorf("close listener before HTTP handoff: %w", err)
-		}
-		if !s.httpServing() {
-			return nil
-		}
+		return stopPlan{}, false
 	case leaseErr := <-s.servingNodeLeaseFailures():
-		return errors.Join(
-			fmt.Errorf("maintain serving node lease: %w", leaseErr),
-			s.closeOwnedListener(),
-			s.forceCloseHTTP(),
-		)
+		return stopPlan{cause: fmt.Errorf("maintain serving node lease: %w", leaseErr), force: true}, false
 	case metricsErr := <-s.metricsFailures():
-		return errors.Join(fmt.Errorf("serve metrics: %w", metricsErr), s.closeOwnedListener(), s.forceCloseHTTP())
+		return stopPlan{cause: fmt.Errorf("serve metrics: %w", metricsErr), force: true}, false
 	}
 	// Handoff and a dependency failure may become selectable together. Drain
 	// any already-queued failure before publishing readiness so a dead required
 	// listener or serving lease is never briefly advertised as healthy.
-	if metricsErr := s.currentMetricsFailure(); metricsErr != nil {
-		return errors.Join(fmt.Errorf("serve metrics: %w", metricsErr), s.forceCloseHTTP())
+	if err := s.verifyMetrics(); err != nil {
+		return stopPlan{cause: err, force: true}, false
 	}
-	if leaseErr := s.currentServingNodeLeaseFailure(); leaseErr != nil {
-		return errors.Join(fmt.Errorf("maintain serving node lease: %w", leaseErr), s.forceCloseHTTP())
+	if err := s.verifyServingNodeLease(); err != nil {
+		return stopPlan{cause: err, force: true}, false
 	}
-	if s.publishReady(runCtx) {
-		s.components.logger.InfoContext(
-			runCtx,
-			"server started",
-			logging.String("listen_address", listener.Addr().String()),
-			logging.String("public_url", settings.publicURL),
-			logging.String("tls_mode", string(settings.tls.mode)),
-			logging.Bool("http_to_https_forwarding", settings.tls.forwardHTTPToHTTPS),
-			logging.String("version", app.Version),
-		)
-		if s.readyNotifier != nil {
-			if err := s.readyNotifier(runCtx); err != nil {
-				s.components.logger.ErrorContext(
-					runCtx,
-					"host readiness notification failed",
-					logging.Err(err),
-				)
-			} else {
-				s.components.logger.InfoContext(runCtx, "host readiness notification sent")
-			}
-		}
-	}
-
-	var runtimeErr error
-	forceServingStop := false
-	select {
-	case serveErr := <-serveErrors:
-		s.setUnready()
-		shutdownErr := s.shutdownHTTP(settings.shutdownTimeout)
-		if serveErr != nil && !errors.Is(serveErr, http.ErrServerClosed) {
-			return errors.Join(fmt.Errorf("serve HTTP: %w", serveErr), shutdownErr)
-		}
-		return shutdownErr
-	case <-runCtx.Done():
-		s.setUnready()
-		s.components.logger.Info("server shutdown started")
-	case leaseErr := <-s.servingNodeLeaseFailures():
-		runtimeErr = fmt.Errorf("maintain serving node lease: %w", leaseErr)
-		forceServingStop = true
-		s.setUnready()
-		s.components.logger.ErrorContext(runCtx, "serving node lease failed; stopping server", logging.Err(leaseErr))
-	case metricsErr := <-s.metricsFailures():
-		runtimeErr = fmt.Errorf("serve metrics: %w", metricsErr)
-		forceServingStop = true
-		s.setUnready()
-		s.components.logger.ErrorContext(runCtx, "metrics listener failed; stopping server", logging.Err(metricsErr))
-	}
-
-	var stopErr error
-	if forceServingStop {
-		stopErr = s.forceCloseHTTP()
-	} else {
-		stopErr = s.shutdownHTTP(settings.shutdownTimeout)
-	}
-	if stopErr != nil {
-		return errors.Join(runtimeErr, stopErr)
-	}
-	shutdownTimer := time.NewTimer(settings.shutdownTimeout)
-	defer shutdownTimer.Stop()
-	select {
-	case serveErr := <-serveErrors:
-		// HTTP was just stopped by this lifecycle, so a closed listener is
-		// the expected result of that stop, not a serving failure.
-		if serveErr != nil && !errors.Is(serveErr, http.ErrServerClosed) && !errors.Is(serveErr, net.ErrClosed) {
-			err := fmt.Errorf("serve HTTP during shutdown: %w", serveErr)
-			s.retainHTTPShutdownError(err)
-			return errors.Join(runtimeErr, err)
-		}
-	case <-shutdownTimer.C:
-		err := errHTTPServerStopTimeout
-		s.retainHTTPShutdownError(err)
-		return errors.Join(runtimeErr, err)
-	}
-	s.components.logger.Info("server stopped")
-	return runtimeErr
+	return stopPlan{}, true
 }
 
-// Close makes the node unready, gracefully stops HTTP when running, and then
-// closes transport and shared infrastructure. It is idempotent, waits for a
-// running Run call to finish, and returns any shutdown failures.
+// announceReady publishes readiness and then tells the host process.
+func (s *Server) announceReady(runCtx context.Context, listener net.Listener) {
+	if !s.publishReady(runCtx) {
+		return
+	}
+	settings := s.components.settings
+	s.components.logger.InfoContext(
+		runCtx,
+		"server started",
+		logging.String("listen_address", listener.Addr().String()),
+		logging.String("public_url", settings.publicURL),
+		logging.String("tls_mode", string(settings.tls.mode)),
+		logging.Bool("http_to_https_forwarding", settings.tls.forwardHTTPToHTTPS),
+		logging.String("version", app.Version),
+	)
+	if s.readyNotifier == nil {
+		return
+	}
+	if err := s.readyNotifier(runCtx); err != nil {
+		s.components.logger.ErrorContext(runCtx, "host readiness notification failed", logging.Err(err))
+		return
+	}
+	s.components.logger.InfoContext(runCtx, "host readiness notification sent")
+}
+
+// awaitStop serves until cancellation or a runtime failure. A failed serving
+// lease or metrics listener closes HTTP at once instead of draining it.
+func (s *Server) awaitStop(runCtx context.Context, serving httpServe) stopPlan {
+	select {
+	case serveErr := <-serving.exit:
+		stop := stopPlan{serveExited: true}
+		if serveErr != nil && !errors.Is(serveErr, http.ErrServerClosed) {
+			stop.cause = fmt.Errorf("serve HTTP: %w", serveErr)
+		}
+		return stop
+	case <-runCtx.Done():
+		return stopPlan{}
+	case leaseErr := <-s.servingNodeLeaseFailures():
+		s.components.logger.ErrorContext(runCtx, "serving node lease failed; stopping server", logging.Err(leaseErr))
+		return stopPlan{cause: fmt.Errorf("maintain serving node lease: %w", leaseErr), force: true}
+	case metricsErr := <-s.metricsFailures():
+		s.components.logger.ErrorContext(runCtx, "metrics listener failed; stopping server", logging.Err(metricsErr))
+		return stopPlan{cause: fmt.Errorf("serve metrics: %w", metricsErr), force: true}
+	}
+}
+
+// Close makes the node unready, stops a running node through the shutdown
+// sequence, and disposes an inert one. It is idempotent, waits for a running
+// Run call to finish, and returns the shutdown failures every caller shares.
 func (s *Server) Close() error {
 	s.lifecycleMu.Lock()
 	if s.state == nodeClosed {
@@ -702,24 +736,22 @@ func (s *Server) Close() error {
 		if done != nil {
 			<-done
 		}
-		return errors.Join(s.retainedLifecycleError(), s.retainedHTTPShutdownError(), s.closeRuntime())
+		return s.shutdown(stopPlan{}, nil)
 	}
-	s.state = nodeStopping
-	cancel := s.runCancel
-	done := s.runDone
-	started := done != nil
+	cancel, done := s.runCancel, s.runDone
+	if done == nil {
+		s.state = nodeClosed
+	} else {
+		s.state = nodeStopping
+	}
 	s.lifecycleMu.Unlock()
 
 	s.setUnready()
-	if !started {
-		s.lifecycleMu.Lock()
-		s.state = nodeClosed
-		s.lifecycleMu.Unlock()
-		return errors.Join(s.retainedLifecycleError(), s.retainedHTTPShutdownError(), s.closeRuntime())
+	if done != nil {
+		cancel()
+		<-done
 	}
-	cancel()
-	<-done
-	return errors.Join(s.retainedLifecycleError(), s.retainedHTTPShutdownError(), s.closeRuntime())
+	return s.shutdown(stopPlan{}, nil)
 }
 
 // Ready reports whether the server can currently accept traffic.
@@ -776,129 +808,6 @@ type certificateReloader interface {
 // configurationReloader is the platform capability Reload uses.
 type configurationReloader interface {
 	ReloadConfiguration(context.Context) (config.ReloadResult, error)
-}
-
-func (s *Server) shutdownHTTP(timeout time.Duration) error {
-	s.httpMu.Lock()
-	httpServer := s.http
-	s.httpMu.Unlock()
-	if httpServer == nil {
-		return nil
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
-	defer cancel()
-	// The serving lease keeps renewing while HTTP drains. If it fails, serving
-	// must stop before the lease can expire, so the drain becomes a close.
-	leaseLost := make(chan error, 1)
-	stopWatching := make(chan struct{})
-	watching := make(chan struct{})
-	go func() {
-		defer close(watching)
-		select {
-		case err := <-s.servingNodeLeaseFailures():
-			leaseLost <- err
-			cancel()
-		case <-stopWatching:
-		}
-	}()
-	err := httpServer.Shutdown(ctx)
-	close(stopWatching)
-	<-watching
-	select {
-	case leaseErr := <-leaseLost:
-		result := errors.Join(fmt.Errorf("maintain serving node lease during HTTP shutdown: %w", leaseErr), httpServer.Close())
-		s.retainHTTPShutdownError(result)
-		return result
-	default:
-	}
-	if err != nil {
-		result := errors.Join(fmt.Errorf("graceful HTTP shutdown: %w", err), httpServer.Close())
-		s.retainHTTPShutdownError(result)
-		return result
-	}
-	return nil
-}
-
-func (s *Server) forceCloseHTTP() error {
-	s.httpMu.Lock()
-	httpServer := s.http
-	s.httpMu.Unlock()
-	if httpServer == nil {
-		return nil
-	}
-	if err := httpServer.Close(); err != nil {
-		result := fmt.Errorf("force close HTTP: %w", err)
-		s.retainHTTPShutdownError(result)
-		return result
-	}
-	return nil
-}
-
-func (s *Server) retainHTTPShutdownError(err error) {
-	if err == nil {
-		return
-	}
-	s.httpMu.Lock()
-	s.httpShutdownErr = errors.Join(s.httpShutdownErr, err)
-	s.httpMu.Unlock()
-}
-
-func (s *Server) retainedHTTPShutdownError() error {
-	s.httpMu.Lock()
-	defer s.httpMu.Unlock()
-	return s.httpShutdownErr
-}
-
-func (s *Server) closeRuntime() error {
-	s.closeOnce.Do(func() {
-		s.setUnready()
-
-		s.lifecycleMu.Lock()
-		listener := s.listener
-		s.listener = nil
-		s.milestones.listenerBound = false
-		s.lifecycleMu.Unlock()
-
-		var listenerErr error
-		if listener != nil {
-			listenerErr = listener.Close()
-		}
-
-		// Stop durable handlers before transports and shared infrastructure so
-		// no worker outlives its persistence or VFS dependencies.
-		var jobsErr error
-		if s.components.jobs != nil {
-			jobsErr = s.components.jobs.Close()
-		}
-		var websocketErr error
-		if s.components.websocket != nil {
-			websocketErr = s.components.websocket.Close()
-		}
-		transportErr := s.components.transport.Close()
-		var servingLeaseErr error
-		if s.components.servingLease != nil {
-			servingLeaseErr = s.components.servingLease.Close()
-		}
-		var metricsErr error
-		if s.components.metrics != nil {
-			metricsErr = s.components.metrics.Close()
-		}
-		// Tracing closes after every span producer so their final spans are
-		// flushed, and before Platform so the exporter never outlives logging.
-		tracingErr := s.components.tracing.Close()
-		s.closeErr = errors.Join(
-			listenerErr,
-			jobsErr,
-			websocketErr,
-			transportErr,
-			servingLeaseErr,
-			metricsErr,
-			tracingErr,
-			s.components.platform.Close(),
-		)
-	})
-	return s.closeErr
 }
 
 func (s *Server) servingNodeLeaseFailures() <-chan error {
@@ -984,37 +893,6 @@ func (s *Server) setUnready() {
 	if s.components.metrics != nil {
 		s.components.metrics.SetReady(false)
 	}
-}
-
-func (s *Server) closeOwnedListener() error {
-	s.lifecycleMu.Lock()
-	listener := s.listener
-	s.listener = nil
-	s.milestones.listenerBound = false
-	s.lifecycleMu.Unlock()
-	if listener == nil {
-		return nil
-	}
-	err := listener.Close()
-	if err != nil {
-		s.retainLifecycleError(fmt.Errorf("close Server-owned listener: %w", err))
-	}
-	return err
-}
-
-func (s *Server) retainLifecycleError(err error) {
-	if err == nil {
-		return
-	}
-	s.lifecycleMu.Lock()
-	s.lifecycleErr = errors.Join(s.lifecycleErr, err)
-	s.lifecycleMu.Unlock()
-}
-
-func (s *Server) retainedLifecycleError() error {
-	s.lifecycleMu.Lock()
-	defer s.lifecycleMu.Unlock()
-	return s.lifecycleErr
 }
 
 func gracefulCancellation(err, contextErr error) bool {

@@ -116,7 +116,7 @@ func TestHTTPRuntimeServesStaticTLSWithoutNetwork(t *testing.T) {
 
 	shutdownContext, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
-	require.NoError(t, runtime.Shutdown(shutdownContext))
+	require.NoError(t, runtime.Stop(shutdownContext))
 	require.ErrorIs(t, (<-serveResult), http.ErrServerClosed)
 }
 
@@ -247,7 +247,7 @@ func TestHTTPRuntimeGracefulShutdownDrainsForwardingRequests(t *testing.T) {
 	shutdownResult := make(chan error, 1)
 	shutdownContext, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
-	go func() { shutdownResult <- runtime.Shutdown(shutdownContext) }()
+	go func() { shutdownResult <- runtime.Stop(shutdownContext) }()
 	select {
 	case err := <-shutdownResult:
 		require.FailNow(t, fmt.Sprintf("Shutdown returned before forwarding request drained: %v", err))
@@ -257,6 +257,44 @@ func TestHTTPRuntimeGracefulShutdownDrainsForwardingRequests(t *testing.T) {
 	require.NoError(t, (<-shutdownResult))
 	require.NoError(t, (<-serveResult))
 	_ = clientConnection.Close()
+}
+
+func TestHTTPRuntimeStopWithEndedContextClosesInFlightRequestsAtOnce(t *testing.T) {
+	t.Parallel()
+
+	primaryListener := newPipeListener()
+	requestStarted := make(chan struct{})
+	releaseRequest := make(chan struct{})
+	t.Cleanup(func() { close(releaseRequest) })
+	runtime := &standardHTTPRuntime{
+		primary: &http.Server{ReadHeaderTimeout: time.Second, Handler: http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+			close(requestStarted)
+			<-releaseRequest
+		})},
+	}
+	runtime.serve = runtime.primary.Serve
+	serveResult := make(chan error, 1)
+	go func() { serveResult <- runtime.Serve(primaryListener, func() bool { return true }) }()
+
+	serverConnection, clientConnection := net.Pipe()
+	t.Cleanup(func() { _ = clientConnection.Close() })
+	go func() { primaryListener.connections <- serverConnection }()
+	go func() { _, _ = io.Copy(io.Discard, clientConnection) }()
+	_, err := fmt.Fprint(clientConnection, "GET / HTTP/1.1\r\nHost: proctor.example.edu\r\n\r\n")
+	require.NoError(t, err)
+	<-requestStarted
+
+	ended, cancel := context.WithCancel(context.Background())
+	cancel()
+	stopped := make(chan error, 1)
+	go func() { stopped <- runtime.Stop(ended) }()
+	select {
+	case err := <-stopped:
+		require.NoError(t, err)
+	case <-time.After(time.Second):
+		require.FailNow(t, "Stop waited for an in-flight request after its context ended")
+	}
+	require.ErrorIs(t, (<-serveResult), http.ErrServerClosed)
 }
 
 func TestPrepareACMECacheDirectoryCreatesPrivateEmptyDirectory(t *testing.T) {
