@@ -155,176 +155,15 @@ func (s *SQLExamAttemptStore) declareBrowserDelivery(ctx context.Context, access
 	} else {
 		declarationID = record.Final.DeclarationID
 	}
+	request := browserDeclarationRequest{access: access, auditID: auditID, auditAt: auditAt, declarationID: declarationID, record: record}
 	result, err := runIdempotentMutation(ctx, s.SQLStore, "declare browser delivery", idempotentMutation[*browserDeclarationOutcome]{command: command, auditEventID: auditID,
 		execute: func(ctx context.Context, tx *sqlxTxWrapper) (*browserDeclarationOutcome, error) {
-			owner, err := s.lockBrowserDeclaration(ctx, tx, access)
-			if err != nil {
-				return nil, err
-			}
-			if owner.Closure.UploadExpiresAt != nil && !owner.Now.Before(*owner.Closure.UploadExpiresAt) {
-				return nil, model.ErrDeliveryExpired
-			}
-			prior, err := browserDeclarationReplay(ctx, tx, owner, declarationID, record.RequestDigest)
-			if err != nil {
-				return nil, err
-			}
-			if prior != nil {
-				if prior.Kind != record.Kind {
-					return nil, browserDeliveryConflict()
-				}
-				status, err := browserSourceStatus(ctx, tx, access.SourceSessionID)
-				if err != nil {
-					return nil, err
-				}
-				if err := completeBrowserDeliveryAudit(ctx, tx, auditID, auditAt, access.SourceSessionID, true); err != nil {
-					return nil, err
-				}
-				return &browserDeclarationOutcome{Receipt: prior.Receipt, Status: status}, nil
-			}
-			received, gaps, err := browserDeliveryRanges(ctx, tx, access.SourceSessionID)
-			if err != nil {
-				return nil, err
-			}
-			progress, err := model.ResolveDeliveryProgress(owner.Allocated, received, gaps, owner.TerminalThrough)
-			if err != nil {
-				return nil, err
-			}
-			newAllocated := owner.Allocated
-			if record.Gaps != nil {
-				if err := model.ValidateDeliveryGapPlacement(false, progress, owner.Allocated, owner.DeclarationRevision, owner.Closure, owner.SummaryOnly || owner.AttemptSummaryOnly, *record.Gaps, received, gaps, owner.Now); err != nil {
-					return nil, err
-				}
-				newAllocated = max(newAllocated, record.Gaps.AllocatedThroughSequence)
-			} else {
-				closure, delta, err := owner.Closure.DeclareFinal(false, owner.DeclarationRevision, owner.Allocated, owner.SummaryOnly || owner.AttemptSummaryOnly, *record.Final, owner.Now)
-				if err != nil {
-					return nil, err
-				}
-				owner.Closure = closure
-				newAllocated += delta
-			}
-			var budget struct {
-				Metadata      int64 `db:"control_metadata_bytes"`
-				Positions     int64 `db:"browser_allocated_positions"`
-				PartPositions int64 `db:"part_positions"`
-				Intervals     int64 `db:"explicit_missing_intervals"`
-			}
-			if err := tx.Get(ctx, &budget, `SELECT b.control_metadata_bytes,b.browser_allocated_positions,b.explicit_missing_intervals,o.browser_allocated_positions AS part_positions FROM exam_attempt_delivery_budgets b JOIN exam_attempt_security_owners o ON o.exam_attempt_id=b.exam_attempt_id WHERE b.exam_attempt_id=? AND o.participation_id=?`, access.Access.AttemptID.String(), owner.ParticipationID); err != nil {
-				return nil, err
-			}
-			delta := newAllocated - owner.Allocated
-
-			refusal := ""
-			if delta > model.BrowserParticipationPositionLimit-budget.PartPositions || delta > model.BrowserAttemptPositionLimit-budget.Positions {
-				if err := latchBrowserDelivery(ctx, tx, access.Access.AttemptID, model.AttemptParticipationID(owner.ParticipationID), model.DeliveryStopPositions, delta > model.BrowserAttemptPositionLimit-budget.Positions); err != nil {
-					return nil, err
-				}
-				refusal = "sequence_limit"
-			} else if record.Gaps != nil && int64(len(record.Gaps.Ranges)) > model.DeliveryMissingIntervalLimit-budget.Intervals {
-				if err := latchDeliveryMetadata(ctx, tx, access.Access.AttemptID); err != nil {
-					return nil, err
-				}
-				refusal = "detail_budget_exhausted"
-			}
-			if refusal != "" {
-				if err := completeBrowserDeliveryAudit(ctx, tx, auditID, auditAt, access.SourceSessionID, false); err != nil {
-					return nil, err
-				}
-				return &browserDeclarationOutcome{Refusal: refusal}, nil
-			}
-			if err := markBrowserInventoryChanged(ctx, tx, access.Access.AttemptID); err != nil {
-				return nil, err
-			}
-			owner.Allocated = newAllocated
-			owner.DeclarationRevision++
-			if record.Gaps != nil {
-				// A declaration may join adjacent earlier ranges. Resolve the new
-				// settled watermark after its durable insertion below.
-				budget.Intervals += int64(len(record.Gaps.Ranges))
-			}
-			record.Receipt = model.DeliveryGapReceipt{DeclarationID: declarationID, RequestDigest: record.RequestDigest, DeclarationRevision: owner.DeclarationRevision}
-			prospectiveGaps := gaps
-			if record.Gaps != nil {
-				prospectiveGaps = mergeNativeDeliveryRanges(append(slices.Clone(gaps), record.Gaps.Ranges...))
-			}
-			prospective, err := model.ResolveDeliveryProgress(owner.Allocated, received, prospectiveGaps, owner.TerminalThrough)
-			if err != nil {
-				return nil, err
-			}
-			record.Receipt.SettledThroughSequence = prospective.SettledThrough
-
-			encoded, err := canonicalPreflightValue(record)
-			if err != nil {
-				return nil, err
-			}
-			if record.Gaps != nil {
-				next, err := model.ReserveDeliveryMetadata(budget.Metadata, int64(len(encoded)))
-				if err != nil {
-					var capacity *model.DeliveryMetadataCapacity
-					if !errors.As(err, &capacity) {
-						return nil, err
-					}
-					if err := latchDeliveryMetadata(ctx, tx, access.Access.AttemptID); err != nil {
-						return nil, err
-					}
-					if err := completeBrowserDeliveryAudit(ctx, tx, auditID, auditAt, access.SourceSessionID, false); err != nil {
-						return nil, err
-					}
-					return &browserDeclarationOutcome{Capacity: capacity}, nil
-				}
-				budget.Metadata = next
-			}
-			if _, err := tx.Exec(ctx, `INSERT INTO browser_delivery_declarations(source_session_id,declaration_id,kind,canonical) VALUES(?::uuid,?,?,?)`, string(access.SourceSessionID), declarationID, record.Kind, encoded); err != nil {
-				return nil, err
-			}
-			closure, err := canonicalPreflightValue(owner.Closure)
-			if err != nil {
-				return nil, err
-			}
-			if _, err := tx.Exec(ctx, `UPDATE browser_activity_sources SET allocated_through_sequence=?,declaration_revision=?,closure_canonical=? WHERE id=?::uuid`, owner.Allocated, owner.DeclarationRevision, closure, string(access.SourceSessionID)); err != nil {
-				return nil, err
-			}
-			if _, err := tx.Exec(ctx, `UPDATE exam_attempt_delivery_budgets SET control_metadata_bytes=?,browser_allocated_positions=browser_allocated_positions+?,explicit_missing_intervals=? WHERE exam_attempt_id=?`, budget.Metadata, delta, budget.Intervals, access.Access.AttemptID.String()); err != nil {
-				return nil, err
-			}
-			if err := completeBrowserDeliveryAudit(ctx, tx, auditID, auditAt, access.SourceSessionID, false); err != nil {
-				return nil, err
-			}
-			if _, err := tx.Exec(ctx, `UPDATE exam_attempt_security_owners SET browser_allocated_positions=browser_allocated_positions+? WHERE participation_id=?`, delta, owner.ParticipationID); err != nil {
-				return nil, err
-			}
-			status, err := settleBrowserSource(ctx, tx, access.SourceSessionID)
-			if err != nil {
-				return nil, err
-			}
-			return &browserDeclarationOutcome{Receipt: record.Receipt, Status: status}, nil
+			return s.executeBrowserDeclaration(ctx, tx, request)
 		},
 		encode: func(value *browserDeclarationOutcome) ([]byte, error) { return encodeOutcome(value) },
-		decode: func(raw []byte) (*browserDeclarationOutcome, error) {
-			var result browserDeclarationOutcome
-			if err := decodeOutcome(raw, &result); err != nil {
-				return nil, err
-			}
-			if err := validateDeliveryDeclarationOutcome(result.Refusal, result.Receipt, result.Capacity); err != nil {
-				return nil, err
-			}
-			return &result, nil
-		},
+		decode: decodeBrowserDeclarationOutcome,
 		hydrateReplay: func(ctx context.Context, tx *sqlxTxWrapper, value *browserDeclarationOutcome) (*browserDeclarationOutcome, error) {
-			owner, err := s.lockBrowserDeclaration(ctx, tx, access)
-			if err != nil {
-				return nil, err
-			}
-			if owner.Closure.UploadExpiresAt != nil && !owner.Now.Before(*owner.Closure.UploadExpiresAt) {
-				return nil, model.ErrDeliveryExpired
-			}
-			if value.Refusal == "" && value.Capacity == nil && (value.Receipt.DeclarationID != declarationID || value.Receipt.RequestDigest != record.RequestDigest || value.Receipt.SettledThroughSequence > owner.Allocated || value.Receipt.DeclarationRevision > owner.DeclarationRevision) {
-				return nil, invalidPersistedState("delivery_declaration", "receipt", model.ErrDeliveryInvalid)
-			}
-			if value.Capacity == nil {
-				value.Status, err = browserSourceStatus(ctx, tx, access.SourceSessionID)
-			}
-			return value, err
+			return s.hydrateBrowserDeclaration(ctx, tx, request, value)
 		},
 		completeReplay: func(ctx context.Context, tx *sqlxTxWrapper, value *browserDeclarationOutcome, original string) error {
 			return completeBrowserDeliveryAudit(ctx, tx, auditID, auditAt, access.SourceSessionID, true)
@@ -334,6 +173,226 @@ func (s *SQLExamAttemptStore) declareBrowserDelivery(ctx context.Context, access
 		return nil, err
 	}
 	return result.Value, nil
+}
+
+// browserDeclarationRequest is one browser delivery declaration with the
+// access and audit event it runs under.
+type browserDeclarationRequest struct {
+	access        store.BrowserDeliveryAccess
+	auditID       model.AuditEventID
+	auditAt       time.Time
+	declarationID string
+	record        deliveryDeclarationRecord
+}
+
+// browserDeclarationBudget is the Attempt and Participation budget a browser
+// declaration charges.
+type browserDeclarationBudget struct {
+	Metadata      int64 `db:"control_metadata_bytes"`
+	Positions     int64 `db:"browser_allocated_positions"`
+	PartPositions int64 `db:"part_positions"`
+	Intervals     int64 `db:"explicit_missing_intervals"`
+}
+
+// decodeBrowserDeclarationOutcome decodes and validates a persisted browser
+// declaration outcome.
+func decodeBrowserDeclarationOutcome(raw []byte) (*browserDeclarationOutcome, error) {
+	var result browserDeclarationOutcome
+	if err := decodeOutcome(raw, &result); err != nil {
+		return nil, err
+	}
+	if err := validateDeliveryDeclarationOutcome(result.Refusal, result.Receipt, result.Capacity); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+// hydrateBrowserDeclaration checks a replayed declaration outcome against the
+// locked source and attaches the source's current status.
+func (s *SQLExamAttemptStore) hydrateBrowserDeclaration(ctx context.Context, tx *sqlxTxWrapper, request browserDeclarationRequest, value *browserDeclarationOutcome) (*browserDeclarationOutcome, error) {
+	owner, err := s.lockBrowserDeclaration(ctx, tx, request.access)
+	if err != nil {
+		return nil, err
+	}
+	if owner.Closure.UploadExpiresAt != nil && !owner.Now.Before(*owner.Closure.UploadExpiresAt) {
+		return nil, model.ErrDeliveryExpired
+	}
+	if value.Refusal == "" && value.Capacity == nil && (value.Receipt.DeclarationID != request.declarationID || value.Receipt.RequestDigest != request.record.RequestDigest || value.Receipt.SettledThroughSequence > owner.Allocated || value.Receipt.DeclarationRevision > owner.DeclarationRevision) {
+		return nil, invalidPersistedState("delivery_declaration", "receipt", model.ErrDeliveryInvalid)
+	}
+	if value.Capacity == nil {
+		value.Status, err = browserSourceStatus(ctx, tx, request.access.SourceSessionID)
+	}
+	return value, err
+}
+
+// executeBrowserDeclaration performs a first browser declaration inside the
+// idempotent mutation's transaction.
+func (s *SQLExamAttemptStore) executeBrowserDeclaration(ctx context.Context, tx *sqlxTxWrapper, request browserDeclarationRequest) (*browserDeclarationOutcome, error) {
+	access, record := request.access, request.record
+	owner, err := s.lockBrowserDeclaration(ctx, tx, access)
+	if err != nil {
+		return nil, err
+	}
+	if owner.Closure.UploadExpiresAt != nil && !owner.Now.Before(*owner.Closure.UploadExpiresAt) {
+		return nil, model.ErrDeliveryExpired
+	}
+	prior, err := browserDeclarationReplay(ctx, tx, owner, request.declarationID, record.RequestDigest)
+	if err != nil {
+		return nil, err
+	}
+	if prior != nil {
+		if prior.Kind != record.Kind {
+			return nil, browserDeliveryConflict()
+		}
+		status, statusErr := browserSourceStatus(ctx, tx, access.SourceSessionID)
+		if statusErr != nil {
+			return nil, statusErr
+		}
+		if err = completeBrowserDeliveryAudit(ctx, tx, request.auditID, request.auditAt, access.SourceSessionID, true); err != nil {
+			return nil, err
+		}
+		return &browserDeclarationOutcome{Receipt: prior.Receipt, Status: status}, nil
+	}
+	received, gaps, err := browserDeliveryRanges(ctx, tx, access.SourceSessionID)
+	if err != nil {
+		return nil, err
+	}
+	progress, err := model.ResolveDeliveryProgress(owner.Allocated, received, gaps, owner.TerminalThrough)
+	if err != nil {
+		return nil, err
+	}
+	newAllocated, err := placeBrowserDeclaration(&owner, record, progress, received, gaps)
+	if err != nil {
+		return nil, err
+	}
+	var budget browserDeclarationBudget
+	if err = tx.Get(ctx, &budget, `SELECT b.control_metadata_bytes,b.browser_allocated_positions,b.explicit_missing_intervals,o.browser_allocated_positions AS part_positions FROM exam_attempt_delivery_budgets b JOIN exam_attempt_security_owners o ON o.exam_attempt_id=b.exam_attempt_id WHERE b.exam_attempt_id=? AND o.participation_id=?`, access.Access.AttemptID.String(), owner.ParticipationID); err != nil {
+		return nil, err
+	}
+	delta := newAllocated - owner.Allocated
+
+	refusal, err := latchBrowserDeclarationBudget(ctx, tx, access, owner, record, budget, delta)
+	if err != nil {
+		return nil, err
+	}
+	if refusal != "" {
+		if err = completeBrowserDeliveryAudit(ctx, tx, request.auditID, request.auditAt, access.SourceSessionID, false); err != nil {
+			return nil, err
+		}
+		return &browserDeclarationOutcome{Refusal: refusal}, nil
+	}
+	return storeBrowserDeclaration(ctx, tx, request, owner, budget, received, gaps, newAllocated, delta)
+}
+
+// placeBrowserDeclaration validates a gap declaration's placement or applies a
+// final declaration to the owner's closure, returning the new allocation.
+func placeBrowserDeclaration(owner *browserDeclarationOwner, record deliveryDeclarationRecord, progress model.DeliveryProgress, received, gaps []model.SequenceRange) (int64, error) {
+	newAllocated := owner.Allocated
+	if record.Gaps != nil {
+		if err := model.ValidateDeliveryGapPlacement(false, progress, owner.Allocated, owner.DeclarationRevision, owner.Closure, owner.SummaryOnly || owner.AttemptSummaryOnly, *record.Gaps, received, gaps, owner.Now); err != nil {
+			return 0, err
+		}
+		newAllocated = max(newAllocated, record.Gaps.AllocatedThroughSequence)
+	} else {
+		closure, delta, err := owner.Closure.DeclareFinal(false, owner.DeclarationRevision, owner.Allocated, owner.SummaryOnly || owner.AttemptSummaryOnly, *record.Final, owner.Now)
+		if err != nil {
+			return 0, err
+		}
+		owner.Closure = closure
+		newAllocated += delta
+	}
+	return newAllocated, nil
+}
+
+// latchBrowserDeclarationBudget latches the position or interval budget a
+// declaration would exceed and returns its refusal code.
+func latchBrowserDeclarationBudget(ctx context.Context, tx *sqlxTxWrapper, access store.BrowserDeliveryAccess, owner browserDeclarationOwner, record deliveryDeclarationRecord, budget browserDeclarationBudget, delta int64) (string, error) {
+	refusal := ""
+	if delta > model.BrowserParticipationPositionLimit-budget.PartPositions || delta > model.BrowserAttemptPositionLimit-budget.Positions {
+		if err := latchBrowserDelivery(ctx, tx, access.Access.AttemptID, model.AttemptParticipationID(owner.ParticipationID), model.DeliveryStopPositions, delta > model.BrowserAttemptPositionLimit-budget.Positions); err != nil {
+			return "", err
+		}
+		refusal = "sequence_limit"
+	} else if record.Gaps != nil && int64(len(record.Gaps.Ranges)) > model.DeliveryMissingIntervalLimit-budget.Intervals {
+		if err := latchDeliveryMetadata(ctx, tx, access.Access.AttemptID); err != nil {
+			return "", err
+		}
+		refusal = "detail_budget_exhausted"
+	}
+	return refusal, nil
+}
+
+// storeBrowserDeclaration records an admitted declaration, reserving its
+// metadata, and writes the source and budget allocation it declares.
+func storeBrowserDeclaration(ctx context.Context, tx *sqlxTxWrapper, request browserDeclarationRequest, owner browserDeclarationOwner, budget browserDeclarationBudget, received, gaps []model.SequenceRange, newAllocated, delta int64) (*browserDeclarationOutcome, error) {
+	access, record := request.access, request.record
+	if err := markBrowserInventoryChanged(ctx, tx, access.Access.AttemptID); err != nil {
+		return nil, err
+	}
+	owner.Allocated = newAllocated
+	owner.DeclarationRevision++
+	if record.Gaps != nil {
+		// A declaration may join adjacent earlier ranges. Resolve the new
+		// settled watermark after its durable insertion below.
+		budget.Intervals += int64(len(record.Gaps.Ranges))
+	}
+	record.Receipt = model.DeliveryGapReceipt{DeclarationID: request.declarationID, RequestDigest: record.RequestDigest, DeclarationRevision: owner.DeclarationRevision}
+	prospectiveGaps := gaps
+	if record.Gaps != nil {
+		prospectiveGaps = mergeNativeDeliveryRanges(append(slices.Clone(gaps), record.Gaps.Ranges...))
+	}
+	prospective, err := model.ResolveDeliveryProgress(owner.Allocated, received, prospectiveGaps, owner.TerminalThrough)
+	if err != nil {
+		return nil, err
+	}
+	record.Receipt.SettledThroughSequence = prospective.SettledThrough
+
+	encoded, err := canonicalPreflightValue(record)
+	if err != nil {
+		return nil, err
+	}
+	if record.Gaps != nil {
+		next, reservationErr := model.ReserveDeliveryMetadata(budget.Metadata, int64(len(encoded)))
+		if reservationErr != nil {
+			var capacity *model.DeliveryMetadataCapacity
+			if !errors.As(reservationErr, &capacity) {
+				return nil, reservationErr
+			}
+			if err = latchDeliveryMetadata(ctx, tx, access.Access.AttemptID); err != nil {
+				return nil, err
+			}
+			if err = completeBrowserDeliveryAudit(ctx, tx, request.auditID, request.auditAt, access.SourceSessionID, false); err != nil {
+				return nil, err
+			}
+			return &browserDeclarationOutcome{Capacity: capacity}, nil
+		}
+		budget.Metadata = next
+	}
+	if _, err = tx.Exec(ctx, `INSERT INTO browser_delivery_declarations(source_session_id,declaration_id,kind,canonical) VALUES(?::uuid,?,?,?)`, string(access.SourceSessionID), request.declarationID, record.Kind, encoded); err != nil {
+		return nil, err
+	}
+	closure, err := canonicalPreflightValue(owner.Closure)
+	if err != nil {
+		return nil, err
+	}
+	if _, err = tx.Exec(ctx, `UPDATE browser_activity_sources SET allocated_through_sequence=?,declaration_revision=?,closure_canonical=? WHERE id=?::uuid`, owner.Allocated, owner.DeclarationRevision, closure, string(access.SourceSessionID)); err != nil {
+		return nil, err
+	}
+	if _, err = tx.Exec(ctx, `UPDATE exam_attempt_delivery_budgets SET control_metadata_bytes=?,browser_allocated_positions=browser_allocated_positions+?,explicit_missing_intervals=? WHERE exam_attempt_id=?`, budget.Metadata, delta, budget.Intervals, access.Access.AttemptID.String()); err != nil {
+		return nil, err
+	}
+	if err = completeBrowserDeliveryAudit(ctx, tx, request.auditID, request.auditAt, access.SourceSessionID, false); err != nil {
+		return nil, err
+	}
+	if _, err = tx.Exec(ctx, `UPDATE exam_attempt_security_owners SET browser_allocated_positions=browser_allocated_positions+? WHERE participation_id=?`, delta, owner.ParticipationID); err != nil {
+		return nil, err
+	}
+	status, err := settleBrowserSource(ctx, tx, access.SourceSessionID)
+	if err != nil {
+		return nil, err
+	}
+	return &browserDeclarationOutcome{Receipt: record.Receipt, Status: status}, nil
 }
 
 func browserDeliveryRanges(ctx context.Context, tx *sqlxTxWrapper, source model.BrowserSourceSessionID) ([]model.SequenceRange, []model.SequenceRange, error) {
