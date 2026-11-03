@@ -106,39 +106,8 @@ func resolveResourceApplications(options Options) (resourceApplications, error) 
 	var examExports ExamExportsApplication = application
 	var sessionReauthentication SessionReauthentication = application
 
-	required := []struct {
-		missing bool
-		message string
-	}{
-		{options.AcademicUnits == nil, "academic unit reads are required"},
-		{options.Institutions == nil, "institution application is required"},
-		{options.Programmes == nil, "programme application is required"},
-		{options.ProgrammeLevels == nil, "programme level application is required"},
-		{options.AcademicPeriods == nil, "academic period application is required"},
-		{options.Classes == nil, "class application is required"},
-		{options.Affiliations == nil, "affiliation application is required"},
-		{options.AcademicUnitMembers == nil, "academic unit member application is required"},
-		{options.ClassMembers == nil, "class member application is required"},
-		{options.Invitations == nil, "invitation application is required"},
-		{options.BrowserInvitations == nil, "browser invitation application is required"},
-		{options.OnboardingImports == nil, "onboarding import application is required"},
-		{options.StudentProgressions == nil, "student progression application is required"},
-		{options.AcademicAdministrationBatches == nil, "academic administration batch application is required"},
-		{options.UserProfiles == nil, "user profile application is required"},
-		{options.UserSettings == nil, "user settings application is required"},
-		{options.AccountStates == nil, "account state application is required"},
-		{options.SessionAdministrations == nil, "session administration application is required"},
-		{options.Roles == nil, "role application is required"},
-		{options.RoleBindings == nil, "role binding application is required"},
-		{options.AuditListings == nil, "audit listing application is required"},
-		{options.Bootstrap == nil, "bootstrap application is required"},
-		{options.AccessPolicy == nil, "access policy application is required"},
-		{options.Mail == nil, "mail application is required"},
-	}
-	for _, dependency := range required {
-		if dependency.missing {
-			return resourceApplications{}, errors.New(dependency.message)
-		}
+	if err := requireResourceApplicationOptions(options); err != nil {
+		return resourceApplications{}, err
 	}
 
 	return resourceApplications{
@@ -173,4 +142,44 @@ func resolveResourceApplications(options Options) (resourceApplications, error) 
 		examExports:          examExports,
 		audit:                options.AuditListings, jobs: jobs, mail: options.Mail, bootstrap: options.Bootstrap,
 	}, nil
+}
+
+// requireResourceApplicationOptions rejects Options missing a focused
+// application capability, reporting the first absent one.
+func requireResourceApplicationOptions(options Options) error {
+	required := []struct {
+		missing bool
+		message string
+	}{
+		{options.AcademicUnits == nil, "academic unit reads are required"},
+		{options.Institutions == nil, "institution application is required"},
+		{options.Programmes == nil, "programme application is required"},
+		{options.ProgrammeLevels == nil, "programme level application is required"},
+		{options.AcademicPeriods == nil, "academic period application is required"},
+		{options.Classes == nil, "class application is required"},
+		{options.Affiliations == nil, "affiliation application is required"},
+		{options.AcademicUnitMembers == nil, "academic unit member application is required"},
+		{options.ClassMembers == nil, "class member application is required"},
+		{options.Invitations == nil, "invitation application is required"},
+		{options.BrowserInvitations == nil, "browser invitation application is required"},
+		{options.OnboardingImports == nil, "onboarding import application is required"},
+		{options.StudentProgressions == nil, "student progression application is required"},
+		{options.AcademicAdministrationBatches == nil, "academic administration batch application is required"},
+		{options.UserProfiles == nil, "user profile application is required"},
+		{options.UserSettings == nil, "user settings application is required"},
+		{options.AccountStates == nil, "account state application is required"},
+		{options.SessionAdministrations == nil, "session administration application is required"},
+		{options.Roles == nil, "role application is required"},
+		{options.RoleBindings == nil, "role binding application is required"},
+		{options.AuditListings == nil, "audit listing application is required"},
+		{options.Bootstrap == nil, "bootstrap application is required"},
+		{options.AccessPolicy == nil, "access policy application is required"},
+		{options.Mail == nil, "mail application is required"},
+	}
+	for _, dependency := range required {
+		if dependency.missing {
+			return errors.New(dependency.message)
+		}
+	}
+	return nil
 }
