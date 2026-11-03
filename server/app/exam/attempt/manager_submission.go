@@ -96,36 +96,16 @@ func (s *Service) EndExamAttemptByManager(ctx context.Context, invocation invoca
 	if err != nil {
 		return store.ExamSubmissionReceipt{}, s.failAudit(ctx, auditID, storeError(storeErrors, err))
 	}
-	if preparation == nil || !validAutomaticSealTarget(preparation.Target, command.SittingID) ||
-		preparation.Target.ExamID != command.ExamID || preparation.Target.AttemptID != command.AttemptID ||
-		preparation.ExpectedAttemptRevision != command.ExpectedAttemptRevision || preparation.SealAt.IsZero() {
-		return store.ExamSubmissionReceipt{}, s.failAudit(ctx, auditID,
-			apperror.New("exam.attempt.unavailable").Wrap(errors.New("invalid manager-ended Submission preparation")))
-	}
-	if preparation.Target.CandidateUserID != managerSnapshot.Attempt.CandidateUserID ||
-		preparation.Target.ClassID != sitting.Sitting.ClassID {
-		return store.ExamSubmissionReceipt{}, s.failAudit(ctx, auditID,
-			apperror.New("exam.attempt.unavailable").Wrap(errors.New("mismatched manager-ended Submission preparation")))
+	if err = checkManagerEndPreparation(preparation, command, managerSnapshot.Attempt.CandidateUserID, sitting.Sitting.ClassID); err != nil {
+		return store.ExamSubmissionReceipt{}, s.failAudit(ctx, auditID, err)
 	}
 	proposed := s.deps.NewSubmission()
 	if !proposed.IsValid() {
 		return store.ExamSubmissionReceipt{}, s.failAudit(ctx, auditID, apperror.Invalid("exam.attempt.invalid", "submission_id"))
 	}
-	var notice *store.PreparedMail
-	var expectedRecipientRevision int64
-	if !preparation.Replayed {
-		preparedMail, prepareErr := s.deps.Mail.PrepareSubmissionReceipt(ctx, SubmissionMailPreparation{
-			CandidateUserID: preparation.Target.CandidateUserID, ExamID: preparation.Target.ExamID,
-			SittingID: preparation.Target.SittingID, SubmissionID: proposed, SealedAt: preparation.SealAt,
-			Provenance: model.ExamSubmissionManagerEndedAttempt,
-		})
-		if prepareErr != nil || preparedMail == nil || preparedMail.Notice == nil || preparedMail.ExpectedRecipientRevision < 1 {
-			if prepareErr == nil {
-				prepareErr = errors.New("invalid manager-ended Submission receipt mail preparation")
-			}
-			return store.ExamSubmissionReceipt{}, s.failAudit(ctx, auditID, apperror.New("exam.attempt.unavailable").Wrap(prepareErr))
-		}
-		notice, expectedRecipientRevision = preparedMail.Notice, preparedMail.ExpectedRecipientRevision
+	notice, expectedRecipientRevision, err := s.prepareManagerEndReceiptMail(ctx, preparation, proposed)
+	if err != nil {
+		return store.ExamSubmissionReceipt{}, s.failAudit(ctx, auditID, err)
 	}
 	stored, err := s.deps.Submissions.EndByManager(ctx, &store.ExamSubmissionManagerEnd{Request: request,
 		Target: preparation.Target, SubmissionID: proposed, AuditEventID: auditID,
@@ -144,6 +124,45 @@ func (s *Service) EndExamAttemptByManager(ctx context.Context, invocation invoca
 		}
 	}
 	return result.Receipt, nil
+}
+
+// checkManagerEndPreparation requires the Submission preparation to target the commanded, already-verified Attempt.
+func checkManagerEndPreparation(preparation *store.ExamSubmissionManagerEndPreparation, command ManagerEndCommand,
+	candidateUserID model.UserID, classID model.ClassID,
+) error {
+	if preparation == nil || !validAutomaticSealTarget(preparation.Target, command.SittingID) ||
+		preparation.Target.ExamID != command.ExamID || preparation.Target.AttemptID != command.AttemptID ||
+		preparation.ExpectedAttemptRevision != command.ExpectedAttemptRevision || preparation.SealAt.IsZero() {
+		return apperror.New("exam.attempt.unavailable").Wrap(errors.New("invalid manager-ended Submission preparation"))
+	}
+	if preparation.Target.CandidateUserID != candidateUserID ||
+		preparation.Target.ClassID != classID {
+		return apperror.New("exam.attempt.unavailable").Wrap(errors.New("mismatched manager-ended Submission preparation"))
+	}
+	return nil
+}
+
+// prepareManagerEndReceiptMail prepares the candidate's Submission receipt mail unless the end is a replay.
+func (s *Service) prepareManagerEndReceiptMail(ctx context.Context, preparation *store.ExamSubmissionManagerEndPreparation,
+	proposed model.SubmissionID,
+) (*store.PreparedMail, int64, error) {
+	var notice *store.PreparedMail
+	var expectedRecipientRevision int64
+	if !preparation.Replayed {
+		preparedMail, prepareErr := s.deps.Mail.PrepareSubmissionReceipt(ctx, SubmissionMailPreparation{
+			CandidateUserID: preparation.Target.CandidateUserID, ExamID: preparation.Target.ExamID,
+			SittingID: preparation.Target.SittingID, SubmissionID: proposed, SealedAt: preparation.SealAt,
+			Provenance: model.ExamSubmissionManagerEndedAttempt,
+		})
+		if prepareErr != nil || preparedMail == nil || preparedMail.Notice == nil || preparedMail.ExpectedRecipientRevision < 1 {
+			if prepareErr == nil {
+				prepareErr = errors.New("invalid manager-ended Submission receipt mail preparation")
+			}
+			return nil, 0, apperror.New("exam.attempt.unavailable").Wrap(prepareErr)
+		}
+		notice, expectedRecipientRevision = preparedMail.Notice, preparedMail.ExpectedRecipientRevision
+	}
+	return notice, expectedRecipientRevision, nil
 }
 
 func validManagerEndReason(reason string) bool {
