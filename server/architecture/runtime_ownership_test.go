@@ -62,11 +62,14 @@ func TestConstructionProjectionRemainsRootPrivate(t *testing.T) {
 	t.Parallel()
 
 	allowedFunctions := map[string]bool{
-		"acceptPlatform":              true,
-		"applicationDependencies":     true,
-		"composeConsumers":            true,
-		"composeNode":                 true,
-		"defaultConsumerConstructors": true,
+		"acceptPlatform":                 true,
+		"applicationDependencies":        true,
+		"attachApplicationTelemetry":     true,
+		"composeApplicationDependencies": true,
+		"composeConsumers":               true,
+		"httpAPIOptions":                 true,
+		"composeNode":                    true,
+		"defaultConsumerConstructors":    true,
 	}
 	allowedTypes := map[string]bool{
 		"constructionCapabilities": true,
