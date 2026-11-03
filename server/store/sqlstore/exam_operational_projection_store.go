@@ -120,12 +120,38 @@ func (s *SQLExamAttemptStore) ListCandidateActivity(ctx context.Context,
 	return runSQLTransaction(ctx, s.GetMaster().Begin, "list candidate Exam activity", func(ctx context.Context,
 		tx *sqlxTxWrapper,
 	) (*store.CandidateExamActivityPage, error) {
-		var serverTime time.Time
-		if err := tx.Get(ctx, &serverTime, `SELECT statement_timestamp()`); err != nil {
-			return nil, fmt.Errorf("read candidate Exam activity time: %w", err)
+		return listCandidateActivity(ctx, tx, options)
+	})
+}
+
+// listCandidateActivity reads one page of Candidate activity rows at
+// statement time inside the caller's transaction.
+func listCandidateActivity(ctx context.Context, tx *sqlxTxWrapper, options store.CandidateExamActivityListOptions) (*store.CandidateExamActivityPage, error) {
+	var serverTime time.Time
+	if err := tx.Get(ctx, &serverTime, `SELECT statement_timestamp()`); err != nil {
+		return nil, fmt.Errorf("read candidate Exam activity time: %w", err)
+	}
+	serverTime = model.TimeUTC(serverTime)
+	query, args := candidateActivityQuery(options, serverTime)
+	var rows []candidateExamActivityRow
+	if err := tx.Select(ctx, &rows, query, args...); err != nil {
+		return nil, fmt.Errorf("list candidate Exam activity: %w", err)
+	}
+	page := &store.CandidateExamActivityPage{ServerTime: serverTime, Items: make([]store.CandidateExamActivityItem, 0, len(rows))}
+	for _, row := range rows {
+		item, err := row.item()
+		if err != nil {
+			return nil, err
 		}
-		serverTime = model.TimeUTC(serverTime)
-		query := `WITH RECURSIVE unit_ancestors(root_id,id) AS (
+		page.Items = append(page.Items, item)
+	}
+	return page, nil
+}
+
+// candidateActivityQuery builds the Candidate activity page query and its
+// arguments evaluated at serverTime.
+func candidateActivityQuery(options store.CandidateExamActivityListOptions, serverTime time.Time) (string, []any) {
+	query := `WITH RECURSIVE unit_ancestors(root_id,id) AS (
 			SELECT id,id FROM academic_units WHERE archived_at IS NULL
 			UNION ALL
 			SELECT child.root_id,parent.id FROM unit_ancestors child
@@ -175,15 +201,15 @@ func (s *SQLExamAttemptStore) ListCandidateActivity(ctx context.Context,
 		LEFT JOIN submission_reviews review ON review.submission_id=submission.id AND review.state='finalized' AND review.release_state='released'
 		LEFT JOIN exam_attempt_suspensions suspension ON suspension.exam_attempt_id=a.id AND suspension.state='active'
 		WHERE (`
-		args := []any{serverTime, options.DesktopSessionID.String(), options.CandidateUserID.String(), serverTime,
-			options.DesktopRegistrationID.String(), options.DPoPKeyThumbprint, options.DPoPKeyThumbprint,
-			options.CandidateUserID.String(), serverTime, serverTime, serverTime,
-			options.CandidateUserID.String(), serverTime, serverTime, model.SystemAdministratorRoleName,
-			string(model.ActionExamManageOverride), string(model.ActionExamManage), options.CandidateUserID.String(),
-			options.CandidateUserID.String(), serverTime, serverTime,
-			options.CandidateUserID.String(), serverTime, options.DesktopSessionID.String(), options.DesktopSessionID.String(),
-			options.CandidateUserID.String()}
-		query += `a.id IS NOT NULL OR
+	args := []any{serverTime, options.DesktopSessionID.String(), options.CandidateUserID.String(), serverTime,
+		options.DesktopRegistrationID.String(), options.DPoPKeyThumbprint, options.DPoPKeyThumbprint,
+		options.CandidateUserID.String(), serverTime, serverTime, serverTime,
+		options.CandidateUserID.String(), serverTime, serverTime, model.SystemAdministratorRoleName,
+		string(model.ActionExamManageOverride), string(model.ActionExamManage), options.CandidateUserID.String(),
+		options.CandidateUserID.String(), serverTime, serverTime,
+		options.CandidateUserID.String(), serverTime, options.DesktopSessionID.String(), options.DesktopSessionID.String(),
+		options.CandidateUserID.String()}
+	query += `a.id IS NOT NULL OR
 			(s.state IN ('scheduled','canceled') AND EXISTS (SELECT 1 FROM class_members scheduled_member
 				WHERE scheduled_member.class_id=s.class_id AND scheduled_member.user_id=?
 				AND scheduled_member.start_at<=s.scheduled_start_at AND (scheduled_member.end_at IS NULL OR scheduled_member.end_at>s.scheduled_start_at)
@@ -199,29 +225,16 @@ func (s *SQLExamAttemptStore) ListCandidateActivity(ctx context.Context,
 				WHERE opened_member.class_id=s.class_id AND opened_member.user_id=? AND s.opened_at IS NOT NULL
 				AND opened_member.start_at<=s.opened_at AND (opened_member.end_at IS NULL OR opened_member.end_at>s.opened_at)
 				AND (opened_member.archived_at IS NULL OR opened_member.archived_at>s.opened_at)))`
-		args = append(args, options.CandidateUserID.String(), options.CandidateUserID.String(), options.CandidateUserID.String(),
-			serverTime, serverTime, serverTime, options.CandidateUserID.String())
-		query += `)`
-		if !options.BeforeScheduledStart.IsZero() {
-			query += ` AND (s.scheduled_start_at,s.id)<(?,?)`
-			args = append(args, model.TimeUTC(options.BeforeScheduledStart), options.BeforeSittingID.String())
-		}
-		query += ` ORDER BY s.scheduled_start_at DESC,s.id DESC LIMIT ?`
-		args = append(args, options.Limit)
-		var rows []candidateExamActivityRow
-		if err := tx.Select(ctx, &rows, query, args...); err != nil {
-			return nil, fmt.Errorf("list candidate Exam activity: %w", err)
-		}
-		page := &store.CandidateExamActivityPage{ServerTime: serverTime, Items: make([]store.CandidateExamActivityItem, 0, len(rows))}
-		for _, row := range rows {
-			item, err := row.item()
-			if err != nil {
-				return nil, err
-			}
-			page.Items = append(page.Items, item)
-		}
-		return page, nil
-	})
+	args = append(args, options.CandidateUserID.String(), options.CandidateUserID.String(), options.CandidateUserID.String(),
+		serverTime, serverTime, serverTime, options.CandidateUserID.String())
+	query += `)`
+	if !options.BeforeScheduledStart.IsZero() {
+		query += ` AND (s.scheduled_start_at,s.id)<(?,?)`
+		args = append(args, model.TimeUTC(options.BeforeScheduledStart), options.BeforeSittingID.String())
+	}
+	query += ` ORDER BY s.scheduled_start_at DESC,s.id DESC LIMIT ?`
+	args = append(args, options.Limit)
+	return query, args
 }
 
 func (row candidateExamActivityRow) item() (store.CandidateExamActivityItem, error) {
@@ -401,15 +414,46 @@ func (s *SQLExamAttemptStore) ListSittingCandidateStatuses(ctx context.Context,
 	return runSQLTransaction(ctx, s.GetMaster().Begin, "list Sitting candidate statuses", func(ctx context.Context,
 		tx *sqlxTxWrapper,
 	) (*store.SittingCandidateStatusPage, error) {
-		var header sittingCandidateStatusHeaderRow
-		if err := tx.Get(ctx, &header, `SELECT statement_timestamp() AS server_time,s.exam_id,s.id AS sitting_id,s.class_id,
+		return listSittingCandidateStatuses(ctx, tx, options)
+	})
+}
+
+// listSittingCandidateStatuses reads the Sitting header and one page of
+// Candidate status rows inside the caller's transaction.
+func listSittingCandidateStatuses(ctx context.Context, tx *sqlxTxWrapper, options store.SittingCandidateStatusListOptions) (*store.SittingCandidateStatusPage, error) {
+	var header sittingCandidateStatusHeaderRow
+	if err := tx.Get(ctx, &header, `SELECT statement_timestamp() AS server_time,s.exam_id,s.id AS sitting_id,s.class_id,
 			s.state,s.revision,s.scheduled_start_at,s.scheduled_end_at,s.opened_at,e.archived_at AS exam_archived_at
 			FROM exam_sittings s JOIN exams e ON e.id=s.exam_id WHERE s.id=? AND s.exam_id=?`,
-			options.SittingID.String(), options.ExamID.String()); err != nil {
-			return nil, translateError("exam_sitting", options.SittingID.String(), err)
+		options.SittingID.String(), options.ExamID.String()); err != nil {
+		return nil, translateError("exam_sitting", options.SittingID.String(), err)
+	}
+	serverTime := model.TimeUTC(header.ServerTime)
+	query, args := sittingCandidateStatusQuery(options, header, serverTime)
+	var rows []sittingCandidateStatusRow
+	if err := tx.Select(ctx, &rows, query, args...); err != nil {
+		return nil, fmt.Errorf("list Sitting candidate statuses: %w", err)
+	}
+	page, err := candidateStatusPageHeader(header)
+	if err != nil {
+		return nil, err
+	}
+	page.Items = make([]store.SittingCandidateStatusItem, 0, len(rows))
+	for _, row := range rows {
+		item, itemErr := row.item(serverTime, page.SittingState, model.TimeUTC(header.ScheduledEnd),
+			header.ExamArchivedAt.Valid, options.ReallowAuthorized)
+		if itemErr != nil {
+			return nil, itemErr
 		}
-		serverTime := model.TimeUTC(header.ServerTime)
-		query := `WITH population AS (
+		page.Items = append(page.Items, item)
+	}
+	return page, nil
+}
+
+// sittingCandidateStatusQuery builds the Candidate status page query and its
+// arguments for the Sitting header read at serverTime.
+func sittingCandidateStatusQuery(options store.SittingCandidateStatusListOptions, header sittingCandidateStatusHeaderRow, serverTime time.Time) (string, []any) {
+	query := `WITH population AS (
 			SELECT a.candidate_user_id FROM exam_attempts a WHERE a.exam_sitting_id=?
 			UNION
 			SELECT member.user_id FROM class_members member WHERE member.class_id=? AND (
@@ -464,33 +508,15 @@ func (s *SQLExamAttemptStore) ListSittingCandidateStatuses(ctx context.Context,
   LEFT JOIN exam_attempt_delivery_budgets delivery_budget ON delivery_budget.exam_attempt_id=a.id
 		LEFT JOIN exam_attempt_suspensions suspension ON suspension.exam_attempt_id=a.id AND suspension.state='active'
 		WHERE candidate.id>? AND candidate.id<>? ORDER BY candidate.id LIMIT ?`
-		openedAt := any(nil)
-		if header.OpenedAt.Valid {
-			openedAt = model.TimeUTC(header.OpenedAt.Time)
-		}
-		args := []any{options.SittingID.String(), header.ClassID, header.State, header.ScheduledStart, header.ScheduledStart,
-			header.ScheduledStart, header.State, openedAt, openedAt, openedAt, openedAt, header.State, serverTime, serverTime,
-			serverTime, header.ClassID, serverTime, serverTime, serverTime, options.SittingID.String(),
-			options.AfterCandidateUserID.String(), options.ExcludeCandidateUserID.String(), options.Limit}
-		var rows []sittingCandidateStatusRow
-		if err := tx.Select(ctx, &rows, query, args...); err != nil {
-			return nil, fmt.Errorf("list Sitting candidate statuses: %w", err)
-		}
-		page, err := candidateStatusPageHeader(header)
-		if err != nil {
-			return nil, err
-		}
-		page.Items = make([]store.SittingCandidateStatusItem, 0, len(rows))
-		for _, row := range rows {
-			item, itemErr := row.item(serverTime, page.SittingState, model.TimeUTC(header.ScheduledEnd),
-				header.ExamArchivedAt.Valid, options.ReallowAuthorized)
-			if itemErr != nil {
-				return nil, itemErr
-			}
-			page.Items = append(page.Items, item)
-		}
-		return page, nil
-	})
+	openedAt := any(nil)
+	if header.OpenedAt.Valid {
+		openedAt = model.TimeUTC(header.OpenedAt.Time)
+	}
+	args := []any{options.SittingID.String(), header.ClassID, header.State, header.ScheduledStart, header.ScheduledStart,
+		header.ScheduledStart, header.State, openedAt, openedAt, openedAt, openedAt, header.State, serverTime, serverTime,
+		serverTime, header.ClassID, serverTime, serverTime, serverTime, options.SittingID.String(),
+		options.AfterCandidateUserID.String(), options.ExcludeCandidateUserID.String(), options.Limit}
+	return query, args
 }
 
 func candidateStatusPageHeader(row sittingCandidateStatusHeaderRow) (*store.SittingCandidateStatusPage, error) {
