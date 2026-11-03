@@ -148,92 +148,9 @@ func (s *SQLExamAttemptStore) StopDeliveryDetails(ctx context.Context, input *st
 	if input == nil || input.Request.Validate() != nil || !input.AuditEventID.IsValid() || input.AuditAt.IsZero() || command == nil || command.Operation != store.DeliveryStopDetailsOperation || command.UserID != input.Access.CandidateUserID {
 		return nil, store.NewErrInvalidInput("delivery_budget", "stop", nil)
 	}
-	project := func(ctx context.Context, tx *sqlxTxWrapper, prior *model.StopDeliveryDetailsResult) (*model.StopDeliveryDetailsResult, error) {
-		access, err := s.lockDeliveryStop(ctx, tx, input.Access)
-		if err != nil {
-			return nil, err
-		}
-		if prior != nil && prior.Budget.ParticipationID != access.ParticipationID {
-			return nil, store.NewErrNotFound("delivery_budget", access.ParticipationID.String())
-		}
-		value := &model.StopDeliveryDetailsResult{Browser: []model.BrowserSourceStatus{}}
-		if input.Request.Family == "native" {
-			var stream string
-			if err := tx.Get(ctx, &stream, `SELECT delivery_stream_id FROM exam_attempt_security_owners WHERE participation_id=?`, access.ParticipationID.String()); err != nil {
-				return nil, err
-			}
-			owner, err := s.lockNativeDelivery(ctx, tx, store.NativeDeliveryAccess{Access: input.Access, StreamID: stream, ParticipationID: access.ParticipationID})
-			if err != nil {
-				return nil, err
-			}
-			value.Native, err = nativeDeliveryStatus(ctx, tx, owner, stream)
-			if err != nil {
-				return nil, err
-			}
-		} else {
-			var ids []string
-			if err := tx.Select(ctx, &ids, `SELECT id::text FROM browser_activity_sources WHERE participation_id=? ORDER BY start_ordinal LIMIT 50`, access.ParticipationID.String()); err != nil {
-				return nil, err
-			}
-			if len(ids) > 49 {
-				return nil, invalidPersistedState("delivery_budget", "value", model.ErrDeliveryInvalid)
-			}
-			for _, id := range ids {
-				project := browserSourceStatus
-				if prior == nil {
-					project = settleBrowserSource
-				}
-				v, err := project(ctx, tx, model.BrowserSourceSessionID(id))
-				if err != nil {
-					return nil, err
-				}
-				value.Browser = append(value.Browser, *v)
-			}
-		}
-		budget, err := deliveryBudgetSnapshot(ctx, tx, access)
-		if err != nil {
-			return nil, err
-		}
-		value.Budget = *budget
-		raw, err := canonicalPreflightValue(value)
-		if err != nil {
-			return nil, err
-		}
-		if len(raw) > 1<<20 {
-			return nil, invalidPersistedState("delivery_budget", "value", model.ErrDeliveryInvalid)
-		}
-		return value, nil
-	}
-	audit := func(ctx context.Context, tx *sqlxTxWrapper, replay bool) error {
-		raw, err := model.EncodeAuditData(map[string]any{"exam_attempt_id": input.Access.AttemptID.String(), "family": input.Request.Family, "reason": string(input.Request.Reason), "idempotency_replayed": replay})
-		if err != nil {
-			return err
-		}
-		_, err = completeAuditEvent(ctx, tx, input.AuditEventID, model.AuditStatusSuccess, "", raw, input.AuditAt)
-		return err
-	}
 	result, err := runIdempotentMutation(ctx, s.SQLStore, "stop delivery details", idempotentMutation[*model.StopDeliveryDetailsResult]{command: command, auditEventID: input.AuditEventID,
 		execute: func(ctx context.Context, tx *sqlxTxWrapper) (*model.StopDeliveryDetailsResult, error) {
-			access, err := s.lockDeliveryStop(ctx, tx, input.Access)
-			if err != nil {
-				return nil, err
-			}
-			if input.Request.Family == "native" {
-				err = latchNativeDelivery(ctx, tx, input.Access.AttemptID, access.ParticipationID.String(), input.Request.Reason, false)
-			} else {
-				err = latchBrowserDelivery(ctx, tx, input.Access.AttemptID, access.ParticipationID, input.Request.Reason, false)
-			}
-			if err != nil {
-				return nil, err
-			}
-			value, err := project(ctx, tx, nil)
-			if err != nil {
-				return nil, err
-			}
-			if err := audit(ctx, tx, false); err != nil {
-				return nil, err
-			}
-			return value, nil
+			return s.executeDeliveryStop(ctx, tx, input)
 		}, encode: func(v *model.StopDeliveryDetailsResult) ([]byte, error) {
 			if err := v.Validate(input.Request.Family); err != nil {
 				return nil, err
@@ -245,11 +162,107 @@ func (s *SQLExamAttemptStore) StopDeliveryDetails(ctx context.Context, input *st
 				return nil, err
 			}
 			return &outcome.Result, nil
-		}, hydrateReplay: project, completeReplay: func(ctx context.Context, tx *sqlxTxWrapper, _ *model.StopDeliveryDetailsResult, _ string) error {
-			return audit(ctx, tx, true)
+		}, hydrateReplay: func(ctx context.Context, tx *sqlxTxWrapper, prior *model.StopDeliveryDetailsResult) (*model.StopDeliveryDetailsResult, error) {
+			return s.projectDeliveryStop(ctx, tx, input, prior)
+		}, completeReplay: func(ctx context.Context, tx *sqlxTxWrapper, _ *model.StopDeliveryDetailsResult, _ string) error {
+			return completeDeliveryStopAudit(ctx, tx, input, true)
 		}})
 	if err != nil {
 		return nil, err
 	}
 	return result.Value, nil
+}
+
+// executeDeliveryStop latches the requested delivery family and projects and
+// audits the resulting stop inside the mutation's transaction.
+func (s *SQLExamAttemptStore) executeDeliveryStop(ctx context.Context, tx *sqlxTxWrapper, input *store.DeliveryDetailsStop) (*model.StopDeliveryDetailsResult, error) {
+	access, err := s.lockDeliveryStop(ctx, tx, input.Access)
+	if err != nil {
+		return nil, err
+	}
+	if input.Request.Family == "native" {
+		err = latchNativeDelivery(ctx, tx, input.Access.AttemptID, access.ParticipationID.String(), input.Request.Reason, false)
+	} else {
+		err = latchBrowserDelivery(ctx, tx, input.Access.AttemptID, access.ParticipationID, input.Request.Reason, false)
+	}
+	if err != nil {
+		return nil, err
+	}
+	value, err := s.projectDeliveryStop(ctx, tx, input, nil)
+	if err != nil {
+		return nil, err
+	}
+	if err = completeDeliveryStopAudit(ctx, tx, input, false); err != nil {
+		return nil, err
+	}
+	return value, nil
+}
+
+// projectDeliveryStop builds the stop result from the current delivery status
+// and budget, settling Browser sources only on first execution.
+func (s *SQLExamAttemptStore) projectDeliveryStop(ctx context.Context, tx *sqlxTxWrapper, input *store.DeliveryDetailsStop, prior *model.StopDeliveryDetailsResult) (*model.StopDeliveryDetailsResult, error) {
+	access, err := s.lockDeliveryStop(ctx, tx, input.Access)
+	if err != nil {
+		return nil, err
+	}
+	if prior != nil && prior.Budget.ParticipationID != access.ParticipationID {
+		return nil, store.NewErrNotFound("delivery_budget", access.ParticipationID.String())
+	}
+	value := &model.StopDeliveryDetailsResult{Browser: []model.BrowserSourceStatus{}}
+	if input.Request.Family == "native" {
+		var stream string
+		if err = tx.Get(ctx, &stream, `SELECT delivery_stream_id FROM exam_attempt_security_owners WHERE participation_id=?`, access.ParticipationID.String()); err != nil {
+			return nil, err
+		}
+		owner, ownerErr := s.lockNativeDelivery(ctx, tx, store.NativeDeliveryAccess{Access: input.Access, StreamID: stream, ParticipationID: access.ParticipationID})
+		if ownerErr != nil {
+			return nil, ownerErr
+		}
+		value.Native, err = nativeDeliveryStatus(ctx, tx, owner, stream)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		var ids []string
+		if err = tx.Select(ctx, &ids, `SELECT id::text FROM browser_activity_sources WHERE participation_id=? ORDER BY start_ordinal LIMIT 50`, access.ParticipationID.String()); err != nil {
+			return nil, err
+		}
+		if len(ids) > 49 {
+			return nil, invalidPersistedState("delivery_budget", "value", model.ErrDeliveryInvalid)
+		}
+		for _, id := range ids {
+			project := browserSourceStatus
+			if prior == nil {
+				project = settleBrowserSource
+			}
+			v, projectErr := project(ctx, tx, model.BrowserSourceSessionID(id))
+			if projectErr != nil {
+				return nil, projectErr
+			}
+			value.Browser = append(value.Browser, *v)
+		}
+	}
+	budget, err := deliveryBudgetSnapshot(ctx, tx, access)
+	if err != nil {
+		return nil, err
+	}
+	value.Budget = *budget
+	raw, err := canonicalPreflightValue(value)
+	if err != nil {
+		return nil, err
+	}
+	if len(raw) > 1<<20 {
+		return nil, invalidPersistedState("delivery_budget", "value", model.ErrDeliveryInvalid)
+	}
+	return value, nil
+}
+
+// completeDeliveryStopAudit completes the stop's audit event.
+func completeDeliveryStopAudit(ctx context.Context, tx *sqlxTxWrapper, input *store.DeliveryDetailsStop, replay bool) error {
+	raw, err := model.EncodeAuditData(map[string]any{"exam_attempt_id": input.Access.AttemptID.String(), "family": input.Request.Family, "reason": string(input.Request.Reason), "idempotency_replayed": replay})
+	if err != nil {
+		return err
+	}
+	_, err = completeAuditEvent(ctx, tx, input.AuditEventID, model.AuditStatusSuccess, "", raw, input.AuditAt)
+	return err
 }
