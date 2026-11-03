@@ -1,0 +1,165 @@
+#!/bin/sh
+# Copyright 2026 SudoSylabs
+# SPDX-License-Identifier: AGPL-3.0-only
+
+# Run the browser end-to-end suite against one real Proctor node.
+#
+# The script owns a disposable PostgreSQL and Mailpit pair from the server's
+# tmpfs-backed Compose file, a freshly generated loopback-only configuration,
+# and one `proctor serve` process. Everything it starts is torn down on every
+# exit path, including test failure and interruption.
+
+set -eu
+
+if [ "$#" -lt 6 ]; then
+	printf 'usage: %s SERVER_BINARY CONFIG_EXAMPLE COMPOSE_FILE WEBAPP_DIR STATE_DIR PROJECT_NAME [PLAYWRIGHT_ARG...]\n' "$0" >&2
+	exit 2
+fi
+
+server_binary=$1
+config_example=$2
+compose_file=$3
+webapp_directory=$4
+state_directory=$5
+project_name=$6
+shift 6
+
+docker_command=${DOCKER_COMMAND:-docker}
+curl_command=${CURL_COMMAND:-curl}
+jq_command=${JQ_COMMAND:-jq}
+npm_command=${NPM_COMMAND:-npm}
+server_port=${PROCTOR_E2E_SERVER_PORT:-28065}
+postgres_port=${PROCTOR_E2E_POSTGRES_PORT:-25432}
+smtp_port=${PROCTOR_E2E_MAILPIT_SMTP_PORT:-21025}
+mailpit_port=${PROCTOR_E2E_MAILPIT_HTTP_PORT:-28025}
+
+server_url="http://127.0.0.1:$server_port"
+mailpit_url="http://127.0.0.1:$mailpit_port"
+
+case "$state_directory" in
+	*/.build/e2e/*) ;;
+	*)
+		printf 'refusing to use %s as end-to-end state; it must be below .build/e2e\n' "$state_directory" >&2
+		exit 2
+		;;
+esac
+if [ ! -x "$server_binary" ]; then
+	printf 'missing server binary: %s\n' "$server_binary" >&2
+	exit 1
+fi
+if [ ! -f "$webapp_directory/dist/index.html" ]; then
+	printf 'missing compiled webapp below %s/dist; run make webapp-build\n' "$webapp_directory" >&2
+	exit 1
+fi
+
+compose() {
+	PROCTOR_POSTGRES_PORT=$postgres_port \
+		PROCTOR_MAILPIT_SMTP_PORT=$smtp_port \
+		PROCTOR_MAILPIT_HTTP_PORT=$mailpit_port \
+		"$docker_command" compose --project-name "$project_name" --file "$compose_file" "$@"
+}
+
+server_pid=
+cleanup() {
+	status=$?
+	trap - EXIT HUP INT TERM
+	if [ -n "$server_pid" ] && kill -0 "$server_pid" 2>/dev/null; then
+		kill -TERM "$server_pid" 2>/dev/null || true
+		wait "$server_pid" 2>/dev/null || true
+	fi
+	if [ "$status" -ne 0 ] && [ -n "${PROCTOR_TEST_REPORT_DIR:-}" ] && [ -f "$state_directory/server.log" ]; then
+		mkdir -p "$PROCTOR_TEST_REPORT_DIR/e2e"
+		# The log contains only synthetic fixture identities from this run.
+		tail -n 2000 "$state_directory/server.log" >"$PROCTOR_TEST_REPORT_DIR/e2e/server.log" || true
+		compose logs --no-color --tail=300 >"$PROCTOR_TEST_REPORT_DIR/e2e/services.log" 2>&1 || true
+	fi
+	compose down --volumes --remove-orphans >/dev/null 2>&1 || true
+	exit "$status"
+}
+trap cleanup EXIT
+trap 'exit 130' HUP INT TERM
+
+umask 077
+rm -rf "$state_directory"
+mkdir -p "$state_directory/vfs"
+
+bootstrap_secret=$(openssl rand -hex 32)
+mail_key=$(openssl rand -base64 32 | tr -d '\n')
+mfa_key=$(openssl rand -base64 32 | tr -d '\n')
+
+"$jq_command" \
+	--arg listen "127.0.0.1:$server_port" \
+	--arg public "$server_url" \
+	--arg webapp "$webapp_directory/dist" \
+	--arg database "postgres://proctor:proctor@127.0.0.1:$postgres_port/proctor?sslmode=disable" \
+	--arg smtp "127.0.0.1:$smtp_port" \
+	--arg mail_key "$mail_key" \
+	--arg mfa_key "$mfa_key" \
+	--arg bootstrap "$bootstrap_secret" \
+	--arg vfs "$state_directory/vfs" \
+	'
+	.Server.ListenAddress = $listen |
+	.Server.PublicURL = $public |
+	.Server.WebappDirectory = $webapp |
+	.Database.DataSource = $database |
+	.Mail.Enabled = true |
+	.Mail.FromAddress = "no-reply@proctor.test" |
+	.Mail.SMTP.Address = $smtp |
+	.Mail.SMTP.MessageIDDomain = "proctor.test" |
+	.Mail.SecretSealing.EncryptionKey = $mail_key |
+	.VFS.Backend = "local" |
+	.VFS.Local.Root = $vfs |
+	.Cache.Backend = "memory" |
+	.Cluster.Backend = "local" |
+	.Authentication.Bootstrap.Secret = $bootstrap |
+	.Authentication.Bootstrap.DevelopmentMode = false |
+	.Authentication.MFA.Enabled = true |
+	.Authentication.MFA.EncryptionKey = $mfa_key |
+	.Log.Targets = [{
+		"Name": "console", "Type": "console", "Level": "info",
+		"Format": "json", "File": "", "QueueSize": 256,
+		"MaxSizeMB": 0, "MaxAgeDays": 0, "MaxBackups": 0,
+		"Compress": false
+	}]
+	' "$config_example" >"$state_directory/config.json"
+
+# A previous interrupted run may have left the project behind.
+compose down --volumes --remove-orphans >/dev/null 2>&1 || true
+compose up --detach --wait postgres mailpit
+
+attempt=0
+until "$curl_command" --fail --silent --max-time 2 "$mailpit_url/readyz" >/dev/null 2>&1; do
+	attempt=$((attempt + 1))
+	if [ "$attempt" -ge 60 ]; then
+		printf 'timed out waiting for Mailpit at %s\n' "$mailpit_url" >&2
+		exit 1
+	fi
+	sleep 1
+done
+
+# The default service environment of an ordinary build is production; only the
+# Desktop compatibility catalog depends on it, and the hosted pages do not.
+"$server_binary" serve --config "$state_directory/config.json" >"$state_directory/server.log" 2>&1 &
+server_pid=$!
+
+attempt=0
+until "$curl_command" --fail --silent --max-time 2 "$server_url/health/ready" >/dev/null 2>&1; do
+	if ! kill -0 "$server_pid" 2>/dev/null; then
+		printf 'proctor serve exited before readiness; last log lines:\n' >&2
+		tail -n 40 "$state_directory/server.log" >&2 || true
+		exit 1
+	fi
+	attempt=$((attempt + 1))
+	if [ "$attempt" -ge 120 ]; then
+		printf 'timed out waiting for readiness at %s/health/ready\n' "$server_url" >&2
+		exit 1
+	fi
+	sleep 1
+done
+
+cd "$webapp_directory"
+PROCTOR_E2E_BASE_URL=$server_url \
+	PROCTOR_E2E_MAILPIT_URL=$mailpit_url \
+	PROCTOR_E2E_BOOTSTRAP_SECRET=$bootstrap_secret \
+	PROCTOR_E2E_STATE_DIR=$state_directory \
+	"$npm_command" run test:e2e -- "$@"

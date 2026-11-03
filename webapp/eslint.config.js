@@ -12,6 +12,8 @@ export default tseslint.config(
       "vite.config.ts",
       "vitest.config.ts",
       "playwright.config.ts",
+      "playwright.e2e.config.ts",
+      "tests/e2e/**/*.ts",
     ],
     languageOptions: {
       globals: globals.node,

@@ -1,4 +1,4 @@
-.PHONY: check brand-check brand-copy build-scripts-check webapp-install webapp-check docs-install docs-start docs-check mail-templates-install mail-templates-check server-check integration independent-modules module-pins-check ci
+.PHONY: check e2e brand-check brand-copy build-scripts-check webapp-install webapp-check docs-install docs-start docs-check mail-templates-install mail-templates-check server-check integration independent-modules module-pins-check ci
 
 check: brand-check build-scripts-check webapp-check docs-check mail-templates-check server-check ## Run the hermetic product gate.
 
@@ -52,6 +52,16 @@ integration: ## Run dependency-backed server and reusable-module conformance sui
 	$(MAKE) -C "$(SERVER_DIR)" integration-all integration-s3 integration-realtime
 	$(MAKE) -C "$(ROOT_DIR)/packages/cache" conformance-redis
 	$(MAKE) -C "$(ROOT_DIR)/packages/mail" conformance-smtp
+
+e2e: dev-tools webapp-build ## Run the browser end-to-end suite against one real server node.
+	@mkdir -p "$(E2E_DIR)/bin"
+	$(GO) build $(GOFLAGS) -trimpath -ldflags '$(SERVER_LDFLAGS)' -o "$(E2E_DIR)/bin/proctor" ./server/cmd/proctor
+	@DOCKER_COMMAND="$(DOCKER)" CURL_COMMAND="$(CURL)" JQ_COMMAND="$(JQ)" NPM_COMMAND="$(NPM)" \
+		PROCTOR_E2E_SERVER_PORT='$(PROCTOR_E2E_SERVER_PORT)' PROCTOR_E2E_POSTGRES_PORT='$(PROCTOR_E2E_POSTGRES_PORT)' \
+		PROCTOR_E2E_MAILPIT_SMTP_PORT='$(PROCTOR_E2E_MAILPIT_SMTP_PORT)' PROCTOR_E2E_MAILPIT_HTTP_PORT='$(PROCTOR_E2E_MAILPIT_HTTP_PORT)' \
+		PROCTOR_POSTGRES_IMAGE='$(PROCTOR_POSTGRES_IMAGE)' MAILPIT_IMAGE='$(PROCTOR_MAILPIT_IMAGE)' \
+		"$(ROOT_DIR)/build/scripts/e2e" "$(E2E_DIR)/bin/proctor" "$(SERVER_DIR)/config/config.example.json" \
+		"$(SERVER_DIR)/compose.yaml" "$(WEBAPP_DIR)" "$(E2E_DIR)/run" '$(PROCTOR_E2E_COMPOSE_PROJECT_NAME)' $(E2E_ARGS)
 
 independent-modules: ## Verify every Go module outside workspace assistance.
 	$(MAKE) -C "$(SERVER_DIR)" independent-modules

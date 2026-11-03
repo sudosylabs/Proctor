@@ -96,6 +96,13 @@ PROCTOR_METRICS_PORT ?= 8067
 PROCTOR_CLUSTER_HTTP_PORT ?= 18065
 PROCTOR_DAP_PORT ?= 2345
 PROCTOR_DLV_PORT ?= 2346
+PROCTOR_E2E_COMPOSE_PROJECT_NAME ?= proctor-e2e
+PROCTOR_E2E_SERVER_PORT ?= 28065
+PROCTOR_E2E_POSTGRES_PORT ?= 25432
+PROCTOR_E2E_MAILPIT_SMTP_PORT ?= 21025
+PROCTOR_E2E_MAILPIT_HTTP_PORT ?= 28025
+# Extra arguments for the end-to-end Playwright run, such as --grep or --debug.
+E2E_ARGS ?=
 
 PROCTOR_UID ?= $(shell id -u 2>/dev/null || printf 1000)
 PROCTOR_GID ?= $(shell id -g 2>/dev/null || printf 1000)
@@ -132,6 +139,7 @@ DEV_SEED_REFRESH ?= false
 DEV_SEED_CREDENTIALS_FILE := $(DEV_SEED_DIR)/credentials.json
 DEV_SEED_FIXTURE_FILE := $(DEV_SEED_DIR)/fixture.json
 DEV_SEED_IN_PROGRESS_FILE := $(DEV_SEED_DIR)/in-progress.json
+E2E_DIR := $(BUILD_DIR)/e2e
 
 DEBUG_MODULE ?= server
 DEBUG_PACKAGE ?= ./app

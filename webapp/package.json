@@ -17,6 +17,7 @@
     "lint": "eslint .",
     "test": "vitest run",
     "test:browser": "npm run build && playwright test",
+    "test:e2e": "playwright test --config playwright.e2e.config.ts",
     "api:generate": "openapi-typescript ../server/openapi.json -o src/api/generated/schema.ts",
     "api:check": "npm run api:generate && git diff --exit-code -- src/api/generated/schema.ts",
     "i18n:generate": "node ./scripts/generate-i18n.mjs",
