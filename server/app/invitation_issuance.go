@@ -61,40 +61,23 @@ func (s *invitationService) IssueStudentClassInvitation(ctx context.Context, inv
 	if startsAt.IsZero() {
 		startsAt = period.StartsAt
 	}
+	placeholderClaimHash := strings.Repeat("0", model.TokenHashLength)
 	if command.onboardingImportID.IsValid() && !command.batchDuplicate {
-		candidate, candidateErr := model.NewStudentClassInvitation(model.StudentClassInvitationInput{
-			ID: model.NewInvitationID(), TargetEmail: command.TargetEmail, ClassID: class.ID, AcademicPeriodID: period.ID,
-			IntendedStartsAt: startsAt, IntendedEndsAt: model.OptionalTimeFromMillis(command.IntendedEndsAt),
-			Suggestions: model.InvitationProfileSuggestions{Username: command.SuggestedUsername, DisplayName: command.SuggestedDisplayName,
-				FirstName: command.SuggestedFirstName, LastName: command.SuggestedLastName, Locale: command.SuggestedLocale, Timezone: command.SuggestedTimezone},
-			InviterUserID: invocation.Principal().UserID, ScopeType: model.RoleScopeClass, ScopeID: class.ID.String(),
-			ClaimHash: strings.Repeat("0", model.TokenHashLength), IssuedAt: issuedAt,
-		})
+		candidate, candidateErr := newStudentClassInvitationValue(invocation, command, class.ID, period.ID, startsAt, issuedAt, placeholderClaimHash)
 		if candidateErr != nil {
-			return InvitationView{}, domainInvalid("invitation.invalid", candidateErr)
+			return InvitationView{}, candidateErr
 		}
-		_, noOp, noOpErr := s.deps.Store.ResolveOnboardingInvitationNoOp(ctx, candidate)
-		if noOpErr != nil {
-			return InvitationView{}, invitationStoreErrors.Translate(noOpErr)
-		}
-		if noOp {
-			return s.completeOnboardingInvitationNoOp(ctx, invocation, attempt, candidate, idempotency)
+		if view, handled, noOpErr := s.resolveOnboardingInvitationNoOp(ctx, invocation, attempt, candidate, idempotency); handled {
+			return view, noOpErr
 		}
 	}
 	if !s.deps.Mail.Enabled() {
 		return InvitationView{}, apperror.New("invitation.mail_unavailable")
 	}
 	if command.batchDuplicate {
-		candidate, candidateErr := model.NewStudentClassInvitation(model.StudentClassInvitationInput{
-			ID: model.NewInvitationID(), TargetEmail: command.TargetEmail, ClassID: class.ID, AcademicPeriodID: period.ID,
-			IntendedStartsAt: startsAt, IntendedEndsAt: model.OptionalTimeFromMillis(command.IntendedEndsAt),
-			Suggestions: model.InvitationProfileSuggestions{Username: command.SuggestedUsername, DisplayName: command.SuggestedDisplayName,
-				FirstName: command.SuggestedFirstName, LastName: command.SuggestedLastName, Locale: command.SuggestedLocale, Timezone: command.SuggestedTimezone},
-			InviterUserID: invocation.Principal().UserID, ScopeType: model.RoleScopeClass, ScopeID: class.ID.String(),
-			ClaimHash: strings.Repeat("0", model.TokenHashLength), IssuedAt: issuedAt,
-		})
+		candidate, candidateErr := newStudentClassInvitationValue(invocation, command, class.ID, period.ID, startsAt, issuedAt, placeholderClaimHash)
 		if candidateErr != nil {
-			return InvitationView{}, domainInvalid("invitation.invalid", candidateErr)
+			return InvitationView{}, candidateErr
 		}
 		attempt.Value = candidate.Auditable()
 		return s.recordDuplicateInvitationView(ctx, idempotency, attempt,
@@ -104,16 +87,9 @@ func (s *invitationService) IssueStudentClassInvitation(ctx context.Context, inv
 	if !model.IsValidCredentialToken(rawClaim) {
 		return InvitationView{}, apperror.New("invitation.unavailable")
 	}
-	invitation, err := model.NewStudentClassInvitation(model.StudentClassInvitationInput{
-		ID: model.NewInvitationID(), TargetEmail: command.TargetEmail, ClassID: class.ID, AcademicPeriodID: period.ID,
-		IntendedStartsAt: startsAt, IntendedEndsAt: model.OptionalTimeFromMillis(command.IntendedEndsAt),
-		Suggestions: model.InvitationProfileSuggestions{Username: command.SuggestedUsername, DisplayName: command.SuggestedDisplayName,
-			FirstName: command.SuggestedFirstName, LastName: command.SuggestedLastName, Locale: command.SuggestedLocale, Timezone: command.SuggestedTimezone},
-		InviterUserID: invocation.Principal().UserID, ScopeType: model.RoleScopeClass, ScopeID: class.ID.String(),
-		ClaimHash: model.HashInvitationClaim(rawClaim), IssuedAt: issuedAt,
-	})
+	invitation, err := newStudentClassInvitationValue(invocation, command, class.ID, period.ID, startsAt, issuedAt, model.HashInvitationClaim(rawClaim))
 	if err != nil {
-		return InvitationView{}, domainInvalid("invitation.invalid", err)
+		return InvitationView{}, err
 	}
 	actionURL, err := accountCredentialLink(s.deps.PublicURL, "/join", rawClaim)
 	if err != nil {
@@ -126,25 +102,45 @@ func (s *invitationService) IssueStudentClassInvitation(ctx context.Context, inv
 	attempt.Value = invitation.Auditable()
 	created, err := runAuditedMutation(ctx, s.deps.Audit, attempt,
 		func() time.Time { return issuedAt }, func(ctx context.Context, reference mutationAttemptReference) (*store.InvitationCommandResult, error) {
-			input := &store.StudentClassInvitationIssue{Invitation: invitation, Occurrence: prepared.Occurrence,
-				Delivery: prepared.Delivery, DeliveryJob: prepared.Job, AuditEventID: reference.ID, AuditAt: reference.MutationAt}
-			if idempotency != nil {
-				value, storeErr := s.deps.Store.IssueStudentClassIdempotently(ctx, input, idempotency)
-				if storeErr == nil && value.Duplicate {
-					return nil, apperror.New("onboarding_batch.duplicate")
-				}
-				return value, storeErr
-			}
-			value, storeErr := s.deps.Store.IssueStudentClass(ctx, input)
-			return &store.InvitationCommandResult{Invitation: value}, storeErr
+			return s.storeStudentClassInvitation(ctx, idempotency, invitation, prepared, reference)
 		}, invitationStoreErrors.Translate)
 	if err != nil {
 		return InvitationView{}, err
 	}
-	view := invitationView(created.Invitation)
-	view.Replayed = created.Replayed
-	view.NoOp = created.NoOp
-	return view, nil
+	return issuedInvitationView(created), nil
+}
+
+// newStudentClassInvitationValue builds the Student Class Invitation for the command with the given claim hash.
+func newStudentClassInvitationValue(invocation invocation.Invocation, command IssueStudentClassInvitationCommand, classID model.ClassID,
+	periodID model.AcademicPeriodID, startsAt, issuedAt time.Time, claimHash string) (*model.Invitation, error) {
+	value, err := model.NewStudentClassInvitation(model.StudentClassInvitationInput{
+		ID: model.NewInvitationID(), TargetEmail: command.TargetEmail, ClassID: classID, AcademicPeriodID: periodID,
+		IntendedStartsAt: startsAt, IntendedEndsAt: model.OptionalTimeFromMillis(command.IntendedEndsAt),
+		Suggestions: model.InvitationProfileSuggestions{Username: command.SuggestedUsername, DisplayName: command.SuggestedDisplayName,
+			FirstName: command.SuggestedFirstName, LastName: command.SuggestedLastName, Locale: command.SuggestedLocale, Timezone: command.SuggestedTimezone},
+		InviterUserID: invocation.Principal().UserID, ScopeType: model.RoleScopeClass, ScopeID: classID.String(),
+		ClaimHash: claimHash, IssuedAt: issuedAt,
+	})
+	if err != nil {
+		return nil, domainInvalid("invitation.invalid", err)
+	}
+	return value, nil
+}
+
+// storeStudentClassInvitation records the audited Student Class Invitation issue, idempotently when a key is present.
+func (s *invitationService) storeStudentClassInvitation(ctx context.Context, idempotency *store.CommandIdempotency, invitation *model.Invitation,
+	prepared *store.PreparedMail, reference mutationAttemptReference) (*store.InvitationCommandResult, error) {
+	input := &store.StudentClassInvitationIssue{Invitation: invitation, Occurrence: prepared.Occurrence,
+		Delivery: prepared.Delivery, DeliveryJob: prepared.Job, AuditEventID: reference.ID, AuditAt: reference.MutationAt}
+	if idempotency != nil {
+		value, storeErr := s.deps.Store.IssueStudentClassIdempotently(ctx, input, idempotency)
+		if storeErr == nil && value.Duplicate {
+			return nil, apperror.New("onboarding_batch.duplicate")
+		}
+		return value, storeErr
+	}
+	value, storeErr := s.deps.Store.IssueStudentClass(ctx, input)
+	return &store.InvitationCommandResult{Invitation: value}, storeErr
 }
 
 func (s *invitationService) IssueTeacherAcademicUnitInvitation(ctx context.Context, invocation invocation.Invocation, command IssueTeacherAcademicUnitInvitationCommand) (InvitationView, error) {
@@ -195,40 +191,23 @@ func (s *invitationService) IssueTeacherAcademicUnitInvitation(ctx context.Conte
 	if startsAt.IsZero() {
 		startsAt = issuedAt
 	}
+	placeholderClaimHash := strings.Repeat("0", model.TokenHashLength)
 	if command.onboardingImportID.IsValid() && !command.batchDuplicate {
-		candidate, candidateErr := model.NewTeacherAcademicUnitInvitation(model.TeacherAcademicUnitInvitationInput{
-			ID: model.NewInvitationID(), TargetEmail: command.TargetEmail, AcademicUnitID: unit.ID, RoleID: role.ID,
-			RoleActions: role.Permissions, IntendedStartsAt: startsAt, IntendedEndsAt: model.OptionalTimeFromMillis(command.IntendedEndsAt),
-			Suggestions: model.InvitationProfileSuggestions{Username: command.SuggestedUsername, DisplayName: command.SuggestedDisplayName,
-				FirstName: command.SuggestedFirstName, LastName: command.SuggestedLastName, Locale: command.SuggestedLocale, Timezone: command.SuggestedTimezone},
-			InviterUserID: invocation.Principal().UserID, ScopeType: model.RoleScopeAcademicUnit, ScopeID: unit.ID.String(),
-			ClaimHash: strings.Repeat("0", model.TokenHashLength), IssuedAt: issuedAt,
-		})
+		candidate, candidateErr := newTeacherAcademicUnitInvitationValue(invocation, command, unit.ID, role, startsAt, issuedAt, placeholderClaimHash)
 		if candidateErr != nil {
-			return InvitationView{}, domainInvalid("invitation.invalid", candidateErr)
+			return InvitationView{}, candidateErr
 		}
-		_, noOp, noOpErr := s.deps.Store.ResolveOnboardingInvitationNoOp(ctx, candidate)
-		if noOpErr != nil {
-			return InvitationView{}, invitationStoreErrors.Translate(noOpErr)
-		}
-		if noOp {
-			return s.completeOnboardingInvitationNoOp(ctx, invocation, attempt, candidate, idempotency)
+		if view, handled, noOpErr := s.resolveOnboardingInvitationNoOp(ctx, invocation, attempt, candidate, idempotency); handled {
+			return view, noOpErr
 		}
 	}
 	if !s.deps.Mail.Enabled() {
 		return InvitationView{}, apperror.New("invitation.mail_unavailable")
 	}
 	if command.batchDuplicate {
-		candidate, candidateErr := model.NewTeacherAcademicUnitInvitation(model.TeacherAcademicUnitInvitationInput{
-			ID: model.NewInvitationID(), TargetEmail: command.TargetEmail, AcademicUnitID: unit.ID, RoleID: role.ID,
-			RoleActions: role.Permissions, IntendedStartsAt: startsAt, IntendedEndsAt: model.OptionalTimeFromMillis(command.IntendedEndsAt),
-			Suggestions: model.InvitationProfileSuggestions{Username: command.SuggestedUsername, DisplayName: command.SuggestedDisplayName,
-				FirstName: command.SuggestedFirstName, LastName: command.SuggestedLastName, Locale: command.SuggestedLocale, Timezone: command.SuggestedTimezone},
-			InviterUserID: invocation.Principal().UserID, ScopeType: model.RoleScopeAcademicUnit, ScopeID: unit.ID.String(),
-			ClaimHash: strings.Repeat("0", model.TokenHashLength), IssuedAt: issuedAt,
-		})
+		candidate, candidateErr := newTeacherAcademicUnitInvitationValue(invocation, command, unit.ID, role, startsAt, issuedAt, placeholderClaimHash)
 		if candidateErr != nil {
-			return InvitationView{}, domainInvalid("invitation.invalid", candidateErr)
+			return InvitationView{}, candidateErr
 		}
 		attempt.Value = candidate.Auditable()
 		return s.recordDuplicateInvitationView(ctx, idempotency, attempt,
@@ -238,16 +217,9 @@ func (s *invitationService) IssueTeacherAcademicUnitInvitation(ctx context.Conte
 	if !model.IsValidCredentialToken(rawClaim) {
 		return InvitationView{}, apperror.New("invitation.unavailable")
 	}
-	invitation, err := model.NewTeacherAcademicUnitInvitation(model.TeacherAcademicUnitInvitationInput{
-		ID: model.NewInvitationID(), TargetEmail: command.TargetEmail, AcademicUnitID: unit.ID, RoleID: role.ID,
-		RoleActions: role.Permissions, IntendedStartsAt: startsAt, IntendedEndsAt: model.OptionalTimeFromMillis(command.IntendedEndsAt),
-		Suggestions: model.InvitationProfileSuggestions{Username: command.SuggestedUsername, DisplayName: command.SuggestedDisplayName,
-			FirstName: command.SuggestedFirstName, LastName: command.SuggestedLastName, Locale: command.SuggestedLocale, Timezone: command.SuggestedTimezone},
-		InviterUserID: invocation.Principal().UserID, ScopeType: model.RoleScopeAcademicUnit, ScopeID: unit.ID.String(),
-		ClaimHash: model.HashInvitationClaim(rawClaim), IssuedAt: issuedAt,
-	})
+	invitation, err := newTeacherAcademicUnitInvitationValue(invocation, command, unit.ID, role, startsAt, issuedAt, model.HashInvitationClaim(rawClaim))
 	if err != nil {
-		return InvitationView{}, domainInvalid("invitation.invalid", err)
+		return InvitationView{}, err
 	}
 	actionURL, err := accountCredentialLink(s.deps.PublicURL, "/join", rawClaim)
 	if err != nil {
@@ -260,27 +232,71 @@ func (s *invitationService) IssueTeacherAcademicUnitInvitation(ctx context.Conte
 	attempt.Value = invitation.Auditable()
 	created, err := runAuditedMutation(ctx, s.deps.Audit, attempt,
 		func() time.Time { return issuedAt }, func(ctx context.Context, reference mutationAttemptReference) (*store.InvitationCommandResult, error) {
-			input := &store.TeacherAcademicUnitInvitationIssue{Invitation: invitation,
-				Lifetime:   model.InvitationLifetime,
-				Occurrence: prepared.Occurrence, Delivery: prepared.Delivery, DeliveryJob: prepared.Job,
-				AuditEventID: reference.ID, AuditAt: reference.MutationAt}
-			if idempotency != nil {
-				value, storeErr := s.deps.Store.IssueTeacherAcademicUnitIdempotently(ctx, input, idempotency)
-				if storeErr == nil && value.Duplicate {
-					return nil, apperror.New("onboarding_batch.duplicate")
-				}
-				return value, storeErr
-			}
-			value, storeErr := s.deps.Store.IssueTeacherAcademicUnit(ctx, input)
-			return &store.InvitationCommandResult{Invitation: value}, storeErr
+			return s.storeTeacherAcademicUnitInvitation(ctx, idempotency, invitation, prepared, reference)
 		}, invitationStoreErrors.Translate)
 	if err != nil {
 		return InvitationView{}, err
 	}
+	return issuedInvitationView(created), nil
+}
+
+// newTeacherAcademicUnitInvitationValue builds the Teacher Academic Unit Invitation for the command with the given claim hash.
+func newTeacherAcademicUnitInvitationValue(invocation invocation.Invocation, command IssueTeacherAcademicUnitInvitationCommand, unitID model.AcademicUnitID,
+	role *model.Role, startsAt, issuedAt time.Time, claimHash string) (*model.Invitation, error) {
+	value, err := model.NewTeacherAcademicUnitInvitation(model.TeacherAcademicUnitInvitationInput{
+		ID: model.NewInvitationID(), TargetEmail: command.TargetEmail, AcademicUnitID: unitID, RoleID: role.ID,
+		RoleActions: role.Permissions, IntendedStartsAt: startsAt, IntendedEndsAt: model.OptionalTimeFromMillis(command.IntendedEndsAt),
+		Suggestions: model.InvitationProfileSuggestions{Username: command.SuggestedUsername, DisplayName: command.SuggestedDisplayName,
+			FirstName: command.SuggestedFirstName, LastName: command.SuggestedLastName, Locale: command.SuggestedLocale, Timezone: command.SuggestedTimezone},
+		InviterUserID: invocation.Principal().UserID, ScopeType: model.RoleScopeAcademicUnit, ScopeID: unitID.String(),
+		ClaimHash: claimHash, IssuedAt: issuedAt,
+	})
+	if err != nil {
+		return nil, domainInvalid("invitation.invalid", err)
+	}
+	return value, nil
+}
+
+// storeTeacherAcademicUnitInvitation records the audited Teacher Academic Unit Invitation issue, idempotently when a
+// key is present.
+func (s *invitationService) storeTeacherAcademicUnitInvitation(ctx context.Context, idempotency *store.CommandIdempotency, invitation *model.Invitation,
+	prepared *store.PreparedMail, reference mutationAttemptReference) (*store.InvitationCommandResult, error) {
+	input := &store.TeacherAcademicUnitInvitationIssue{Invitation: invitation,
+		Lifetime:   model.InvitationLifetime,
+		Occurrence: prepared.Occurrence, Delivery: prepared.Delivery, DeliveryJob: prepared.Job,
+		AuditEventID: reference.ID, AuditAt: reference.MutationAt}
+	if idempotency != nil {
+		value, storeErr := s.deps.Store.IssueTeacherAcademicUnitIdempotently(ctx, input, idempotency)
+		if storeErr == nil && value.Duplicate {
+			return nil, apperror.New("onboarding_batch.duplicate")
+		}
+		return value, storeErr
+	}
+	value, storeErr := s.deps.Store.IssueTeacherAcademicUnit(ctx, input)
+	return &store.InvitationCommandResult{Invitation: value}, storeErr
+}
+
+// resolveOnboardingInvitationNoOp completes an onboarding import row as a no-op when the store reports that the
+// candidate Invitation would change nothing; handled reports whether the caller must return the view and error.
+func (s *invitationService) resolveOnboardingInvitationNoOp(ctx context.Context, invocation invocation.Invocation, attempt mutationAttempt,
+	candidate *model.Invitation, idempotency *store.CommandIdempotency) (view InvitationView, handled bool, err error) {
+	_, noOp, noOpErr := s.deps.Store.ResolveOnboardingInvitationNoOp(ctx, candidate)
+	if noOpErr != nil {
+		return InvitationView{}, true, invitationStoreErrors.Translate(noOpErr)
+	}
+	if noOp {
+		view, err = s.completeOnboardingInvitationNoOp(ctx, invocation, attempt, candidate, idempotency)
+		return view, true, err
+	}
+	return InvitationView{}, false, nil
+}
+
+// issuedInvitationView maps an Invitation issue result to its view, carrying replay and no-op markers.
+func issuedInvitationView(created *store.InvitationCommandResult) InvitationView {
 	view := invitationView(created.Invitation)
 	view.Replayed = created.Replayed
 	view.NoOp = created.NoOp
-	return view, nil
+	return view
 }
 
 func (s *invitationService) IssueAcademicUnitRoleInvitation(ctx context.Context, invocation invocation.Invocation, command IssueAcademicUnitRoleInvitationCommand) (InvitationView, error) {
