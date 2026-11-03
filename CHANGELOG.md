@@ -151,6 +151,10 @@ module when a change is not server-only. No module has been released yet.
   WebSocket, transport, serving lease, metrics, tracing, Platform) under a
   single `Server.ShutdownTimeout` budget that starts with shutdown, instead of
   up to three back-to-back timeouts.
+- Server: the longest production functions and files are split by
+  responsibility, without behavior changes. An architecture test now fails on
+  any production function over 120 lines, with a short allowlist that may only
+  shrink.
 - Server: `migrate status` and the read-only inspection commands open
   PostgreSQL with `default_transaction_read_only`, so the database itself
   refuses any write.
