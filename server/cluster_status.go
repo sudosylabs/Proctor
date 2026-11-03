@@ -72,11 +72,7 @@ func InspectCluster(ctx context.Context, configPath string) (_ ClusterStatus, re
 		return ClusterStatus{}, err
 	}
 	status := ClusterStatus{
-		Schema: ClusterSchema{
-			DatabaseVersion:   schema.DatabaseVersion,
-			ServerVersion:     schema.ServerVersion,
-			PendingMigrations: schema.PendingMigrations,
-		},
+		Schema:       ClusterSchema(schema),
 		ServingNodes: []ServingNode{},
 		Discovery:    []DiscoveryNode{},
 	}

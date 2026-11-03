@@ -48,6 +48,7 @@ func TestPasswordChangeKeepsTheCallingSessionAndPublishesOtherRevocations(t *tes
 	principal.AuthenticationStrength = model.AuthenticationMultiFactor
 	principal.MFACompletedAt = model.OptionalTimeFrom(now)
 
+	// #nosec G101 -- Synthetic password used only to exercise the password change.
 	err = service.ChangePassword(context.Background(), invocation.New(principal, model.RequestMetadata{}), ChangePasswordCommand{Password: "radium-and-polonium-1898"})
 	require.NoError(t, err)
 	require.NotNil(t, passwords.change)

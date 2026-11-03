@@ -133,7 +133,7 @@ func runIdempotentMutationInTransaction[T any](ctx context.Context, tx *sqlxTxWr
 	case err == nil:
 		return replayRecordedOutcome(ctx, tx, mutation, row)
 	case errors.Is(err, sql.ErrNoRows):
-	case err != nil:
+	default:
 		return nil, fmt.Errorf("find idempotent command outcome: %w", err)
 	}
 

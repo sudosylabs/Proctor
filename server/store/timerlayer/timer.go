@@ -144,13 +144,9 @@ func timeStoreCall2[T, U any](
 func (l *Layer) begin(ctx context.Context, operation Operation) (context.Context, func(error)) {
 	endSpan := func(Outcome) {}
 	if l.options.Tracer != nil {
-		func() {
-			defer func() { _ = recover() }()
-			spanCtx, finish := l.options.Tracer.StartOperation(ctx, operation)
-			if spanCtx != nil && finish != nil {
-				ctx, endSpan = spanCtx, finish
-			}
-		}()
+		if spanCtx, finish := l.startSpan(ctx, operation); spanCtx != nil && finish != nil {
+			ctx, endSpan = spanCtx, finish
+		}
 	}
 	startedAt := l.now()
 	return ctx, func(err error) {
@@ -160,6 +156,14 @@ func (l *Layer) begin(ctx context.Context, operation Operation) (context.Context
 			endSpan(outcome)
 		}()
 	}
+}
+
+// startSpan asks the tracer for the operation's span. A panicking tracer
+// yields no span: the recovered call never assigns the results, so the
+// operation proceeds untraced on the caller's context.
+func (l *Layer) startSpan(ctx context.Context, operation Operation) (spanCtx context.Context, finish func(Outcome)) {
+	defer func() { _ = recover() }()
+	return l.options.Tracer.StartOperation(ctx, operation)
 }
 
 func (l *Layer) observe(ctx context.Context, operation Operation, startedAt time.Time, err error) Outcome {

@@ -21,6 +21,7 @@ import (
 )
 
 func TestShowEffectiveConfigurationRedactsTheFileAndEnvironmentOverlay(t *testing.T) {
+	// #nosec G101 -- Synthetic data source whose password the redaction must remove.
 	const fileDataSource = "postgres://proctor:file-database-password@db.internal/proctor"
 	const environmentSMTPPassword = "environment-smtp-password"
 	t.Setenv("PROCTOR_MAIL_SMTP_PASSWORD", environmentSMTPPassword)

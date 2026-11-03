@@ -440,7 +440,7 @@ func validateExternalInvitationAudit(event *model.AuditEvent, invitation *model.
 	if err := json.Unmarshal(event.Parameters, &parameters); err != nil || len(parameters) != 1 || parameters["provider"] != provider {
 		return store.NewErrInvalidInput("invitation", "external_acceptance_audit", err)
 	}
-	want := model.Resource{}
+	var want model.Resource
 	switch invitation.Purpose {
 	case model.InvitationPurposeStudentClass:
 		want = model.Resource{Type: model.ResourceClass, ID: invitation.ClassID.String()}

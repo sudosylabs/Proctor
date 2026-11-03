@@ -128,6 +128,7 @@ func TestPasswordCredentialStore(t *testing.T, ss store.Store) {
 		attempt := saveAuthenticationMethodAuditAttempt(t, ctx, ss, user.ID.String(), "change_password")
 		at := model.NowUTC()
 		occurrence, delivery, job := userTokenMailFixture(t, user.ID, model.NewMailOccurrenceID(), model.MailOccurrenceSecurityNotice, model.MailTemplateIdentityPasswordChanged, model.JobTypeMailDeliver, at, at.Add(24*time.Hour))
+		// #nosec G101 -- Nonfunctional password hash used only to exercise the Store change.
 		result, err := ss.PasswordCredential().Change(ctx, &store.PasswordCredentialChange{UserID: user.ID, KeepSessionID: kept.ID,
 			PasswordHash: "$argon2id$after-change", RevocationReason: model.SessionRevocationPasswordChanged,
 			Occurrence: occurrence, Delivery: delivery, Job: job, AuditEventID: attempt.ID, AuditAt: at})
@@ -169,6 +170,7 @@ func TestPasswordCredentialStore(t *testing.T, ss store.Store) {
 	t.Run("ChangeRefusesRecentPasswordsAndBoundsHistory", func(t *testing.T) {
 		ctx := context.Background()
 		user := saveUser(t, ctx, ss)
+		// #nosec G101 -- Nonfunctional password hash used only to exercise password history.
 		_, err := ss.PasswordCredential().Save(ctx, &model.PasswordCredential{UserID: user.ID, PasswordHash: "$argon2id$history-0"})
 		require.NoError(t, err)
 		kept := model.NewSessionID()
@@ -200,6 +202,7 @@ func TestPasswordCredentialStore(t *testing.T, ss store.Store) {
 		candidate.EmailVerified = true
 		user, err := createUser(t, ctx, ss, candidate)
 		require.NoError(t, err)
+		// #nosec G101 -- Nonfunctional password hash used only to exercise reuse after removal.
 		_, err = ss.PasswordCredential().Save(ctx, &model.PasswordCredential{UserID: user.ID, PasswordHash: "$argon2id$removed"})
 		require.NoError(t, err)
 		_, err = ss.ExternalIdentity().Save(ctx, &model.ExternalIdentity{UserID: user.ID, Provider: "campus-cas",
@@ -229,6 +232,7 @@ func TestPasswordCredentialStore(t *testing.T, ss store.Store) {
 		attempt := saveAuthenticationMethodAuditAttempt(t, ctx, ss, user.ID.String(), "change_password")
 		at := model.NowUTC()
 		occurrence, delivery, job := userTokenMailFixture(t, user.ID, model.NewMailOccurrenceID(), model.MailOccurrenceSecurityNotice, model.MailTemplateIdentityPasswordChanged, model.JobTypeMailDeliver, at, at.Add(24*time.Hour))
+		// #nosec G101 -- Nonfunctional password hash used only to exercise the refused Store change.
 		_, err := ss.PasswordCredential().Change(ctx, &store.PasswordCredentialChange{UserID: user.ID, KeepSessionID: model.NewSessionID(),
 			PasswordHash: "$argon2id$after-change", RevocationReason: model.SessionRevocationPasswordChanged,
 			Occurrence: occurrence, Delivery: delivery, Job: job, AuditEventID: attempt.ID, AuditAt: at})

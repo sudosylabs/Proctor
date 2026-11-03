@@ -72,7 +72,7 @@ func TestHTTPRequestSpanIsNamedByRouteTemplateAndBoundedAttributes(t *testing.T)
 
 	resource := map[attribute.Key]string{}
 	for _, value := range ended[0].Resource().Attributes() {
-		resource[value.Key] = value.Value.Emit()
+		resource[value.Key] = value.Value.String()
 	}
 	require.Equal(t, map[attribute.Key]string{
 		"service.name": "proctor", "service.version": "test", "service.instance.id": "node-a",
