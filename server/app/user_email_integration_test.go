@@ -91,15 +91,19 @@ func TestEmailTransitionsUseRealServerGraphAndFrozenRecipients(t *testing.T) {
 	})
 	verificationToken := credentialFromDelivery(t, firstVerification)
 	require.NotContains(t, helper.Logs.String(), verificationToken, "email-change verification token appeared in logs")
-	require.False(t, credentialPattern.Match(deliveryToMatching(t, deliveries, "first-old@example.edu", func(message string) bool {
-		return strings.Contains(message, "email address")
-	}).Data), "old-address warning contains a credential or lacks expected copy")
+	// The previous address receives the single-use undo link, so its warning
+	// carries a credential that must never reach the logs.
+	firstUndo := deliveryToMatching(t, deliveries, "first-old@example.edu", func(message string) bool {
+		return strings.Contains(message, "email address") && strings.Contains(message, "undo-email-change")
+	})
+	require.NotContains(t, helper.Logs.String(), credentialFromDelivery(t, firstUndo), "email-change undo token appeared in logs")
 	require.False(t, credentialPattern.Match(deliveryToMatching(t, deliveries, "second-new@example.edu", func(message string) bool {
 		return strings.Contains(message, "verified")
 	}).Data), "privileged-verification notice contains a credential or lacks expected copy")
-	require.False(t, credentialPattern.Match(deliveryToMatching(t, deliveries, "second-old@example.edu", func(message string) bool {
-		return strings.Contains(message, "email address")
-	}).Data), "second old-address warning contains a credential")
+	secondUndo := deliveryToMatching(t, deliveries, "second-old@example.edu", func(message string) bool {
+		return strings.Contains(message, "email address") && strings.Contains(message, "undo-email-change")
+	})
+	require.NotContains(t, helper.Logs.String(), credentialFromDelivery(t, secondUndo), "second email-change undo token appeared in logs")
 
 	completed := performJSONRequest(helper.Handler(), http.MethodPost, "/api/v1/auth/email-verification/complete",
 		map[string]any{"token": verificationToken}, "")
