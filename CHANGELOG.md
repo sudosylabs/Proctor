@@ -147,6 +147,10 @@ module when a change is not server-only. No module has been released yet.
 - Build: the root `make check` verifies transactional-mail template freshness,
   and `make -C server integration-postgres` runs every PostgreSQL integration
   test in its packages instead of a fixed list.
+- Server: every shutdown path runs one ordered sequence (listener, HTTP, Jobs,
+  WebSocket, transport, serving lease, metrics, tracing, Platform) under a
+  single `Server.ShutdownTimeout` budget that starts with shutdown, instead of
+  up to three back-to-back timeouts.
 - Server: `migrate status` and the read-only inspection commands open
   PostgreSQL with `default_transaction_read_only`, so the database itself
   refuses any write.
@@ -200,6 +204,11 @@ module when a change is not server-only. No module has been released yet.
   OTLP/HTTP for HTTP routes (named by route template), store operations and
   Job executions. Trace context is continued only from trusted proxies. Log
   lines carry `request_id`, and `trace_id` and `span_id` when tracing is on.
+- Server: a second SIGTERM or SIGINT during the drain forces it to finish at
+  once and `proctor serve` exits 1; a third exits immediately.
+- Server: systemd receives `STOPPING=1` at shutdown, `RELOADING=1` and
+  `READY=1` around `SIGHUP` reloads, and watchdog keep-alives that stop when
+  the node stays unready. The shipped unit sets `WatchdogSec=60s`.
 - Build: `make e2e` drives Chromium through first-run setup, login and
   sign-out, MFA enrollment and challenge, a mailed password reset and a mailed
   Invitation against one real `proctor serve` node with disposable PostgreSQL
