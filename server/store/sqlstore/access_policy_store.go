@@ -153,6 +153,9 @@ func encodeAccessPolicyReplacementOutcome(outcome accessPolicyReplacementOutcome
 	return encodeOutcome(document)
 }
 
+// Replace applies a preflighted Access Policy replacement at the expected
+// revision as an idempotent mutation, optionally revoking Sessions of disabled
+// methods.
 func (s SQLAccessPolicyStore) Replace(ctx context.Context, input *store.AccessPolicyReplacement, command *store.CommandIdempotency) (*store.AccessPolicyReplacementResult, error) {
 	if err := validateAccessPolicyReplacement(input, command); err != nil {
 		return nil, err
@@ -160,90 +163,7 @@ func (s SQLAccessPolicyStore) Replace(ctx context.Context, input *store.AccessPo
 	mutation, err := runIdempotentMutation(ctx, s.SQLStore, "access policy replacement", idempotentMutation[accessPolicyReplacementOutcome]{
 		command: command, auditEventID: input.AuditEventID,
 		execute: func(ctx context.Context, tx *sqlxTxWrapper) (accessPolicyReplacementOutcome, error) {
-			if err := lockSystemAdministratorAuthenticationPaths(ctx, tx); err != nil {
-				return accessPolicyReplacementOutcome{}, err
-			}
-			current, err := getAccessPolicy(ctx, tx, "FOR UPDATE")
-			if err != nil {
-				return accessPolicyReplacementOutcome{}, err
-			}
-			if current.Revision != input.Preflight.ExpectedRevision {
-				return accessPolicyReplacementOutcome{}, &store.ErrAccessPolicyRevisionConflict{CurrentRevision: current.Revision}
-			}
-			var databaseNow time.Time
-			if err := tx.Get(ctx, &databaseNow, `SELECT clock_timestamp()`); err != nil {
-				return accessPolicyReplacementOutcome{}, fmt.Errorf("read access policy mutation time: %w", err)
-			}
-			blockers, err := accessPolicyBlockers(ctx, tx, current, input.Preflight.Settings, input.Preflight.Capabilities, databaseNow)
-			if err != nil {
-				return accessPolicyReplacementOutcome{}, err
-			}
-			if len(blockers) != 0 {
-				return accessPolicyReplacementOutcome{}, &store.ErrAccessPolicyBlocked{Blockers: blockers}
-			}
-			candidate := current.Clone()
-			// PostgreSQL time decided the blockers; the recorded transition never
-			// precedes a policy lifecycle stamped by a leading node clock.
-			at := transitionInstant(databaseNow, current.CreatedAt, current.UpdatedAt)
-			transition, err := candidate.Replace(current.Revision, input.Preflight.Settings, input.ActorID, at)
-			if err != nil {
-				return accessPolicyReplacementOutcome{}, store.NewErrInvalidInput("access_policy", "replacement", nil).Wrap(err)
-			}
-			changed := transition != nil
-			revocations := []store.AccessPolicySessionRevocation{}
-			if changed && input.Preflight.RevokeExistingSessions {
-				transition.ChangedFields = append(transition.ChangedFields, "revoke_existing_sessions")
-				sort.Strings(transition.ChangedFields)
-				if err := transition.Validate(); err != nil {
-					return accessPolicyReplacementOutcome{}, store.NewErrInvalidInput("access_policy", "transition", nil).Wrap(err)
-				}
-				revocations, err = revokeSessionsForDisabledAccessMethods(ctx, tx, current, candidate, databaseNow)
-				if err != nil {
-					return accessPolicyReplacementOutcome{}, err
-				}
-			}
-			if changed {
-				providers, encodeErr := json.Marshal(candidate.ProviderAdmissions)
-				if encodeErr != nil {
-					return accessPolicyReplacementOutcome{}, store.NewErrInvalidInput("access_policy", "provider_admissions", nil).Wrap(encodeErr)
-				}
-				result, updateErr := tx.Exec(ctx, `UPDATE access_policies SET revision=?, updated_at=?, local_login_enabled=?,
-					public_registration_enabled=?, invitation_admission_enabled=?, invitation_local_credential_enabled=?,
-					desktop_authorization_enabled=?, provider_admissions=?::jsonb WHERE singleton=1 AND revision=?`,
-					candidate.Revision, candidate.UpdatedAt, candidate.LocalLoginEnabled, candidate.PublicRegistrationEnabled,
-					candidate.InvitationAdmissionEnabled, candidate.InvitationLocalCredentialEnabled,
-					candidate.DesktopAuthorizationEnabled, providers, current.Revision)
-				if updateErr != nil {
-					return accessPolicyReplacementOutcome{}, fmt.Errorf("replace access policy: %w", translateError("access_policy", candidate.ID.String(), updateErr))
-				}
-				if err := requireRevisionAffected(ctx, tx, result, "access_policy", "access_policies", candidate.ID.String()); err != nil {
-					return accessPolicyReplacementOutcome{}, err
-				}
-				if err := insertAccessPolicyTransition(ctx, tx, transition); err != nil {
-					return accessPolicyReplacementOutcome{}, err
-				}
-				if _, err := tx.Exec(ctx, `DELETE FROM access_policy_transitions WHERE access_policy_id=? AND to_revision NOT IN
-					(SELECT to_revision FROM access_policy_transitions WHERE access_policy_id=? ORDER BY to_revision DESC LIMIT ?)`,
-					candidate.ID.String(), candidate.ID.String(), model.AccessPolicyTransitionHistoryLimit); err != nil {
-					return accessPolicyReplacementOutcome{}, fmt.Errorf("bound access policy transition history: %w", err)
-				}
-			}
-			changedFields := []string{}
-			if transition != nil {
-				changedFields = append(changedFields, transition.ChangedFields...)
-			}
-			history, err := listAccessPolicyHistory(ctx, tx, candidate.ID, model.AccessPolicyTransitionHistoryLimit)
-			if err != nil {
-				return accessPolicyReplacementOutcome{}, err
-			}
-			outcome := accessPolicyReplacementOutcome{Result: &store.AccessPolicyReplacementResult{
-				Snapshot: &store.AccessPolicySnapshot{Policy: candidate, History: history}, Changed: changed,
-				SessionRevocations: revocations,
-			}, ChangedFields: changedFields, RevokedSessionCount: accessPolicyRevokedSessionCount(revocations)}
-			if err := completeAccessPolicyReplacementAudit(ctx, tx, outcome, input, false, ""); err != nil {
-				return accessPolicyReplacementOutcome{}, err
-			}
-			return outcome, nil
+			return replaceAccessPolicy(ctx, tx, input)
 		},
 		encode: encodeAccessPolicyReplacementOutcome,
 		decode: decodeAccessPolicyReplacementOutcome,
@@ -257,6 +177,111 @@ func (s SQLAccessPolicyStore) Replace(ctx context.Context, input *store.AccessPo
 	result := mutation.Value.Result
 	result.Replayed = mutation.Replayed
 	return result, nil
+}
+
+// replaceAccessPolicy applies a preflighted Access Policy replacement inside the idempotent mutation transaction.
+func replaceAccessPolicy(ctx context.Context, tx *sqlxTxWrapper, input *store.AccessPolicyReplacement) (accessPolicyReplacementOutcome, error) {
+	current, databaseNow, err := lockUnblockedAccessPolicy(ctx, tx, input)
+	if err != nil {
+		return accessPolicyReplacementOutcome{}, err
+	}
+	candidate := current.Clone()
+	// PostgreSQL time decided the blockers; the recorded transition never
+	// precedes a policy lifecycle stamped by a leading node clock.
+	at := transitionInstant(databaseNow, current.CreatedAt, current.UpdatedAt)
+	transition, err := candidate.Replace(current.Revision, input.Preflight.Settings, input.ActorID, at)
+	if err != nil {
+		return accessPolicyReplacementOutcome{}, store.NewErrInvalidInput("access_policy", "replacement", nil).Wrap(err)
+	}
+	changed := transition != nil
+	revocations := []store.AccessPolicySessionRevocation{}
+	if changed && input.Preflight.RevokeExistingSessions {
+		transition.ChangedFields = append(transition.ChangedFields, "revoke_existing_sessions")
+		sort.Strings(transition.ChangedFields)
+		if err = transition.Validate(); err != nil {
+			return accessPolicyReplacementOutcome{}, store.NewErrInvalidInput("access_policy", "transition", nil).Wrap(err)
+		}
+		revocations, err = revokeSessionsForDisabledAccessMethods(ctx, tx, current, candidate, databaseNow)
+		if err != nil {
+			return accessPolicyReplacementOutcome{}, err
+		}
+	}
+	if changed {
+		if err = persistAccessPolicyReplacement(ctx, tx, current, candidate, transition); err != nil {
+			return accessPolicyReplacementOutcome{}, err
+		}
+	}
+	changedFields := []string{}
+	if transition != nil {
+		changedFields = append(changedFields, transition.ChangedFields...)
+	}
+	history, err := listAccessPolicyHistory(ctx, tx, candidate.ID, model.AccessPolicyTransitionHistoryLimit)
+	if err != nil {
+		return accessPolicyReplacementOutcome{}, err
+	}
+	outcome := accessPolicyReplacementOutcome{Result: &store.AccessPolicyReplacementResult{
+		Snapshot: &store.AccessPolicySnapshot{Policy: candidate, History: history}, Changed: changed,
+		SessionRevocations: revocations,
+	}, ChangedFields: changedFields, RevokedSessionCount: accessPolicyRevokedSessionCount(revocations)}
+	if err := completeAccessPolicyReplacementAudit(ctx, tx, outcome, input, false, ""); err != nil {
+		return accessPolicyReplacementOutcome{}, err
+	}
+	return outcome, nil
+}
+
+// lockUnblockedAccessPolicy locks the current Access Policy at the expected revision and requires the replacement to have no blockers.
+func lockUnblockedAccessPolicy(ctx context.Context, tx *sqlxTxWrapper, input *store.AccessPolicyReplacement) (*model.AccessPolicy, time.Time, error) {
+	if err := lockSystemAdministratorAuthenticationPaths(ctx, tx); err != nil {
+		return nil, time.Time{}, err
+	}
+	current, err := getAccessPolicy(ctx, tx, "FOR UPDATE")
+	if err != nil {
+		return nil, time.Time{}, err
+	}
+	if current.Revision != input.Preflight.ExpectedRevision {
+		return nil, time.Time{}, &store.ErrAccessPolicyRevisionConflict{CurrentRevision: current.Revision}
+	}
+	var databaseNow time.Time
+	if err = tx.Get(ctx, &databaseNow, `SELECT clock_timestamp()`); err != nil {
+		return nil, time.Time{}, fmt.Errorf("read access policy mutation time: %w", err)
+	}
+	blockers, err := accessPolicyBlockers(ctx, tx, current, input.Preflight.Settings, input.Preflight.Capabilities, databaseNow)
+	if err != nil {
+		return nil, time.Time{}, err
+	}
+	if len(blockers) != 0 {
+		return nil, time.Time{}, &store.ErrAccessPolicyBlocked{Blockers: blockers}
+	}
+	return current, databaseNow, nil
+}
+
+// persistAccessPolicyReplacement writes the changed Access Policy, records its transition and bounds the transition history.
+func persistAccessPolicyReplacement(ctx context.Context, tx *sqlxTxWrapper, current, candidate *model.AccessPolicy, transition *model.AccessPolicyTransition) error {
+	providers, encodeErr := json.Marshal(candidate.ProviderAdmissions)
+	if encodeErr != nil {
+		return store.NewErrInvalidInput("access_policy", "provider_admissions", nil).Wrap(encodeErr)
+	}
+	result, updateErr := tx.Exec(ctx, `UPDATE access_policies SET revision=?, updated_at=?, local_login_enabled=?,
+				public_registration_enabled=?, invitation_admission_enabled=?, invitation_local_credential_enabled=?,
+				desktop_authorization_enabled=?, provider_admissions=?::jsonb WHERE singleton=1 AND revision=?`,
+		candidate.Revision, candidate.UpdatedAt, candidate.LocalLoginEnabled, candidate.PublicRegistrationEnabled,
+		candidate.InvitationAdmissionEnabled, candidate.InvitationLocalCredentialEnabled,
+		candidate.DesktopAuthorizationEnabled, providers, current.Revision)
+	if updateErr != nil {
+		return fmt.Errorf("replace access policy: %w", translateError("access_policy", candidate.ID.String(), updateErr))
+	}
+	if err := requireRevisionAffected(ctx, tx, result, "access_policy", "access_policies", candidate.ID.String()); err != nil {
+		return err
+	}
+	if err := insertAccessPolicyTransition(ctx, tx, transition); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `DELETE FROM access_policy_transitions WHERE access_policy_id=? AND to_revision NOT IN
+				(SELECT to_revision FROM access_policy_transitions WHERE access_policy_id=? ORDER BY to_revision DESC LIMIT ?)`,
+		candidate.ID.String(), candidate.ID.String(), model.AccessPolicyTransitionHistoryLimit); err != nil {
+		return fmt.Errorf("bound access policy transition history: %w", err)
+	}
+	return nil
 }
 
 func decodeAccessPolicyReplacementOutcome(encoded []byte) (accessPolicyReplacementOutcome, error) {
