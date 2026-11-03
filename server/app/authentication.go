@@ -462,23 +462,8 @@ func (s *authenticationService) proveLocalSubject(
 		return nil, err
 	}
 	subject.admitted = true
-	localLoginAllowed, err := s.deps.AccessPolicy.AllowsLocalLogin(ctx)
-	if err != nil {
-		return nil, authenticationUnavailable(err)
-	}
-	if !localLoginAllowed {
-		if dummyErr := s.deps.Hasher.VerifyDummy(ctx, command.Password); dummyErr != nil {
-			return nil, passwordWorkError(dummyErr, "authentication.internal")
-		}
-		return nil, invalidCredentialsAppError()
-	}
-	if command.LoginID == "" ||
-		len(command.LoginID) > model.UserEmailMaxLength ||
-		len(command.Password) > s.deps.Hasher.maximumLength {
-		if dummyErr := s.deps.Hasher.VerifyDummy(ctx, "invalid-password-length"); dummyErr != nil {
-			return nil, passwordWorkError(dummyErr, "authentication.internal")
-		}
-		return nil, invalidCredentialsAppError()
+	if err = s.admitLocalLogin(ctx, command); err != nil {
+		return nil, err
 	}
 	user, err := s.findLoginUser(ctx, command.LoginID)
 	if err == nil && user != nil {
@@ -536,13 +521,9 @@ func (s *authenticationService) proveLocalSubject(
 	}
 	// Prepare any hash upgrade before consuming a one-time second factor.
 	// The guarded credential write still follows successful MFA below.
-	var rehashed string
-	if s.deps.Hasher.NeedsRehash(credential.PasswordHash) {
-		var hashErr error
-		rehashed, hashErr = s.deps.Hasher.Hash(ctx, command.Password)
-		if hashErr != nil {
-			return nil, passwordWorkError(hashErr, "authentication.internal")
-		}
+	rehashed, err := s.prepareLocalRehash(ctx, credential, command.Password)
+	if err != nil {
+		return nil, err
 	}
 	now := s.deps.Now()
 	authenticationStrength, mfaCompletedAt, err := s.deps.MFA.verifyLogin(
@@ -552,21 +533,65 @@ func (s *authenticationService) proveLocalSubject(
 		return nil, err
 	}
 
+	if err = s.applyLocalRehash(ctx, credential, rehashed); err != nil {
+		return nil, err
+	}
+
+	return &localAuthenticationProof{User: user, AuthenticationStrength: authenticationStrength, AuthenticationGeneration: recovery.Generation, MFARecoveryRequired: recovery.ReenrollmentRequired,
+		PasswordProof:   store.PasswordCredentialProof{ID: credential.ID, Revision: credential.Revision},
+		AuthenticatedAt: now.UnixMilli(), MFACompletedAt: mfaCompletedAt, receipt: receipt, failures: failures}, nil
+}
+
+// admitLocalLogin rejects a disallowed or malformed local login after equivalent dummy password work.
+func (s *authenticationService) admitLocalLogin(ctx context.Context, command LoginCommand) error {
+	localLoginAllowed, err := s.deps.AccessPolicy.AllowsLocalLogin(ctx)
+	if err != nil {
+		return authenticationUnavailable(err)
+	}
+	if !localLoginAllowed {
+		if dummyErr := s.deps.Hasher.VerifyDummy(ctx, command.Password); dummyErr != nil {
+			return passwordWorkError(dummyErr, "authentication.internal")
+		}
+		return invalidCredentialsAppError()
+	}
+	if command.LoginID == "" ||
+		len(command.LoginID) > model.UserEmailMaxLength ||
+		len(command.Password) > s.deps.Hasher.maximumLength {
+		if dummyErr := s.deps.Hasher.VerifyDummy(ctx, "invalid-password-length"); dummyErr != nil {
+			return passwordWorkError(dummyErr, "authentication.internal")
+		}
+		return invalidCredentialsAppError()
+	}
+	return nil
+}
+
+// prepareLocalRehash computes an upgraded password hash when the stored hash needs one.
+func (s *authenticationService) prepareLocalRehash(ctx context.Context, credential *model.PasswordCredential, password string) (string, error) {
+	var rehashed string
+	if s.deps.Hasher.NeedsRehash(credential.PasswordHash) {
+		var hashErr error
+		rehashed, hashErr = s.deps.Hasher.Hash(ctx, password)
+		if hashErr != nil {
+			return "", passwordWorkError(hashErr, "authentication.internal")
+		}
+	}
+	return rehashed, nil
+}
+
+// applyLocalRehash stores a prepared password hash upgrade guarded by the verified credential revision.
+func (s *authenticationService) applyLocalRehash(ctx context.Context, credential *model.PasswordCredential, rehashed string) error {
 	if rehashed != "" {
 		if rehashErr := s.deps.Passwords.Rehash(ctx, &store.PasswordCredentialRehash{
 			ID: credential.ID, UserID: credential.UserID,
 			ExpectedHash: credential.PasswordHash, ExpectedRevision: credential.Revision, PasswordHash: rehashed,
 		}); rehashErr != nil {
 			if errors.Is(rehashErr, store.ErrPasswordCredentialChanged) {
-				return nil, invalidCredentialsAppError()
+				return invalidCredentialsAppError()
 			}
-			return nil, authenticationUnavailable(rehashErr)
+			return authenticationUnavailable(rehashErr)
 		}
 	}
-
-	return &localAuthenticationProof{User: user, AuthenticationStrength: authenticationStrength, AuthenticationGeneration: recovery.Generation, MFARecoveryRequired: recovery.ReenrollmentRequired,
-		PasswordProof:   store.PasswordCredentialProof{ID: credential.ID, Revision: credential.Revision},
-		AuthenticatedAt: now.UnixMilli(), MFACompletedAt: mfaCompletedAt, receipt: receipt, failures: failures}, nil
+	return nil
 }
 
 // delayAfterLoginFailures waits the progressive delay earned by earlier failed
@@ -690,32 +715,10 @@ func (s *authenticationService) createSession(
 			MaximumActive: settings.MaximumPerUser, AuditEventID: command.AuditEventID, AuditAt: now},
 	)
 	if saveErr != nil {
-		if errors.Is(saveErr, store.ErrAuthenticationMethodDisabled) || errors.Is(saveErr, store.ErrPasswordCredentialChanged) || errors.Is(saveErr, store.ErrAuthenticationGenerationChanged) || errors.Is(saveErr, store.ErrMFAReenrollmentRequired) {
-			if command.AuthenticationProviderID != "" {
-				return nil, nil, invalidExternalAuthenticationError()
-			}
-			return nil, nil, invalidCredentialsAppError()
-		}
-		var conflict *store.ErrConflict
-		if errors.As(saveErr, &conflict) {
-			switch conflict.Constraint {
-			case "sessions_maximum_per_user":
-				return nil, nil, apperror.New("authentication.sessions.maximum_reached")
-			case "active_attempt_session_lock":
-				return nil, nil, apperror.New("authentication.desktop_authorization.account_session_locked")
-			}
-		}
-		return nil, nil, authenticationUnavailable(saveErr)
+		return nil, nil, sessionCreationError(command, saveErr)
 	}
 
-	var accessCredential *model.SessionCredential
-	for _, savedCredential := range credentials {
-		if savedCredential.Kind == model.SessionCredentialAccess {
-			accessCredential = savedCredential
-			break
-		}
-	}
-	if accessCredential == nil {
+	if !hasAccessCredential(credentials) {
 		return nil, nil, authenticationUnavailable(
 			errors.New("saved session has no access credential"),
 		)
@@ -727,6 +730,36 @@ func (s *authenticationService) createSession(
 		AccessExpiresAt:  accessExpiresAt,
 		RefreshExpiresAt: refreshExpiresAt,
 	}, nil
+}
+
+// sessionCreationError maps a Session persistence failure to the public authentication error.
+func sessionCreationError(command sessionIssuance, saveErr error) error {
+	if errors.Is(saveErr, store.ErrAuthenticationMethodDisabled) || errors.Is(saveErr, store.ErrPasswordCredentialChanged) || errors.Is(saveErr, store.ErrAuthenticationGenerationChanged) || errors.Is(saveErr, store.ErrMFAReenrollmentRequired) {
+		if command.AuthenticationProviderID != "" {
+			return invalidExternalAuthenticationError()
+		}
+		return invalidCredentialsAppError()
+	}
+	var conflict *store.ErrConflict
+	if errors.As(saveErr, &conflict) {
+		switch conflict.Constraint {
+		case "sessions_maximum_per_user":
+			return apperror.New("authentication.sessions.maximum_reached")
+		case "active_attempt_session_lock":
+			return apperror.New("authentication.desktop_authorization.account_session_locked")
+		}
+	}
+	return authenticationUnavailable(saveErr)
+}
+
+// hasAccessCredential reports whether the saved Session credentials include an access credential.
+func hasAccessCredential(credentials []*model.SessionCredential) bool {
+	for _, savedCredential := range credentials {
+		if savedCredential.Kind == model.SessionCredentialAccess {
+			return true
+		}
+	}
+	return false
 }
 
 func sessionDeadline(now time.Time, lifetime time.Duration, absoluteExpiresAt time.Time) time.Time {
