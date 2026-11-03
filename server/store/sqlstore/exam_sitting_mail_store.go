@@ -221,102 +221,122 @@ func (s SQLExamSittingStore) CommitMailRecipient(ctx context.Context, input *sto
 			return fmt.Errorf("commit Sitting mail recipient: %w", err)
 		}),
 		func(ctx context.Context, tx *sqlxTxWrapper) (*store.ExamSittingMailRecipientResult, error) {
-			user, err := lockMailRecipientUser(ctx, tx, input.Recipient.ID)
-			if err != nil {
-				return nil, err
-			}
-			if err := lockAffiliationLifecycle(ctx, tx); err != nil {
-				return nil, err
-			}
-			if err := lockClassLifecycle(ctx, tx); err != nil {
-				return nil, err
-			}
-			fanout, sitting, now, err := lockSittingMailFanout(ctx, tx, input.OccurrenceID)
-			if err != nil {
-				return nil, err
-			}
-			if fanout.SittingRevision != input.SittingRevision {
-				return nil, store.NewErrConflict("exam_sitting_mail_fanout", "stale_revision", nil)
-			}
-			if fanout.CompletedAt.Valid {
-				return &store.ExamSittingMailRecipientResult{Suppressed: true}, nil
-			}
-			if !sameSittingMailRecipient(user, input.Recipient) {
-				return nil, store.NewErrConflict("exam_sitting_mail_recipient", "recipient_changed", nil)
-			}
-			projection, err := lockSittingMailProjection(ctx, tx, sitting.ID, user.ID)
-			if err != nil {
-				return nil, err
-			}
-			audience, err := loadSittingMailAudienceState(ctx, tx, sitting, user)
-			if err != nil {
-				return nil, err
-			}
-			expectedKey := sittingMailRecipientTemplate(fanout, string(sitting.State), sitting.Revision,
-				sitting.ScheduledStartAt, now, audience.Eligible, audience.Revision, audience.EligibilityRevision,
-				audience.DisabledSittingRevision, audience.DisabledAudienceRevision, audience.DisabledEligibilityRevision,
-				projection.CommunicatedRevision,
-				model.MailTemplateKey(projection.CommunicatedTemplateKey.String))
-			if existing, findErr := getSittingOccurrenceDelivery(ctx, tx, input.OccurrenceID, user.ID); findErr == nil {
-				if expectedKey != "" || existing.State == model.MailDeliveryAccepted || existing.State == model.MailDeliverySuppressed || existing.State == model.MailDeliveryCanceled {
-					return &store.ExamSittingMailRecipientResult{Delivery: existing, Inserted: false,
-						Suppressed: existing.State != model.MailDeliveryAccepted}, nil
-				}
-			} else if !store.IsNotFound(findErr) {
-				return nil, findErr
-			}
-			if expectedKey == "" || !user.IsActive() || !user.EmailVerified {
-				if err = suppressSittingProjectionDelivery(ctx, tx, projection, now); err != nil {
-					return nil, err
-				}
-				if err = clearSittingDesiredProjection(ctx, tx, sitting.ID, user.ID, now); err != nil {
-					return nil, err
-				}
-				return &store.ExamSittingMailRecipientResult{Suppressed: true}, nil
-			}
-			if input.Delivery == nil || input.DeliveryJob == nil || input.Delivery.Validate() != nil || input.DeliveryJob.Validate() != nil ||
-				input.Delivery.TargetUserID != user.ID || input.Delivery.TargetInvitationID.IsValid() ||
-				input.Delivery.OccurrenceID != input.OccurrenceID || input.Delivery.TemplateKey != expectedKey ||
-				input.Delivery.State != model.MailDeliveryQueued || !input.Delivery.CreatedAt.Equal(fanout.Occurrence.CreatedAt) ||
-				!input.Delivery.Deadline.Equal(fanout.Deadline) || input.Delivery.JobID != input.DeliveryJob.ID ||
-				input.DeliveryJob.Type != model.JobTypeMailDeliver || input.DeliveryJob.Status != model.JobStatusQueued {
-				return nil, store.NewErrInvalidInput("exam_sitting_mail_recipient", "delivery", nil)
-			}
-			if err = suppressSittingProjectionDelivery(ctx, tx, projection, now); err != nil {
-				return nil, err
-			}
-			payloadKeyID, err := mailPayloadKeyID(input.Delivery.EncryptedPayload)
-			if err != nil {
-				return nil, store.NewErrInvalidInput("mail_delivery", "encrypted_payload", err)
-			}
-			if err = requireMailPayloadPrimary(ctx, tx, payloadKeyID); err != nil {
-				return nil, err
-			}
-			if err = insertPreparedMailJob(ctx, tx, input.DeliveryJob); err != nil {
-				return nil, fmt.Errorf("insert Sitting mail delivery Job: %w", translateError("job", input.DeliveryJob.ID.String(), err))
-			}
-			if _, err = tx.Exec(ctx, `INSERT INTO mail_deliveries (`+mailDeliveryColumns+`) VALUES
-				(?,?,?,?,?,?,?,?,?,?,?,?,?,?,0,NULL,NULL,'',?,?,1)`, input.Delivery.ID.String(), input.Delivery.OccurrenceID.String(),
-				input.Delivery.JobID.String(), user.ID.String(), nil, input.Delivery.TemplateKey, input.Delivery.TemplateDigest,
-				input.Delivery.MaskedRecipient, input.Delivery.State, input.Delivery.CreatedAt, input.Delivery.UpdatedAt,
-				input.Delivery.MessageDate, input.Delivery.Deadline, input.Delivery.MessageID, payloadKeyID,
-				input.Delivery.EncryptedPayload); err != nil {
-				return nil, fmt.Errorf("insert Sitting mail delivery: %w", translateError("mail_delivery", input.Delivery.ID.String(), err))
-			}
-			if err = incrementMailPayloadKeyReference(ctx, tx, payloadKeyID); err != nil {
-				return nil, err
-			}
-			if _, err = tx.Exec(ctx, `INSERT INTO exam_sitting_mail_recipients
-				(exam_sitting_id,user_id,desired_occurrence_id,desired_delivery_id,desired_sitting_revision,desired_template_key,updated_at)
-				VALUES(?,?,?,?,?,?,?) ON CONFLICT(exam_sitting_id,user_id) DO UPDATE SET
-				desired_occurrence_id=EXCLUDED.desired_occurrence_id,desired_delivery_id=EXCLUDED.desired_delivery_id,
-				desired_sitting_revision=EXCLUDED.desired_sitting_revision,desired_template_key=EXCLUDED.desired_template_key,
-				updated_at=EXCLUDED.updated_at`, sitting.ID.String(), user.ID.String(), input.OccurrenceID.String(),
-				input.Delivery.ID.String(), sitting.Revision, expectedKey, now); err != nil {
-				return nil, fmt.Errorf("update Sitting mail recipient projection: %w", err)
-			}
-			return &store.ExamSittingMailRecipientResult{Delivery: input.Delivery.Clone(), Inserted: true}, nil
+			return commitSittingMailRecipient(ctx, tx, input)
 		})
+}
+
+// commitSittingMailRecipient locks the recipient, lifecycles, fan-out and
+// projection, then returns an existing delivery, suppresses an ineligible
+// recipient, or inserts the prepared delivery inside the caller's transaction.
+func commitSittingMailRecipient(ctx context.Context, tx *sqlxTxWrapper,
+	input *store.ExamSittingMailRecipientCommit,
+) (*store.ExamSittingMailRecipientResult, error) {
+	user, err := lockMailRecipientUser(ctx, tx, input.Recipient.ID)
+	if err != nil {
+		return nil, err
+	}
+	if err = lockAffiliationLifecycle(ctx, tx); err != nil {
+		return nil, err
+	}
+	if err = lockClassLifecycle(ctx, tx); err != nil {
+		return nil, err
+	}
+	fanout, sitting, now, err := lockSittingMailFanout(ctx, tx, input.OccurrenceID)
+	if err != nil {
+		return nil, err
+	}
+	if fanout.SittingRevision != input.SittingRevision {
+		return nil, store.NewErrConflict("exam_sitting_mail_fanout", "stale_revision", nil)
+	}
+	if fanout.CompletedAt.Valid {
+		return &store.ExamSittingMailRecipientResult{Suppressed: true}, nil
+	}
+	if !sameSittingMailRecipient(user, input.Recipient) {
+		return nil, store.NewErrConflict("exam_sitting_mail_recipient", "recipient_changed", nil)
+	}
+	projection, err := lockSittingMailProjection(ctx, tx, sitting.ID, user.ID)
+	if err != nil {
+		return nil, err
+	}
+	audience, err := loadSittingMailAudienceState(ctx, tx, sitting, user)
+	if err != nil {
+		return nil, err
+	}
+	expectedKey := sittingMailRecipientTemplate(fanout, string(sitting.State), sitting.Revision,
+		sitting.ScheduledStartAt, now, audience.Eligible, audience.Revision, audience.EligibilityRevision,
+		audience.DisabledSittingRevision, audience.DisabledAudienceRevision, audience.DisabledEligibilityRevision,
+		projection.CommunicatedRevision,
+		model.MailTemplateKey(projection.CommunicatedTemplateKey.String))
+	if existing, findErr := getSittingOccurrenceDelivery(ctx, tx, input.OccurrenceID, user.ID); findErr == nil {
+		if expectedKey != "" || existing.State == model.MailDeliveryAccepted || existing.State == model.MailDeliverySuppressed || existing.State == model.MailDeliveryCanceled {
+			return &store.ExamSittingMailRecipientResult{Delivery: existing, Inserted: false,
+				Suppressed: existing.State != model.MailDeliveryAccepted}, nil
+		}
+	} else if !store.IsNotFound(findErr) {
+		return nil, findErr
+	}
+	if expectedKey == "" || !user.IsActive() || !user.EmailVerified {
+		if err = suppressSittingProjectionDelivery(ctx, tx, projection, now); err != nil {
+			return nil, err
+		}
+		if err = clearSittingDesiredProjection(ctx, tx, sitting.ID, user.ID, now); err != nil {
+			return nil, err
+		}
+		return &store.ExamSittingMailRecipientResult{Suppressed: true}, nil
+	}
+	if input.Delivery == nil || input.DeliveryJob == nil || input.Delivery.Validate() != nil || input.DeliveryJob.Validate() != nil ||
+		input.Delivery.TargetUserID != user.ID || input.Delivery.TargetInvitationID.IsValid() ||
+		input.Delivery.OccurrenceID != input.OccurrenceID || input.Delivery.TemplateKey != expectedKey ||
+		input.Delivery.State != model.MailDeliveryQueued || !input.Delivery.CreatedAt.Equal(fanout.Occurrence.CreatedAt) ||
+		!input.Delivery.Deadline.Equal(fanout.Deadline) || input.Delivery.JobID != input.DeliveryJob.ID ||
+		input.DeliveryJob.Type != model.JobTypeMailDeliver || input.DeliveryJob.Status != model.JobStatusQueued {
+		return nil, store.NewErrInvalidInput("exam_sitting_mail_recipient", "delivery", nil)
+	}
+	if err = suppressSittingProjectionDelivery(ctx, tx, projection, now); err != nil {
+		return nil, err
+	}
+	if err = insertSittingMailRecipientDelivery(ctx, tx, input, sitting, user.ID, expectedKey, now); err != nil {
+		return nil, err
+	}
+	return &store.ExamSittingMailRecipientResult{Delivery: input.Delivery.Clone(), Inserted: true}, nil
+}
+
+// insertSittingMailRecipientDelivery inserts the prepared delivery and its Job
+// under the primary payload key and points the recipient projection at it.
+func insertSittingMailRecipientDelivery(ctx context.Context, tx *sqlxTxWrapper, input *store.ExamSittingMailRecipientCommit,
+	sitting *model.ExamSitting, userID model.UserID, expectedKey model.MailTemplateKey, now time.Time,
+) error {
+	payloadKeyID, err := mailPayloadKeyID(input.Delivery.EncryptedPayload)
+	if err != nil {
+		return store.NewErrInvalidInput("mail_delivery", "encrypted_payload", err)
+	}
+	if err = requireMailPayloadPrimary(ctx, tx, payloadKeyID); err != nil {
+		return err
+	}
+	if err = insertPreparedMailJob(ctx, tx, input.DeliveryJob); err != nil {
+		return fmt.Errorf("insert Sitting mail delivery Job: %w", translateError("job", input.DeliveryJob.ID.String(), err))
+	}
+	if _, err = tx.Exec(ctx, `INSERT INTO mail_deliveries (`+mailDeliveryColumns+`) VALUES
+		(?,?,?,?,?,?,?,?,?,?,?,?,?,?,0,NULL,NULL,'',?,?,1)`, input.Delivery.ID.String(), input.Delivery.OccurrenceID.String(),
+		input.Delivery.JobID.String(), userID.String(), nil, input.Delivery.TemplateKey, input.Delivery.TemplateDigest,
+		input.Delivery.MaskedRecipient, input.Delivery.State, input.Delivery.CreatedAt, input.Delivery.UpdatedAt,
+		input.Delivery.MessageDate, input.Delivery.Deadline, input.Delivery.MessageID, payloadKeyID,
+		input.Delivery.EncryptedPayload); err != nil {
+		return fmt.Errorf("insert Sitting mail delivery: %w", translateError("mail_delivery", input.Delivery.ID.String(), err))
+	}
+	if err = incrementMailPayloadKeyReference(ctx, tx, payloadKeyID); err != nil {
+		return err
+	}
+	if _, err = tx.Exec(ctx, `INSERT INTO exam_sitting_mail_recipients
+		(exam_sitting_id,user_id,desired_occurrence_id,desired_delivery_id,desired_sitting_revision,desired_template_key,updated_at)
+		VALUES(?,?,?,?,?,?,?) ON CONFLICT(exam_sitting_id,user_id) DO UPDATE SET
+		desired_occurrence_id=EXCLUDED.desired_occurrence_id,desired_delivery_id=EXCLUDED.desired_delivery_id,
+		desired_sitting_revision=EXCLUDED.desired_sitting_revision,desired_template_key=EXCLUDED.desired_template_key,
+		updated_at=EXCLUDED.updated_at`, sitting.ID.String(), userID.String(), input.OccurrenceID.String(),
+		input.Delivery.ID.String(), sitting.Revision, expectedKey, now); err != nil {
+		return fmt.Errorf("update Sitting mail recipient projection: %w", err)
+	}
+	return nil
 }
 
 type sittingMailProjectionRow struct {
