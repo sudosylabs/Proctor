@@ -337,6 +337,33 @@ func (s *externalAuthenticationService) beginForPurpose(
 	}
 	stateToken := s.deps.NewCredential()
 	bindingToken := s.deps.NewCredential()
+	challenge, err := s.beginProviderChallenge(ctx, provider, providerID, purpose, stateToken, bindingToken)
+	if err != nil {
+		return nil, err
+	}
+	state := &model.ExternalLoginState{
+		Provider: providerID, StateHash: model.HashToken(stateToken),
+		Purpose: purpose, TargetUserID: targetUserID, AuditEventID: auditEventID.String(),
+		BrowserAuthenticationTransactionID: browserTransactionID,
+		BindingHash:                        model.HashToken(bindingToken), ReturnTo: returnTo,
+		ClientType: clientType, DeviceID: deviceID, DeviceName: deviceName,
+	}
+	saved, err := s.saveExternalLoginState(ctx, state, reauthentication, invitationClaimHash)
+	if err != nil {
+		return nil, err
+	}
+	return &model.ExternalAuthenticationStart{
+		RedirectURL: challenge.RedirectURL,
+		Binding:     bindingToken,
+		ExpiresAt:   saved.ExpiresAt.UnixMilli(),
+	}, nil
+}
+
+// beginProviderChallenge asks the provider for the redirect challenge bound to the fresh state and binding tokens.
+func (s *externalAuthenticationService) beginProviderChallenge(
+	ctx context.Context, provider ExternalIdentityProvider, providerID string,
+	purpose model.ExternalAuthenticationPurpose, stateToken, bindingToken string,
+) (*ExternalProviderBeginResponse, error) {
 	callbackURL, err := externalAuthenticationCallbackURL(
 		s.deps.Policy.PublicURL,
 		providerID,
@@ -354,23 +381,21 @@ func (s *externalAuthenticationService) beginForPurpose(
 		},
 	)
 	if err != nil {
-		return nil, externalProviderOperationError(
-
-			err)
-
+		return nil, externalProviderOperationError(err)
 	}
 	if challenge == nil || challenge.RedirectURL == "" {
 		return nil, authenticationUnavailable(errors.New("external provider returned an empty login challenge"))
 	}
-	state := &model.ExternalLoginState{
-		Provider: providerID, StateHash: model.HashToken(stateToken),
-		Purpose: purpose, TargetUserID: targetUserID, AuditEventID: auditEventID.String(),
-		BrowserAuthenticationTransactionID: browserTransactionID,
-		BindingHash:                        model.HashToken(bindingToken), ReturnTo: returnTo,
-		ClientType: clientType, DeviceID: deviceID, DeviceName: deviceName,
-	}
+	return challenge, nil
+}
+
+// saveExternalLoginState binds any reauthenticated Session to the login state and persists it with its deadline.
+func (s *externalAuthenticationService) saveExternalLoginState(
+	ctx context.Context, state *model.ExternalLoginState, reauthentication *model.Principal, invitationClaimHash string,
+) (*model.ExternalLoginState, error) {
+	var err error
 	if reauthentication != nil {
-		if purpose != model.ExternalAuthenticationPurposeReauthenticate {
+		if state.Purpose != model.ExternalAuthenticationPurposeReauthenticate {
 			return nil, invalidTokenAppError()
 		}
 		state.SessionID = reauthentication.SessionID
@@ -395,11 +420,7 @@ func (s *externalAuthenticationService) beginForPurpose(
 	if saved == nil || saved.ExpiresAt.IsZero() {
 		return nil, authenticationUnavailable(errors.New("external login state persistence returned an invalid deadline"))
 	}
-	return &model.ExternalAuthenticationStart{
-		RedirectURL: challenge.RedirectURL,
-		Binding:     bindingToken,
-		ExpiresAt:   saved.ExpiresAt.UnixMilli(),
-	}, nil
+	return saved, nil
 }
 
 func (s *externalAuthenticationService) CompleteExternalAuthentication(
@@ -415,6 +436,27 @@ func (s *externalAuthenticationService) CompleteExternalAuthentication(
 		invocation.RequestMetadata(),
 	)
 	return result, appErr
+}
+
+// externalCompletionAttempt carries the consumed-state facts shared by the completion steps.
+type externalCompletionAttempt struct {
+	providerID  string
+	method      string
+	metadata    model.RequestMetadata
+	institution *model.Institution
+	state       *model.ExternalLoginState
+}
+
+// recordCompletionFailure audits a failed external authentication with the given error code.
+func (s *externalAuthenticationService) recordCompletionFailure(ctx context.Context, attempt externalCompletionAttempt, errorCode string) error {
+	return s.deps.Audit.RecordExternalAuthenticationFailure(
+		ctx,
+		attempt.providerID,
+		attempt.method,
+		attempt.metadata,
+		attempt.institution.ID,
+		errorCode,
+	)
 }
 
 func (s *externalAuthenticationService) complete(
@@ -437,40 +479,9 @@ func (s *externalAuthenticationService) complete(
 		return nil, externalProviderNotFoundError()
 	}
 	method := provider.Descriptor().Type
-	stateToken, providerErr := provider.State(callback)
-	if providerErr != nil ||
-		!validRawCredential(stateToken) ||
-		!validRawCredential(bindingToken) {
-		return nil, invalidExternalAuthenticationError()
-
-	}
-	stateHash := model.HashToken(stateToken)
-	state, err := s.deps.LoginStates.GetByStateHash(ctx, stateHash)
-	if err != nil || state == nil || state.Provider != providerID ||
-		state.ClientType != model.SessionClientWeb || state.ConsumedAt.Valid {
-		if err != nil && !store.IsNotFound(err) {
-			return nil, authenticationUnavailable(err)
-		}
-		return nil, invalidExternalAuthenticationError()
-
-	}
-	callbackURL, err := externalAuthenticationCallbackURL(
-		s.deps.Policy.PublicURL,
-		providerID,
-	)
+	state, stateToken, callbackURL, err := s.consumeCallbackLoginState(ctx, provider, providerID, bindingToken, callback)
 	if err != nil {
-		return nil, authenticationUnavailable(err)
-	}
-	state, err = s.deps.LoginStates.Consume(
-		ctx,
-		&store.ExternalLoginStateConsumption{Provider: providerID, StateHash: stateHash, BindingHash: model.HashToken(bindingToken)},
-	)
-	if err != nil {
-		if store.IsNotFound(err) {
-			return nil, invalidExternalAuthenticationError()
-
-		}
-		return nil, authenticationUnavailable(err)
+		return nil, err
 	}
 	// Only a consumed, browser-bound state may select a hosted failure
 	// continuation. No provider error or query value becomes a redirect target.
@@ -485,55 +496,23 @@ func (s *externalAuthenticationService) complete(
 		}
 	}()
 	nowTime := s.deps.Now()
-	now := nowTime.UnixMilli()
 
 	institution, err := s.deps.Institutions.GetSingleton(ctx)
 	if err != nil {
 		return nil, s.failConsumedProviderConnection(ctx, state, authenticationUnavailable(err))
 	}
-	var authenticationStartedAt time.Time
-	if state.Purpose == model.ExternalAuthenticationPurposeReauthenticate || state.Purpose == model.ExternalAuthenticationPurposeMFARecovery {
-		authenticationStartedAt = state.CreatedAt
+	attempt := externalCompletionAttempt{
+		providerID: providerID, method: method, metadata: metadata,
+		institution: institution, state: state,
 	}
-	assertion, providerErr := provider.Complete(
-		ctx,
-		ExternalProviderCompleteRequest{
-			CallbackURL:             callbackURL,
-			State:                   stateToken,
-			Proof:                   bindingToken,
-			Callback:                callback,
-			AuthenticationStartedAt: authenticationStartedAt,
-		},
-	)
-	if providerErr != nil {
-		errorCode := apperror.Code("authentication.external.rejected")
-		if !errors.Is(providerErr, ErrExternalAuthenticationRejected) {
-			errorCode = "authentication.external.unavailable"
-		}
-		if appErr := s.deps.Audit.RecordExternalAuthenticationFailure(
-			ctx,
-			providerID,
-			method,
-			metadata,
-			institution.ID,
-			string(errorCode),
-		); appErr != nil {
-			return nil, s.failConsumedProviderConnection(ctx, state, appErr)
-		}
-		return nil, s.failConsumedProviderConnection(ctx, state, apperror.New(errorCode).Wrap(providerErr))
-	}
-	if assertion == nil || assertion.ProviderID != providerID {
-		if auditErr := s.deps.Audit.RecordExternalAuthenticationFailure(
-			ctx,
-			providerID,
-			method,
-			metadata,
-			institution.ID,
-			"authentication.external.invalid_assertion",
-		); auditErr != nil {
-			return nil, s.failConsumedProviderConnection(ctx, state, auditErr)
-		}
-		return nil, s.failConsumedProviderConnection(ctx, state, authenticationUnavailable(errors.New("provider returned a mismatched assertion")))
+	assertion, err := s.completeProviderAssertion(ctx, provider, attempt, ExternalProviderCompleteRequest{
+		CallbackURL: callbackURL,
+		State:       stateToken,
+		Proof:       bindingToken,
+		Callback:    callback,
+	})
+	if err != nil {
+		return nil, err
 	}
 	if state.Purpose == model.ExternalAuthenticationPurposeReauthenticate {
 		return s.completeReauthentication(ctx, state, assertion)
@@ -542,144 +521,11 @@ func (s *externalAuthenticationService) complete(
 		return s.completeProviderConnection(ctx, state, assertion, metadata, institution)
 	}
 	if state.Purpose == model.ExternalAuthenticationPurposeInvitationAdmission {
-		if admission.Mode != model.ProviderAdmissionInvitationRequired || !admission.InvitationAdmissionEnabled {
-			if auditErr := s.deps.Audit.RecordExternalAuthenticationFailure(ctx, providerID, method, metadata,
-				institution.ID, "authentication.external.invalid"); auditErr != nil {
-				return nil, auditErr
-			}
-			return nil, invalidExternalAuthenticationError()
-		}
-		if !state.InvitationID.IsValid() || s.deps.InvitationAcceptor == nil {
-			return nil, invalidExternalAuthenticationError()
-		}
-		providerEmail := strings.ToLower(strings.TrimSpace(model.SanitizeUnicode(assertion.Email)))
-		if !assertion.EmailVerified || !model.IsValidEmail(providerEmail) {
-			if auditErr := s.deps.Audit.RecordExternalAuthenticationFailure(ctx, providerID, method, metadata,
-				institution.ID, "authentication.external.account_not_linked"); auditErr != nil {
-				return nil, auditErr
-			}
-			return nil, apperror.New("authentication.external.account_not_linked")
-		}
-		result, acceptErr := s.deps.InvitationAcceptor.acceptExternalIdentity(ctx, state, assertion,
-			accessDeploymentCapabilities(s.deps.Capabilities.Snapshot()), metadata, method)
-		if acceptErr != nil {
-			if errors.Is(acceptErr, store.ErrAuthenticationMethodDisabled) {
-				if auditErr := s.deps.Audit.RecordExternalAuthenticationFailure(ctx, providerID, method, metadata,
-					institution.ID, "authentication.external.invalid"); auditErr != nil {
-					return nil, auditErr
-				}
-				return nil, invalidExternalAuthenticationError()
-			}
-			var conflict *store.ErrConflict
-			if errors.As(acceptErr, &conflict) {
-				return nil, apperror.New("authentication.external.account_conflict").Wrap(acceptErr)
-			}
-			if store.IsNotFound(acceptErr) {
-				return nil, apperror.New("authentication.external.account_not_linked")
-			}
-			return nil, authenticationUnavailable(acceptErr)
-		}
-		if result == nil || result.User == nil || result.Identity == nil {
-			return nil, authenticationUnavailable(errors.New("external Invitation acceptance returned invalid provenance"))
-		}
-		return &model.ExternalAuthenticationCompletion{User: result.User, ReturnTo: state.ReturnTo}, nil
+		return s.completeInvitationAdmission(ctx, attempt, admission, assertion)
 	}
-	var userCandidate *model.User
-	var defaultPictureJob *model.Job
-	var userSettings *model.UserSettingsDocument
-	var provisionAudit *model.AuditEvent
-	autoProvision := state.Purpose != model.ExternalAuthenticationPurposeMFARecovery && admission.Mode == model.ProviderAdmissionAutoProvision && provider.AutoProvision()
-	if autoProvision {
-		userCandidate = externalUserCandidate(assertion)
-		userCandidate, defaultPictureJob, err = prepareUserDefaultProfilePictureJob(userCandidate, nowTime)
-		if err != nil {
-			return nil, authenticationUnavailable(err)
-		}
-		userSettings, err = prepareInitialUserSettingsDocument(userCandidate)
-		if err != nil {
-			return nil, authenticationUnavailable(err)
-		}
-		provisionParameters, appErr := model.EncodeAuditData(map[string]string{
-			"provider": providerID,
-		})
-		if appErr != nil {
-			return nil, appErr
-		}
-		provisionAudit = &model.AuditEvent{
-			Action:    string(model.ActionAuthenticationExternalProvision),
-			ScopeType: model.RoleScopeInstitution,
-			ScopeID:   institution.ID.String(), Status: model.AuditStatusSuccess,
-			RequestID:  metadata.RequestID,
-			NodeID:     s.deps.Policy.NodeID,
-			ClientType: string(state.ClientType), AuthMethod: method,
-			IPAddress: metadata.IPAddress, UserAgent: metadata.UserAgent,
-			Parameters: provisionParameters,
-		}
-	}
-	resolution, err := s.deps.Identities.ResolveOrProvision(
-		ctx, &store.ExternalIdentityResolutionRequest{
-			Identity: &model.ExternalIdentity{
-				Provider: providerID, Subject: assertion.Subject,
-				LastSeenAt: model.OptionalTimeFromMillis(now),
-			},
-			User: userCandidate, Settings: userSettings,
-			Capabilities: accessDeploymentCapabilities(s.deps.Capabilities.Snapshot()),
-			AuditEvent:   provisionAudit, DefaultProfilePictureJob: defaultPictureJob,
-		},
-	)
+	resolution, err := s.resolveExternalIdentity(ctx, attempt, admission, provider, assertion, nowTime)
 	if err != nil {
-		var conflict *store.ErrConflict
-		errorCode := "authentication.external.internal"
-		if errors.Is(err, store.ErrAuthenticationMethodDisabled) {
-			errorCode = "authentication.external.invalid"
-		} else if errors.As(err, &conflict) {
-			errorCode = "authentication.external.account_conflict"
-		} else if store.IsNotFound(err) {
-			errorCode = "authentication.external.account_not_linked"
-		}
-		if auditErr := s.deps.Audit.RecordExternalAuthenticationFailure(
-			ctx,
-			providerID,
-			method,
-			metadata,
-			institution.ID,
-			errorCode,
-		); auditErr != nil {
-			return nil, auditErr
-		}
-		switch {
-		case errors.Is(err, store.ErrAuthenticationMethodDisabled):
-			return nil, invalidExternalAuthenticationError()
-		case errors.As(err, &conflict):
-			return nil, apperror.New("authentication.external.account_conflict").Wrap(err)
-		case store.IsNotFound(err):
-			return nil, apperror.New("authentication.external.account_not_linked")
-		default:
-			return nil, authenticationUnavailable(err)
-		}
-	}
-	if resolution == nil || resolution.User == nil || resolution.Identity == nil ||
-		!resolution.Identity.ID.IsValid() || resolution.Identity.UserID != resolution.User.ID ||
-		resolution.Identity.Provider != providerID {
-		if auditErr := s.deps.Audit.RecordExternalAuthenticationFailure(ctx, providerID, method, metadata,
-			institution.ID, "authentication.external.internal"); auditErr != nil {
-			return nil, auditErr
-		}
-		return nil, authenticationUnavailable(errors.New("external identity resolution returned invalid provenance"))
-	}
-	if !resolution.User.IsActive() {
-		if appErr := s.deps.Audit.RecordExternalAuthenticationFailure(
-			ctx,
-			providerID,
-			method,
-			metadata,
-			institution.ID,
-			"authentication.external.inactive_account",
-		); appErr != nil {
-			return nil, appErr
-		}
-		return nil, invalidExternalAuthenticationError()
-
+		return nil, err
 	}
 	recovery, recoveryErr := s.deps.Authentication.recoveryState(ctx, resolution.User.ID)
 	if recoveryErr != nil {
@@ -708,15 +554,252 @@ func (s *externalAuthenticationService) complete(
 		}
 		return &model.ExternalAuthenticationCompletion{User: resolution.User, ReturnTo: state.ReturnTo}, nil
 	}
+	return s.issueExternalSession(ctx, attempt, assertion, resolution, recovery)
+}
 
+// consumeCallbackLoginState validates the callback credentials and consumes the matching browser-bound login state.
+func (s *externalAuthenticationService) consumeCallbackLoginState(
+	ctx context.Context, provider ExternalIdentityProvider, providerID, bindingToken string,
+	callback model.ExternalAuthenticationCallback,
+) (*model.ExternalLoginState, string, string, error) {
+	stateToken, providerErr := provider.State(callback)
+	if providerErr != nil ||
+		!validRawCredential(stateToken) ||
+		!validRawCredential(bindingToken) {
+		return nil, "", "", invalidExternalAuthenticationError()
+	}
+	stateHash := model.HashToken(stateToken)
+	state, err := s.deps.LoginStates.GetByStateHash(ctx, stateHash)
+	if err != nil || state == nil || state.Provider != providerID ||
+		state.ClientType != model.SessionClientWeb || state.ConsumedAt.Valid {
+		if err != nil && !store.IsNotFound(err) {
+			return nil, "", "", authenticationUnavailable(err)
+		}
+		return nil, "", "", invalidExternalAuthenticationError()
+	}
+	callbackURL, err := externalAuthenticationCallbackURL(
+		s.deps.Policy.PublicURL,
+		providerID,
+	)
+	if err != nil {
+		return nil, "", "", authenticationUnavailable(err)
+	}
+	state, err = s.deps.LoginStates.Consume(
+		ctx,
+		&store.ExternalLoginStateConsumption{Provider: providerID, StateHash: stateHash, BindingHash: model.HashToken(bindingToken)},
+	)
+	if err != nil {
+		if store.IsNotFound(err) {
+			return nil, "", "", invalidExternalAuthenticationError()
+		}
+		return nil, "", "", authenticationUnavailable(err)
+	}
+	return state, stateToken, callbackURL, nil
+}
+
+// completeProviderAssertion exchanges the callback with the provider and audits a rejected or mismatched assertion.
+func (s *externalAuthenticationService) completeProviderAssertion(
+	ctx context.Context, provider ExternalIdentityProvider, attempt externalCompletionAttempt,
+	request ExternalProviderCompleteRequest,
+) (*model.ExternalAuthenticationAssertion, error) {
+	state := attempt.state
+	if state.Purpose == model.ExternalAuthenticationPurposeReauthenticate || state.Purpose == model.ExternalAuthenticationPurposeMFARecovery {
+		request.AuthenticationStartedAt = state.CreatedAt
+	}
+	assertion, providerErr := provider.Complete(ctx, request)
+	if providerErr != nil {
+		errorCode := apperror.Code("authentication.external.rejected")
+		if !errors.Is(providerErr, ErrExternalAuthenticationRejected) {
+			errorCode = "authentication.external.unavailable"
+		}
+		if appErr := s.recordCompletionFailure(ctx, attempt, string(errorCode)); appErr != nil {
+			return nil, s.failConsumedProviderConnection(ctx, state, appErr)
+		}
+		return nil, s.failConsumedProviderConnection(ctx, state, apperror.New(errorCode).Wrap(providerErr))
+	}
+	if assertion == nil || assertion.ProviderID != attempt.providerID {
+		if auditErr := s.recordCompletionFailure(ctx, attempt, "authentication.external.invalid_assertion"); auditErr != nil {
+			return nil, s.failConsumedProviderConnection(ctx, state, auditErr)
+		}
+		return nil, s.failConsumedProviderConnection(ctx, state, authenticationUnavailable(errors.New("provider returned a mismatched assertion")))
+	}
+	return assertion, nil
+}
+
+// completeInvitationAdmission accepts the Invitation bound to the login state with the verified external identity.
+func (s *externalAuthenticationService) completeInvitationAdmission(
+	ctx context.Context, attempt externalCompletionAttempt, admission externalProviderAdmissionPolicy,
+	assertion *model.ExternalAuthenticationAssertion,
+) (*model.ExternalAuthenticationCompletion, error) {
+	state := attempt.state
+	if admission.Mode != model.ProviderAdmissionInvitationRequired || !admission.InvitationAdmissionEnabled {
+		if auditErr := s.recordCompletionFailure(ctx, attempt, "authentication.external.invalid"); auditErr != nil {
+			return nil, auditErr
+		}
+		return nil, invalidExternalAuthenticationError()
+	}
+	if !state.InvitationID.IsValid() || s.deps.InvitationAcceptor == nil {
+		return nil, invalidExternalAuthenticationError()
+	}
+	providerEmail := strings.ToLower(strings.TrimSpace(model.SanitizeUnicode(assertion.Email)))
+	if !assertion.EmailVerified || !model.IsValidEmail(providerEmail) {
+		if auditErr := s.recordCompletionFailure(ctx, attempt, "authentication.external.account_not_linked"); auditErr != nil {
+			return nil, auditErr
+		}
+		return nil, apperror.New("authentication.external.account_not_linked")
+	}
+	result, acceptErr := s.deps.InvitationAcceptor.acceptExternalIdentity(ctx, state, assertion,
+		accessDeploymentCapabilities(s.deps.Capabilities.Snapshot()), attempt.metadata, attempt.method)
+	if acceptErr != nil {
+		if errors.Is(acceptErr, store.ErrAuthenticationMethodDisabled) {
+			if auditErr := s.recordCompletionFailure(ctx, attempt, "authentication.external.invalid"); auditErr != nil {
+				return nil, auditErr
+			}
+			return nil, invalidExternalAuthenticationError()
+		}
+		var conflict *store.ErrConflict
+		if errors.As(acceptErr, &conflict) {
+			return nil, apperror.New("authentication.external.account_conflict").Wrap(acceptErr)
+		}
+		if store.IsNotFound(acceptErr) {
+			return nil, apperror.New("authentication.external.account_not_linked")
+		}
+		return nil, authenticationUnavailable(acceptErr)
+	}
+	if result == nil || result.User == nil || result.Identity == nil {
+		return nil, authenticationUnavailable(errors.New("external Invitation acceptance returned invalid provenance"))
+	}
+	return &model.ExternalAuthenticationCompletion{User: result.User, ReturnTo: state.ReturnTo}, nil
+}
+
+// externalProvisioning is the prepared auto-provisioning payload for an unlinked external identity.
+type externalProvisioning struct {
+	user              *model.User
+	defaultPictureJob *model.Job
+	settings          *model.UserSettingsDocument
+	audit             *model.AuditEvent
+}
+
+// prepareExternalProvisioning builds the User, settings, picture Job and audit event used when the provider auto-provisions.
+func (s *externalAuthenticationService) prepareExternalProvisioning(
+	attempt externalCompletionAttempt, assertion *model.ExternalAuthenticationAssertion, nowTime time.Time,
+) (externalProvisioning, error) {
+	var provisioning externalProvisioning
+	var err error
+	provisioning.user = externalUserCandidate(assertion)
+	provisioning.user, provisioning.defaultPictureJob, err = prepareUserDefaultProfilePictureJob(provisioning.user, nowTime)
+	if err != nil {
+		return externalProvisioning{}, authenticationUnavailable(err)
+	}
+	provisioning.settings, err = prepareInitialUserSettingsDocument(provisioning.user)
+	if err != nil {
+		return externalProvisioning{}, authenticationUnavailable(err)
+	}
+	provisionParameters, appErr := model.EncodeAuditData(map[string]string{
+		"provider": attempt.providerID,
+	})
+	if appErr != nil {
+		return externalProvisioning{}, appErr
+	}
+	provisioning.audit = &model.AuditEvent{
+		Action:    string(model.ActionAuthenticationExternalProvision),
+		ScopeType: model.RoleScopeInstitution,
+		ScopeID:   attempt.institution.ID.String(), Status: model.AuditStatusSuccess,
+		RequestID:  attempt.metadata.RequestID,
+		NodeID:     s.deps.Policy.NodeID,
+		ClientType: string(attempt.state.ClientType), AuthMethod: attempt.method,
+		IPAddress: attempt.metadata.IPAddress, UserAgent: attempt.metadata.UserAgent,
+		Parameters: provisionParameters,
+	}
+	return provisioning, nil
+}
+
+// resolveExternalIdentity resolves or provisions the linked User and rejects invalid provenance or inactive accounts.
+func (s *externalAuthenticationService) resolveExternalIdentity(
+	ctx context.Context, attempt externalCompletionAttempt, admission externalProviderAdmissionPolicy,
+	provider ExternalIdentityProvider, assertion *model.ExternalAuthenticationAssertion, nowTime time.Time,
+) (*store.ExternalIdentityResolution, error) {
+	now := nowTime.UnixMilli()
+	var provisioning externalProvisioning
+	autoProvision := attempt.state.Purpose != model.ExternalAuthenticationPurposeMFARecovery && admission.Mode == model.ProviderAdmissionAutoProvision && provider.AutoProvision()
+	if autoProvision {
+		var err error
+		provisioning, err = s.prepareExternalProvisioning(attempt, assertion, nowTime)
+		if err != nil {
+			return nil, err
+		}
+	}
+	resolution, err := s.deps.Identities.ResolveOrProvision(
+		ctx, &store.ExternalIdentityResolutionRequest{
+			Identity: &model.ExternalIdentity{
+				Provider: attempt.providerID, Subject: assertion.Subject,
+				LastSeenAt: model.OptionalTimeFromMillis(now),
+			},
+			User: provisioning.user, Settings: provisioning.settings,
+			Capabilities: accessDeploymentCapabilities(s.deps.Capabilities.Snapshot()),
+			AuditEvent:   provisioning.audit, DefaultProfilePictureJob: provisioning.defaultPictureJob,
+		},
+	)
+	if err != nil {
+		return nil, s.identityResolutionFailure(ctx, attempt, err)
+	}
+	if resolution == nil || resolution.User == nil || resolution.Identity == nil ||
+		!resolution.Identity.ID.IsValid() || resolution.Identity.UserID != resolution.User.ID ||
+		resolution.Identity.Provider != attempt.providerID {
+		if auditErr := s.recordCompletionFailure(ctx, attempt, "authentication.external.internal"); auditErr != nil {
+			return nil, auditErr
+		}
+		return nil, authenticationUnavailable(errors.New("external identity resolution returned invalid provenance"))
+	}
+	if !resolution.User.IsActive() {
+		if appErr := s.recordCompletionFailure(ctx, attempt, "authentication.external.inactive_account"); appErr != nil {
+			return nil, appErr
+		}
+		return nil, invalidExternalAuthenticationError()
+	}
+	return resolution, nil
+}
+
+// identityResolutionFailure audits a failed identity resolution and maps it to the public error.
+func (s *externalAuthenticationService) identityResolutionFailure(ctx context.Context, attempt externalCompletionAttempt, err error) error {
+	var conflict *store.ErrConflict
+	errorCode := "authentication.external.internal"
+	if errors.Is(err, store.ErrAuthenticationMethodDisabled) {
+		errorCode = "authentication.external.invalid"
+	} else if errors.As(err, &conflict) {
+		errorCode = "authentication.external.account_conflict"
+	} else if store.IsNotFound(err) {
+		errorCode = "authentication.external.account_not_linked"
+	}
+	if auditErr := s.recordCompletionFailure(ctx, attempt, errorCode); auditErr != nil {
+		return auditErr
+	}
+	switch {
+	case errors.Is(err, store.ErrAuthenticationMethodDisabled):
+		return invalidExternalAuthenticationError()
+	case errors.As(err, &conflict):
+		return apperror.New("authentication.external.account_conflict").Wrap(err)
+	case store.IsNotFound(err):
+		return apperror.New("authentication.external.account_not_linked")
+	default:
+		return authenticationUnavailable(err)
+	}
+}
+
+// issueExternalSession audits the authentication and issues the browser Session for the resolved User.
+func (s *externalAuthenticationService) issueExternalSession(
+	ctx context.Context, attempt externalCompletionAttempt, assertion *model.ExternalAuthenticationAssertion,
+	resolution *store.ExternalIdentityResolution, recovery *model.UserMFARecovery,
+) (*model.ExternalAuthenticationCompletion, error) {
+	state := attempt.state
 	auditEvent, appErr := s.deps.Audit.BeginAuthentication(
 		ctx,
 		resolution.User.ID,
-		method,
-		providerID,
+		attempt.method,
+		attempt.providerID,
 		state.ClientType,
-		metadata,
-		institution.ID,
+		attempt.metadata,
+		attempt.institution.ID,
 	)
 	if appErr != nil {
 		return nil, appErr
@@ -731,7 +814,7 @@ func (s *externalAuthenticationService) complete(
 			User: resolution.User, ClientType: state.ClientType,
 			AuthenticationGeneration: recovery.Generation, MFARecoveryRequired: recovery.ReenrollmentRequired, ExternalLoginStateID: state.ID,
 			DeviceID: state.DeviceID, DeviceName: state.DeviceName,
-			AuthenticationMethod: method, AuthenticationProviderID: providerID,
+			AuthenticationMethod: attempt.method, AuthenticationProviderID: attempt.providerID,
 			ExternalIdentityID:     resolution.Identity.ID,
 			AuthenticationStrength: assertion.AuthenticationStrength,
 			AuthenticatedAt:        assertion.AuthenticatedAt, MFACompletedAt: mfaCompletedAt,
