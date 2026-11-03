@@ -373,11 +373,11 @@ func lockAutomaticExamSubmissionAccounting(ctx context.Context, tx *sqlxTxWrappe
 
 // focusLossReason names why the automatically ended Attempt's Focus Loss
 // evidence is incomplete.
-func (accounting automaticExamSubmissionAccounting) focusLossReason() model.IntegrityDiscrepancyFocusLossGapReason {
+func (a automaticExamSubmissionAccounting) focusLossReason() model.IntegrityDiscrepancyFocusLossGapReason {
 	focusReason := model.IntegrityDiscrepancyFocusLossSequenceGap
-	if accounting.Policy.FocusLoss.Enabled {
+	if a.Policy.FocusLoss.Enabled {
 		focusReason = model.IntegrityDiscrepancyFocusLossSourceNotFinalized
-		if accounting.Integrity.TotalUnresolved > 0 {
+		if a.Integrity.TotalUnresolved > 0 {
 			focusReason = model.IntegrityDiscrepancyFocusLossSequenceGapAndSourceNotFinalized
 		}
 	}
