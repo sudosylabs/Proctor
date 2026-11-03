@@ -30,6 +30,30 @@ func constructExaminations(deps Dependencies, foundation applicationFoundation, 
 		realtime: foundation.realtime,
 	}
 	effects := examRealtimeEffects{realtime: foundation.realtime, collections: collectionEffects}
+	var built examinationConstruction
+	if err := constructExamPublication(deps, foundation, access, effects, &built); err != nil {
+		return examinationConstruction{}, err
+	}
+	if err := constructExamSittings(deps, foundation, access, collectionEffects, &built); err != nil {
+		return examinationConstruction{}, err
+	}
+	if err := constructExamAttempts(deps, foundation, access, &built); err != nil {
+		return examinationConstruction{}, err
+	}
+	if err := constructExamContent(deps, foundation, access, collectionEffects, &built); err != nil {
+		return examinationConstruction{}, err
+	}
+	if err := constructExamRecords(deps, foundation, access, &built); err != nil {
+		return examinationConstruction{}, err
+	}
+	return built, nil
+}
+
+// constructExamPublication builds Exam authoring, the Sitting mail preparer and revision publication.
+func constructExamPublication(
+	deps Dependencies, foundation applicationFoundation, access accessAcademicConstruction,
+	effects examRealtimeEffects, built *examinationConstruction,
+) error {
 	authoring, err := exam.NewAuthoring(exam.AuthoringDependencies{
 		Persistence:       deps.Store.ExamAuthoring(),
 		Memberships:       deps.Store.AcademicUnitMember(),
@@ -46,15 +70,15 @@ func constructExaminations(deps Dependencies, foundation applicationFoundation, 
 		Operational:       operationalRecorderAdapter{recorder: deps.OperationalRecorder},
 	})
 	if err != nil {
-		return examinationConstruction{}, err
+		return err
 	}
 	sittingRenderer, ok := deps.MailTemplateRenderer.(mail.SittingRenderer)
 	if !ok {
-		return examinationConstruction{}, errors.New("Sitting mail template renderer is unavailable")
+		return errors.New("Sitting mail template renderer is unavailable")
 	}
 	sittingMail, err := newSittingMailPreparer(sittingRenderer, deps.MailDeliverySender, deps.MailSecretSealer, time.Now)
 	if err != nil {
-		return examinationConstruction{}, err
+		return err
 	}
 	revisions, err := exam.NewPublication(exam.PublicationDependencies{
 		Persistence:       deps.Store.ExamRevision(),
@@ -70,9 +94,18 @@ func constructExaminations(deps Dependencies, foundation applicationFoundation, 
 		Operational:       operationalRecorderAdapter{recorder: deps.OperationalRecorder},
 	})
 	if err != nil {
-		return examinationConstruction{}, err
+		return err
 	}
-	sittingMailPreparation := sittingScheduleMailPreparationAdapter{preparer: sittingMail,
+	built.authoring, built.sittingMail, built.revisions = authoring, sittingMail, revisions
+	return nil
+}
+
+// constructExamSittings builds the Sitting service and its schedule mail preparation.
+func constructExamSittings(
+	deps Dependencies, foundation applicationFoundation, access accessAcademicConstruction,
+	collectionEffects examCollectionInvalidationEffects, built *examinationConstruction,
+) error {
+	sittingMailPreparation := sittingScheduleMailPreparationAdapter{preparer: built.sittingMail,
 		revisions: deps.Store.ExamRevision(), classes: deps.Store.Class()}
 	sittings, err := sitting.New(sitting.Dependencies{
 		Persistence:    deps.Store.ExamSitting(),
@@ -90,8 +123,17 @@ func constructExaminations(deps Dependencies, foundation applicationFoundation, 
 		Operational:    operationalRecorderAdapter{recorder: deps.OperationalRecorder},
 	})
 	if err != nil {
-		return examinationConstruction{}, err
+		return err
 	}
+	built.sittingMailPreparation, built.sittings = sittingMailPreparation, sittings
+	return nil
+}
+
+// constructExamAttempts builds the Attempt service and the integrity review service that depend on Sittings.
+func constructExamAttempts(
+	deps Dependencies, foundation applicationFoundation, access accessAcademicConstruction, built *examinationConstruction,
+) error {
+	sittings := built.sittings
 	attemptEffects := examAttemptRealtimeEffects{realtime: foundation.realtime}
 	submissionMail := examSubmissionMailPreparationAdapter{preparer: foundation.mail, users: deps.Store.User(),
 		sittings: deps.Store.ExamSitting(), revisions: deps.Store.ExamRevision()}
@@ -114,7 +156,7 @@ func constructExaminations(deps Dependencies, foundation applicationFoundation, 
 		Operational:         operationalRecorderAdapter{recorder: deps.OperationalRecorder},
 	})
 	if err != nil {
-		return examinationConstruction{}, err
+		return err
 	}
 	reviewEffects := examIntegrityReviewRealtimeEffects{realtime: foundation.realtime}
 	resultReleaseMail := examResultReleaseMailPreparationAdapter{preparer: foundation.mail, users: deps.Store.User(),
@@ -126,8 +168,17 @@ func constructExaminations(deps Dependencies, foundation applicationFoundation, 
 		Effects: reviewEffects, EffectFailures: reviewEffects, Mail: resultReleaseMail, Now: time.Now,
 		NewReviewID: model.NewSubmissionReviewID, NewDecisionID: model.NewIntegrityReviewDecisionID})
 	if err != nil {
-		return examinationConstruction{}, err
+		return err
 	}
+	built.attempts, built.reviews = attempts, reviews
+	return nil
+}
+
+// constructExamContent builds the Exam Resource, correction and Starter Workspace services.
+func constructExamContent(
+	deps Dependencies, foundation applicationFoundation, access accessAcademicConstruction,
+	collectionEffects examCollectionInvalidationEffects, built *examinationConstruction,
+) error {
 	resources, err := resource.New(resource.Dependencies{
 		Persistence:    deps.Store.ExamResource(),
 		Access:         deps.Store.ExamAuthoring(),
@@ -144,7 +195,7 @@ func constructExaminations(deps Dependencies, foundation applicationFoundation, 
 		NewLeaseID:     model.NewUploadLeaseID,
 	})
 	if err != nil {
-		return examinationConstruction{}, err
+		return err
 	}
 	corrections, err := correction.New(correction.Dependencies{
 		Persistence:       deps.Store.ExamCorrection(),
@@ -167,7 +218,7 @@ func constructExaminations(deps Dependencies, foundation applicationFoundation, 
 		InstitutionOrigin: deps.PublicURL,
 	})
 	if err != nil {
-		return examinationConstruction{}, err
+		return err
 	}
 	starterWorkspace, err := workspace.New(workspace.Dependencies{
 		Persistence:    deps.Store.ExamStarterWorkspace(),
@@ -184,8 +235,16 @@ func constructExaminations(deps Dependencies, foundation applicationFoundation, 
 		NewVersion:     model.NewWorkspaceContentVersion,
 	})
 	if err != nil {
-		return examinationConstruction{}, err
+		return err
 	}
+	built.resources, built.corrections, built.starterWorkspace = resources, corrections, starterWorkspace
+	return nil
+}
+
+// constructExamRecords builds the Exam records and export services.
+func constructExamRecords(
+	deps Dependencies, foundation applicationFoundation, access accessAcademicConstruction, built *examinationConstruction,
+) error {
 	records, err := exam.NewRecords(exam.RecordsDependencies{
 		Persistence: deps.Store.ExamRecords(),
 		Access:      deps.Store.ExamAuthoring(),
@@ -197,7 +256,7 @@ func constructExaminations(deps Dependencies, foundation applicationFoundation, 
 		NewHoldID:   model.NewRetentionHoldID,
 	})
 	if err != nil {
-		return examinationConstruction{}, err
+		return err
 	}
 	exports, err := exam.NewExports(exam.ExportsDependencies{
 		Persistence: deps.Store.ExamExport(),
@@ -211,11 +270,10 @@ func constructExaminations(deps Dependencies, foundation applicationFoundation, 
 		NewJobID:    model.NewJobID,
 	})
 	if err != nil {
-		return examinationConstruction{}, err
+		return err
 	}
-	return examinationConstruction{authoring: authoring, revisions: revisions, sittings: sittings, sittingMail: sittingMail,
-		sittingMailPreparation: sittingMailPreparation, attempts: attempts, reviews: reviews,
-		records: records, exports: exports, resources: resources, corrections: corrections, starterWorkspace: starterWorkspace}, nil
+	built.records, built.exports = records, exports
+	return nil
 }
 
 type examAttemptSystemAuditAdapter struct{ audit *auditService }
