@@ -275,20 +275,84 @@ func (s SQLClassMemberStore) enrollInTransaction(ctx context.Context, tx *sqlxTx
 	expectedPreviousID model.ClassMemberID, notice *store.PreparedMail, payloadKeyID string, expectedRecipientRevision int64,
 	auditEventID model.AuditEventID, previousAuditEventID model.AuditEventID, auditAt time.Time, allowNoOp, studentProgression bool,
 ) (*classMemberMutationResult, error) {
-	if notice != nil {
-		if err := lockClassMemberNoticeRecipient(ctx, tx, candidate.UserID, expectedRecipientRevision, notice); err != nil {
+	if err := lockClassEnrollmentPaths(ctx, tx, candidate, notice, payloadKeyID, expectedRecipientRevision); err != nil {
+		return nil, err
+	}
+	if err := requireClassEnrollmentStudent(ctx, tx, candidate); err != nil {
+		return nil, err
+	}
+	if studentProgression {
+		noOp, err := findProgressionDestinationEnrollment(ctx, tx, candidate, auditEventID, auditAt)
+		if err != nil || noOp != nil {
+			return noOp, err
+		}
+	}
+	previous, err := lockCurrentClassEnrollment(ctx, tx, candidate)
+	if err != nil {
+		return nil, err
+	}
+	var audienceRevisions map[model.ClassID]int64
+	if previous != nil {
+		if previous.ClassID == candidate.ClassID {
+			if allowNoOp && previous.StartsAt.Equal(candidate.StartsAt) && previous.EndsAt.Millis() == candidate.EndsAt.Millis() {
+				return completeClassEnrollmentNoOp(ctx, tx, previous, auditEventID, auditAt)
+			}
+			return nil, store.NewErrConflict(
+				"class_member",
+				"class_members_one_active_class_per_period_key",
+				nil,
+			)
+		}
+		audienceRevisions, err = endPreviousClassEnrollment(ctx, tx, candidate, previous)
+		if err != nil {
 			return nil, err
 		}
 	}
-	if err := lockAffiliationLifecycle(ctx, tx); err != nil {
+	if err = validateClassEnrollmentNotice(notice, previous, expectedPreviousID, auditEventID); err != nil {
 		return nil, err
 	}
-	if err := lockClassLifecycle(ctx, tx); err != nil {
+	if audienceRevisions == nil {
+		audienceRevisions, err = advanceClassMailAudienceRevisions(ctx, tx, candidate.ClassID)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if err := requireNoClassEnrollmentOverlap(ctx, tx, candidate, previous); err != nil {
 		return nil, err
+	}
+	if err := insertClassEnrollment(ctx, tx, candidate, audienceRevisions[candidate.ClassID]); err != nil {
+		return nil, err
+	}
+	if notice != nil {
+		if err := insertRecoveryMail(ctx, tx, notice.Occurrence, notice.Delivery, notice.Job, payloadKeyID); err != nil {
+			return nil, fmt.Errorf("insert Class transition mail: %w", err)
+		}
+	}
+	result := &store.ClassEnrollmentResult{Membership: candidate, Previous: previous}
+	if auditEventID != "" {
+		if err := completeClassEnrollmentAudit(ctx, tx, candidate, previous, auditEventID, previousAuditEventID, auditAt); err != nil {
+			return nil, err
+		}
+	}
+	return &classMemberMutationResult{Enrollment: result}, nil
+}
+
+// lockClassEnrollmentPaths takes the notice, lifecycle, mail key and enrollment locks and fills the candidate's Academic Period.
+func lockClassEnrollmentPaths(ctx context.Context, tx *sqlxTxWrapper, candidate *model.ClassMember, notice *store.PreparedMail, payloadKeyID string, expectedRecipientRevision int64) error {
+	if notice != nil {
+		if err := lockClassMemberNoticeRecipient(ctx, tx, candidate.UserID, expectedRecipientRevision, notice); err != nil {
+			return err
+		}
+	}
+	if err := lockAffiliationLifecycle(ctx, tx); err != nil {
+		return err
+	}
+	if err := lockClassLifecycle(ctx, tx); err != nil {
+		return err
 	}
 	if notice != nil && payloadKeyID != "" {
 		if err := requireMailPayloadPrimary(ctx, tx, payloadKeyID); err != nil {
-			return nil, err
+			return err
 		}
 	}
 	var periodRaw string
@@ -296,63 +360,76 @@ func (s SQLClassMemberStore) enrollInTransaction(ctx context.Context, tx *sqlxTx
 		SELECT academic_period_id FROM classes WHERE id = ? AND archived_at IS NULL`,
 		candidate.ClassID.String(),
 	); err != nil {
-		return nil, translateError("class", candidate.ClassID.String(), err)
+		return translateError("class", candidate.ClassID.String(), err)
 	}
 	periodID, err := parsePersistedID("class", "academic_period_id", periodRaw, model.ParseAcademicPeriodID)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	candidate.AcademicPeriodID = periodID
-	if err := lockClassEnrollment(ctx, tx, candidate.UserID.String(), candidate.AcademicPeriodID.String()); err != nil {
-		return nil, err
-	}
+	return lockClassEnrollment(ctx, tx, candidate.UserID.String(), candidate.AcademicPeriodID.String())
+}
+
+// requireClassEnrollmentStudent validates the candidate and requires a current student Affiliation at its start.
+func requireClassEnrollmentStudent(ctx context.Context, tx *sqlxTxWrapper, candidate *model.ClassMember) error {
 	if err := candidate.Validate(); err != nil {
-		return nil, store.NewErrInvalidInput("class_member", "value", nil).Wrap(err)
+		return store.NewErrInvalidInput("class_member", "value", nil).Wrap(err)
 	}
-	startAt := candidate.StartsAt
-	endAt := NullTimeFromOptional(candidate.EndsAt)
 	var student bool
 	if err := tx.Get(ctx, &student, `SELECT EXISTS (
 		SELECT 1 FROM affiliations WHERE user_id = ? AND kind = ? AND archived_at IS NULL
 		 AND start_at <= ? AND end_at IS NULL
-	)`, candidate.UserID.String(), model.AffiliationStudent, startAt); err != nil {
-		return nil, fmt.Errorf("validate student affiliation: %w", err)
+	)`, candidate.UserID.String(), model.AffiliationStudent, candidate.StartsAt); err != nil {
+		return fmt.Errorf("validate student affiliation: %w", err)
 	}
 	if !student {
-		return nil, store.NewErrConflict("class_member", "class_member_student_affiliation_required", nil)
+		return store.NewErrConflict("class_member", "class_member_student_affiliation_required", nil)
 	}
-	if studentProgression {
-		var existingRow classMemberRow
-		err = tx.Get(ctx, &existingRow, `
-			SELECT id, created_at, updated_at, archived_at, revision, mail_audience_revision, class_id,
-			       academic_period_id, user_id, start_at, end_at
-			  FROM class_members
-			 WHERE user_id = ? AND academic_period_id = ? AND class_id = ?
-			   AND archived_at IS NULL AND start_at <= ? AND (end_at IS NULL OR end_at > ?)
-			 ORDER BY start_at DESC, id
-			 LIMIT 1
-			 FOR UPDATE`,
-			candidate.UserID.String(), candidate.AcademicPeriodID.String(), candidate.ClassID.String(), startAt, startAt,
-		)
-		switch {
-		case err == nil:
-			existing, modelErr := existingRow.model()
-			if modelErr != nil {
-				return nil, modelErr
-			}
-			if auditEventID != "" {
-				if err = completeAdministrativeNoOpAudit(ctx, tx, auditEventID, auditAt, "class_member_id", existing.ID.String()); err != nil {
-					return nil, err
-				}
-			}
-			return &classMemberMutationResult{Enrollment: &store.ClassEnrollmentResult{Membership: existing}, NoOp: true}, nil
-		case !errors.Is(err, sql.ErrNoRows):
-			return nil, fmt.Errorf("find progression destination enrollment: %w", err)
+	return nil
+}
+
+// findProgressionDestinationEnrollment returns a no-op result when the student already holds the progression destination enrollment.
+func findProgressionDestinationEnrollment(ctx context.Context, tx *sqlxTxWrapper, candidate *model.ClassMember, auditEventID model.AuditEventID, auditAt time.Time) (*classMemberMutationResult, error) {
+	startAt := candidate.StartsAt
+	var existingRow classMemberRow
+	err := tx.Get(ctx, &existingRow, `
+		SELECT id, created_at, updated_at, archived_at, revision, mail_audience_revision, class_id,
+		       academic_period_id, user_id, start_at, end_at
+		  FROM class_members
+		 WHERE user_id = ? AND academic_period_id = ? AND class_id = ?
+		   AND archived_at IS NULL AND start_at <= ? AND (end_at IS NULL OR end_at > ?)
+		 ORDER BY start_at DESC, id
+		 LIMIT 1
+		 FOR UPDATE`,
+		candidate.UserID.String(), candidate.AcademicPeriodID.String(), candidate.ClassID.String(), startAt, startAt,
+	)
+	switch {
+	case err == nil:
+		existing, modelErr := existingRow.model()
+		if modelErr != nil {
+			return nil, modelErr
+		}
+		return completeClassEnrollmentNoOp(ctx, tx, existing, auditEventID, auditAt)
+	case !errors.Is(err, sql.ErrNoRows):
+		return nil, fmt.Errorf("find progression destination enrollment: %w", err)
+	}
+	return nil, nil
+}
+
+// completeClassEnrollmentNoOp completes any no-op audit and reports the existing enrollment unchanged.
+func completeClassEnrollmentNoOp(ctx context.Context, tx *sqlxTxWrapper, membership *model.ClassMember, auditEventID model.AuditEventID, auditAt time.Time) (*classMemberMutationResult, error) {
+	if auditEventID != "" {
+		if err := completeAdministrativeNoOpAudit(ctx, tx, auditEventID, auditAt, "class_member_id", membership.ID.String()); err != nil {
+			return nil, err
 		}
 	}
+	return &classMemberMutationResult{Enrollment: &store.ClassEnrollmentResult{Membership: membership}, NoOp: true}, nil
+}
 
+// lockCurrentClassEnrollment locks the student's open enrollment in the candidate's Academic Period, or returns nil when none exists.
+func lockCurrentClassEnrollment(ctx context.Context, tx *sqlxTxWrapper, candidate *model.ClassMember) (*model.ClassMember, error) {
 	var previousRow classMemberRow
-	err = tx.Get(ctx, &previousRow, `
+	err := tx.Get(ctx, &previousRow, `
 		SELECT id, created_at, updated_at, archived_at, revision, mail_audience_revision, class_id,
 		       academic_period_id, user_id, start_at, end_at
 		  FROM class_members
@@ -363,60 +440,50 @@ func (s SQLClassMemberStore) enrollInTransaction(ctx context.Context, tx *sqlxTx
 		 FOR UPDATE`,
 		candidate.UserID.String(), candidate.AcademicPeriodID.String(),
 	)
-	var previous *model.ClassMember
-	var audienceRevisions map[model.ClassID]int64
 	switch {
 	case err == nil:
-		previous, err = previousRow.model()
-		if err != nil {
-			return nil, err
-		}
-		if previous.ClassID == candidate.ClassID {
-			if allowNoOp && previous.StartsAt.Equal(candidate.StartsAt) && previous.EndsAt.Millis() == candidate.EndsAt.Millis() {
-				if auditEventID != "" {
-					if err = completeAdministrativeNoOpAudit(ctx, tx, auditEventID, auditAt, "class_member_id", previous.ID.String()); err != nil {
-						return nil, err
-					}
-				}
-				return &classMemberMutationResult{Enrollment: &store.ClassEnrollmentResult{Membership: previous}, NoOp: true}, nil
-			}
-			return nil, store.NewErrConflict(
-				"class_member",
-				"class_members_one_active_class_per_period_key",
-				nil,
-			)
-		}
-		if !candidate.StartsAt.After(previous.StartsAt) {
-			return nil, store.NewErrConflict(
-				"class_member",
-				"class_members_transfer_time",
-				nil,
-			)
-		}
-		audienceRevisions, err = advanceClassMailAudienceRevisions(ctx, tx, previous.ClassID, candidate.ClassID)
-		if err != nil {
-			return nil, err
-		}
-		if _, err := tx.Exec(ctx, `
-			UPDATE class_members
-			SET updated_at = GREATEST(updated_at, ?), end_at = ?, revision = revision + 1, mail_audience_revision = ?
-			 WHERE id = ? AND archived_at IS NULL AND end_at IS NULL`,
-			candidate.UpdatedAt, startAt, audienceRevisions[previous.ClassID], previous.ID.String(),
-		); err != nil {
-			return nil, fmt.Errorf("end previous class enrollment: %w", err)
-		}
-		previous.UpdatedAt = latestTime(previous.UpdatedAt, candidate.UpdatedAt)
-		previous.EndsAt = model.OptionalTimeFrom(candidate.StartsAt)
-		previous.Revision++
+		return previousRow.model()
 	case !errors.Is(err, sql.ErrNoRows):
 		return nil, fmt.Errorf("find current class enrollment: %w", err)
 	}
+	return nil, nil
+}
+
+// endPreviousClassEnrollment ends the previous enrollment at the transfer instant and advances both Classes' mail audiences.
+func endPreviousClassEnrollment(ctx context.Context, tx *sqlxTxWrapper, candidate, previous *model.ClassMember) (map[model.ClassID]int64, error) {
+	if !candidate.StartsAt.After(previous.StartsAt) {
+		return nil, store.NewErrConflict(
+			"class_member",
+			"class_members_transfer_time",
+			nil,
+		)
+	}
+	audienceRevisions, err := advanceClassMailAudienceRevisions(ctx, tx, previous.ClassID, candidate.ClassID)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := tx.Exec(ctx, `
+		UPDATE class_members
+		SET updated_at = GREATEST(updated_at, ?), end_at = ?, revision = revision + 1, mail_audience_revision = ?
+		 WHERE id = ? AND archived_at IS NULL AND end_at IS NULL`,
+		candidate.UpdatedAt, candidate.StartsAt, audienceRevisions[previous.ClassID], previous.ID.String(),
+	); err != nil {
+		return nil, fmt.Errorf("end previous class enrollment: %w", err)
+	}
+	previous.UpdatedAt = latestTime(previous.UpdatedAt, candidate.UpdatedAt)
+	previous.EndsAt = model.OptionalTimeFrom(candidate.StartsAt)
+	previous.Revision++
+	return audienceRevisions, nil
+}
+
+// validateClassEnrollmentNotice checks the transition notice matches the observed previous enrollment and the audit protocol.
+func validateClassEnrollmentNotice(notice *store.PreparedMail, previous *model.ClassMember, expectedPreviousID model.ClassMemberID, auditEventID model.AuditEventID) error {
 	actualPreviousID := model.ClassMemberID("")
 	if previous != nil {
 		actualPreviousID = previous.ID
 	}
 	if notice != nil && actualPreviousID != expectedPreviousID {
-		return nil, store.NewErrConflict("class_member", "class_member_transition_changed", nil)
+		return store.NewErrConflict("class_member", "class_member_transition_changed", nil)
 	}
 	if notice != nil {
 		expectedKey := model.MailTemplateAcademicClassEnrolled
@@ -424,18 +491,19 @@ func (s SQLClassMemberStore) enrollInTransaction(ctx context.Context, tx *sqlxTx
 			expectedKey = model.MailTemplateAcademicClassTransferred
 		}
 		if notice.Occurrence.TemplateKey != expectedKey {
-			return nil, store.NewErrInvalidInput("class_member", "transition_notice", nil)
+			return store.NewErrInvalidInput("class_member", "transition_notice", nil)
 		}
 	}
 	if notice == nil && auditEventID != "" {
-		return nil, store.NewErrInvalidInput("class_member", "transition_notice", nil)
+		return store.NewErrInvalidInput("class_member", "transition_notice", nil)
 	}
-	if audienceRevisions == nil {
-		audienceRevisions, err = advanceClassMailAudienceRevisions(ctx, tx, candidate.ClassID)
-		if err != nil {
-			return nil, err
-		}
-	}
+	return nil
+}
+
+// requireNoClassEnrollmentOverlap rejects a candidate whose effective range overlaps another enrollment in its Academic Period.
+func requireNoClassEnrollmentOverlap(ctx context.Context, tx *sqlxTxWrapper, candidate, previous *model.ClassMember) error {
+	startAt := candidate.StartsAt
+	endAt := NullTimeFromOptional(candidate.EndsAt)
 	var overlaps bool
 	excludedID := ""
 	if previous != nil {
@@ -458,16 +526,20 @@ func (s SQLClassMemberStore) enrollInTransaction(ctx context.Context, tx *sqlxTx
 		endAt,
 		endAt,
 	); err != nil {
-		return nil, fmt.Errorf("check class enrollment overlap: %w", err)
+		return fmt.Errorf("check class enrollment overlap: %w", err)
 	}
 	if overlaps {
-		return nil, store.NewErrConflict(
+		return store.NewErrConflict(
 			"class_member", "class_members_effective_range_overlap", nil,
 		)
 	}
+	return nil
+}
 
+// insertClassEnrollment inserts the candidate enrollment at its Class's advanced mail audience revision.
+func insertClassEnrollment(ctx context.Context, tx *sqlxTxWrapper, candidate *model.ClassMember, audienceRevision int64) error {
 	row := newClassMemberRow(candidate)
-	row.MailAudienceRevision = audienceRevisions[candidate.ClassID]
+	row.MailAudienceRevision = audienceRevision
 	if _, err := tx.NamedExec(ctx, `
 		INSERT INTO class_members (
 			id, created_at, updated_at, archived_at, revision, mail_audience_revision, class_id,
@@ -476,36 +548,35 @@ func (s SQLClassMemberStore) enrollInTransaction(ctx context.Context, tx *sqlxTx
 			:id, :created_at, :updated_at, :archived_at, :revision, :mail_audience_revision, :class_id,
 			:academic_period_id, :user_id, :start_at, :end_at
 		)`, &row); err != nil {
-		return nil, fmt.Errorf(
+		return fmt.Errorf(
 			"save class enrollment: %w",
 			translateError("class_member", candidate.ID.String(), err),
 		)
 	}
-	if notice != nil {
-		if err := insertRecoveryMail(ctx, tx, notice.Occurrence, notice.Delivery, notice.Job, payloadKeyID); err != nil {
-			return nil, fmt.Errorf("insert Class transition mail: %w", err)
+	return nil
+}
+
+// completeClassEnrollmentAudit completes the enrollment audit and, for a transfer, the previous enrollment's audit.
+func completeClassEnrollmentAudit(ctx context.Context, tx *sqlxTxWrapper, candidate, previous *model.ClassMember,
+	auditEventID, previousAuditEventID model.AuditEventID, auditAt time.Time,
+) error {
+	encoded, appErr := model.EncodeAuditData(candidate.Auditable())
+	if appErr != nil {
+		return appErr
+	}
+	if _, err := completeAuditEvent(ctx, tx, auditEventID, model.AuditStatusSuccess, "", encoded, auditAt); err != nil {
+		return fmt.Errorf("complete class enrollment audit: %w", err)
+	}
+	if previous != nil {
+		previousEncoded, encodeErr := model.EncodeAuditData(previous.Auditable())
+		if encodeErr != nil {
+			return encodeErr
+		}
+		if _, err := completeAuditEvent(ctx, tx, previousAuditEventID, model.AuditStatusSuccess, "", previousEncoded, auditAt); err != nil {
+			return fmt.Errorf("complete previous class enrollment audit: %w", err)
 		}
 	}
-	result := &store.ClassEnrollmentResult{Membership: candidate, Previous: previous}
-	if auditEventID != "" {
-		encoded, appErr := model.EncodeAuditData(candidate.Auditable())
-		if appErr != nil {
-			return nil, appErr
-		}
-		if _, err := completeAuditEvent(ctx, tx, auditEventID, model.AuditStatusSuccess, "", encoded, auditAt); err != nil {
-			return nil, fmt.Errorf("complete class enrollment audit: %w", err)
-		}
-		if previous != nil {
-			previousEncoded, encodeErr := model.EncodeAuditData(previous.Auditable())
-			if encodeErr != nil {
-				return nil, encodeErr
-			}
-			if _, err := completeAuditEvent(ctx, tx, previousAuditEventID, model.AuditStatusSuccess, "", previousEncoded, auditAt); err != nil {
-				return nil, fmt.Errorf("complete previous class enrollment audit: %w", err)
-			}
-		}
-	}
-	return &classMemberMutationResult{Enrollment: result}, nil
+	return nil
 }
 
 // Get returns the unarchived Class Member with id, or a not-found error.
