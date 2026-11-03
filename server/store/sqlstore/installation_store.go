@@ -288,6 +288,60 @@ func prepareInstallationBootstrap(
 		input.BootstrapSecretDigest == ([32]byte{}) || input.CommandFingerprint == ([32]byte{}) {
 		return nil, store.NewErrInvalidInput("installation", "bootstrap", nil)
 	}
+	institution, err := prepareBootstrapInstitution(input)
+	if err != nil {
+		return nil, err
+	}
+	administrator, administratorSettings, err := prepareBootstrapAdministrator(input)
+	if err != nil {
+		return nil, err
+	}
+	at := administrator.CreatedAt
+	credential := &model.PasswordCredential{
+		UserID: administrator.ID, PasswordHash: input.PasswordHash,
+	}
+	credential.PrepareCreate(model.NewPasswordCredentialID(), at)
+	if err = credential.Validate(); err != nil {
+		return nil, err
+	}
+	role, err := prepareBootstrapAdministratorRole(input, at)
+	if err != nil {
+		return nil, err
+	}
+	binding, err := prepareBootstrapRoleBinding(input, administrator.ID, role.ID, institution.ID, at)
+	if err != nil {
+		return nil, err
+	}
+	if err = validateInitialAccessPolicyInput(input.AccessPolicy); err != nil {
+		return nil, err
+	}
+	result := &model.InstallationBootstrapResult{
+		Institution: institution, Administrator: administrator,
+		Role: role, RoleBinding: binding,
+		AccessPolicy:               model.NewInitialAccessPolicy(model.NewAccessPolicyID(), at),
+		DesktopCompatibilityPolicy: model.NewInitialDesktopCompatibilityPolicy(institution.ID, at),
+		RetentionPolicy:            model.NewInitialRetentionPolicy(institution.ID, at),
+	}
+	event, err := prepareBootstrapAuditEvent(input, result, at)
+	if err != nil {
+		return nil, err
+	}
+	result.State = &model.InstallationState{
+		InitializedAt:       event.CreatedAt,
+		InstitutionID:       institution.ID,
+		AdministratorUserID: administrator.ID,
+	}
+	return &preparedInstallationBootstrap{
+		InstallationBootstrapResult: result,
+		credential:                  credential,
+		auditEvent:                  event,
+		AdministratorSettings:       administratorSettings,
+		DefaultProfilePictureJob:    input.DefaultProfilePictureJob,
+	}, nil
+}
+
+// prepareBootstrapInstitution builds the installation's Institution under a fresh identifier.
+func prepareBootstrapInstitution(input *store.InstallationBootstrap) (*model.Institution, error) {
 	institutionID, err := model.ParseInstitutionID(model.NewID())
 	if err != nil {
 		return nil, err
@@ -302,29 +356,31 @@ func prepareInstallationBootstrap(
 	if err != nil {
 		return nil, store.NewErrInvalidInput("institution", "value", nil).Wrap(err)
 	}
+	return institution, nil
+}
+
+// prepareBootstrapAdministrator validates the first administrator, its profile picture Job and its initial settings.
+func prepareBootstrapAdministrator(input *store.InstallationBootstrap) (*model.User, *model.UserSettingsDocument, error) {
 	administrator := *input.Administrator
 	administrator.EmailVerified = false
 	administrator.LastLoginAt = model.OptionalTime{}
 	administrator.LastActivityAt = model.OptionalTime{}
 	administrator.DisabledAt = model.OptionalTime{}
 	if err := administrator.Validate(); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if err := validateUserDefaultProfilePictureJob(&administrator, input.DefaultProfilePictureJob); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	administratorSettings := input.AdministratorSettings.Clone()
 	if err := validateInitialUserSettingsDocument(&administrator, administratorSettings); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	at := administrator.CreatedAt
-	credential := &model.PasswordCredential{
-		UserID: administrator.ID, PasswordHash: input.PasswordHash,
-	}
-	credential.PrepareCreate(model.NewPasswordCredentialID(), at)
-	if err := credential.Validate(); err != nil {
-		return nil, err
-	}
+	return &administrator, administratorSettings, nil
+}
+
+// prepareBootstrapAdministratorRole creates the built-in System Administrator Role from its prepared template.
+func prepareBootstrapAdministratorRole(input *store.InstallationBootstrap, at time.Time) (*model.Role, error) {
 	role := input.Role.Clone()
 	role.ID = ""
 	role.CreatedAt = time.Time{}
@@ -337,46 +393,52 @@ func prepareInstallationBootstrap(
 	if role.Name != model.SystemAdministratorRoleName || !role.BuiltIn {
 		return nil, store.NewErrInvalidInput("installation", "administrator_role", role.Name)
 	}
+	return role, nil
+}
+
+// prepareBootstrapRoleBinding binds the administrator to the System Administrator Role across the Institution.
+func prepareBootstrapRoleBinding(input *store.InstallationBootstrap, administratorID model.UserID, roleID model.RoleID,
+	institutionID model.InstitutionID, at time.Time,
+) (*model.RoleBinding, error) {
 	binding := *input.RoleBinding
 	binding.ID = ""
 	binding.CreatedAt = time.Time{}
 	binding.UpdatedAt = time.Time{}
 	binding.ArchivedAt = model.OptionalTime{}
 	binding.EndsAt = model.OptionalTime{}
-	binding.UserID = administrator.ID
-	binding.RoleID = role.ID
+	binding.UserID = administratorID
+	binding.RoleID = roleID
 	binding.ScopeType = model.RoleScopeInstitution
-	binding.ScopeID = institution.ID.String()
+	binding.ScopeID = institutionID.String()
 	binding.PrepareCreate(model.NewRoleBindingID(), at)
 	if err := binding.Validate(); err != nil {
 		return nil, err
 	}
-	if err := validateInitialAccessPolicyInput(input.AccessPolicy); err != nil {
-		return nil, err
-	}
-	accessPolicy := model.NewInitialAccessPolicy(model.NewAccessPolicyID(), at)
-	desktopCompatibilityPolicy := model.NewInitialDesktopCompatibilityPolicy(institution.ID, at)
-	retentionPolicy := model.NewInitialRetentionPolicy(institution.ID, at)
+	return &binding, nil
+}
+
+// prepareBootstrapAuditEvent builds the successful bootstrap audit event describing every created resource.
+func prepareBootstrapAuditEvent(input *store.InstallationBootstrap, result *model.InstallationBootstrapResult, at time.Time) (*model.AuditEvent, error) {
 	event := input.AuditEvent.Clone()
 	event.ID = ""
 	event.CreatedAt = time.Time{}
 	event.UpdatedAt = time.Time{}
-	event.ActorID = administrator.ID
+	event.ActorID = result.Administrator.ID
 	event.Resource = model.Resource{
 		Type: model.ResourceInstitution,
-		ID:   institution.ID.String(),
+		ID:   result.Institution.ID.String(),
 	}
 	event.ScopeType = model.RoleScopeInstitution
-	event.ScopeID = institution.ID.String()
+	event.ScopeID = result.Institution.ID.String()
 	event.Status = model.AuditStatusSuccess
 	parameters, appErr := model.EncodeAuditData(map[string]any{
-		"institution":                  institution.Auditable(),
-		"administrator":                administrator.Auditable(),
-		"role":                         role.Auditable(),
-		"role_binding":                 binding.Auditable(),
-		"access_policy":                accessPolicy.Auditable(),
-		"desktop_compatibility_policy": desktopCompatibilityPolicy.Auditable(),
-		"retention_policy":             retentionPolicy.Auditable(),
+		"institution":                  result.Institution.Auditable(),
+		"administrator":                result.Administrator.Auditable(),
+		"role":                         result.Role.Auditable(),
+		"role_binding":                 result.RoleBinding.Auditable(),
+		"access_policy":                result.AccessPolicy.Auditable(),
+		"desktop_compatibility_policy": result.DesktopCompatibilityPolicy.Auditable(),
+		"retention_policy":             result.RetentionPolicy.Auditable(),
 	})
 	if appErr != nil {
 		return nil, appErr
@@ -386,23 +448,7 @@ func prepareInstallationBootstrap(
 	if err := event.Validate(); err != nil {
 		return nil, err
 	}
-	state := &model.InstallationState{
-		InitializedAt:       event.CreatedAt,
-		InstitutionID:       institution.ID,
-		AdministratorUserID: administrator.ID,
-	}
-	return &preparedInstallationBootstrap{
-		InstallationBootstrapResult: &model.InstallationBootstrapResult{
-			State: state, Institution: institution, Administrator: &administrator,
-			Role: role, RoleBinding: &binding, AccessPolicy: accessPolicy,
-			DesktopCompatibilityPolicy: desktopCompatibilityPolicy,
-			RetentionPolicy:            retentionPolicy,
-		},
-		credential:               credential,
-		auditEvent:               event,
-		AdministratorSettings:    administratorSettings,
-		DefaultProfilePictureJob: input.DefaultProfilePictureJob,
-	}, nil
+	return event, nil
 }
 
 func validateInitialAccessPolicyInput(policy *model.AccessPolicy) error {
