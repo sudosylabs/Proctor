@@ -4325,6 +4325,12 @@ ALTER TABLE password_credentials
     ADD CONSTRAINT password_credentials_user_id_canonical_check
     CHECK (user_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
 
+ALTER TABLE password_history_entries
+    ADD CONSTRAINT password_history_entries_id_canonical_check
+    CHECK (id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT password_history_entries_user_id_canonical_check
+    CHECK (user_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
+
 ALTER TABLE affiliations
     ADD CONSTRAINT affiliations_id_canonical_check
     CHECK (id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
