@@ -49,6 +49,7 @@ var applicationErrorMappings = map[string]applicationErrorMapping{
 	"authentication.dpop.replayed":                                {status: http.StatusUnauthorized},
 	"authentication.dpop.unavailable":                             {status: http.StatusServiceUnavailable},
 	"authentication.dpop.use_nonce":                               {status: http.StatusUnauthorized},
+	"authentication.email_change_undo.conflict":                   {status: http.StatusConflict},
 	"authentication.external.account_conflict":                    {status: http.StatusConflict},
 	"authentication.external.account_not_linked":                  {status: http.StatusForbidden},
 	"authentication.external.invalid":                             {status: http.StatusUnauthorized},

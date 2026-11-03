@@ -74,6 +74,10 @@ type emailVerificationCompletion struct {
 	Token string `json:"token"`
 }
 
+type emailChangeUndoCompletion struct {
+	Token string `json:"token"`
+}
+
 // authenticationResponse is the transport-owned login/refresh success body.
 // Field names match the historical v1 envelope so cookie and bearer clients
 // keep working while domain models no longer serialize directly.
@@ -184,6 +188,8 @@ func sessionRevocationReasonPresentation(reason model.SessionRevocationReason) s
 		return "The password was reset."
 	case model.SessionRevocationPasswordChanged:
 		return "The password was changed from another session."
+	case model.SessionRevocationEmailChangeUndone:
+		return "An email change was undone from the previous address."
 	case model.SessionRevocationRefreshReplay:
 		return "Refresh credential replay was detected."
 	case model.SessionRevocationInactiveUser:
@@ -248,6 +254,7 @@ type authenticationEntryApplication interface {
 	Logout(context.Context, invocation.Invocation, app.LogoutCommand) error
 	RequestEmailVerification(context.Context, invocation.Invocation, app.RequestEmailVerificationCommand) error
 	CompleteEmailVerification(context.Context, invocation.Invocation, app.CompleteEmailVerificationCommand) (*model.User, error)
+	CompleteEmailChangeUndo(context.Context, invocation.Invocation, app.CompleteEmailChangeUndoCommand) error
 	RequestPasswordReset(context.Context, invocation.Invocation, app.RequestPasswordResetCommand) error
 	CompletePasswordReset(context.Context, invocation.Invocation, app.CompletePasswordResetCommand) (*model.User, error)
 }
@@ -290,6 +297,16 @@ func authenticationResource(authentication authenticationEntryApplication, cooki
 				"authentication.account_token.invalid", "authentication.account_recovery.unavailable",
 			},
 			module.completeEmailVerification,
+		),
+		publicRoute(
+			http.MethodPost,
+			apiPath(literal("auth"), literal("email-change"), literal("undo")),
+			[]string{
+				"request.invalid", "authentication.rate_limited", "authentication.rate_limit_unavailable",
+				"authentication.account_token.invalid", "authentication.account_recovery.unavailable",
+				"authentication.email_change_undo.conflict",
+			},
+			module.completeEmailChangeUndo,
 		),
 		publicRoute(
 			http.MethodPost,
@@ -449,6 +466,18 @@ func (m authenticationResourceModule) completeEmailVerification(request operatio
 		app.CompleteEmailVerificationCommand{Token: input.Token, Source: request.metadata.IPAddress},
 	)
 	if err != nil {
+		return operationResult{}, err
+	}
+	return noContentResult(), nil
+}
+
+func (m authenticationResourceModule) completeEmailChangeUndo(request operationRequest) (operationResult, error) {
+	var input emailChangeUndoCompletion
+	if err := request.decodeJSON(&input); err != nil {
+		return operationResult{}, err
+	}
+	if err := m.authentication.CompleteEmailChangeUndo(request.context, invocation.New(model.Principal{}, request.metadata),
+		app.CompleteEmailChangeUndoCommand{Token: input.Token, Source: request.metadata.IPAddress}); err != nil {
 		return operationResult{}, err
 	}
 	return noContentResult(), nil

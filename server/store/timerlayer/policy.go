@@ -131,6 +131,7 @@ const (
 	methodCompleteObjectCleanup                     methodName = "complete_object_cleanup"
 	methodCompletePurge                             methodName = "complete_purge"
 	methodConsume                                   methodName = "consume"
+	methodConsumeEmailChangeUndo                    methodName = "consume_email_change_undo"
 	methodConsumeEmailVerification                  methodName = "consume_email_verification"
 	methodConsumePasswordReset                      methodName = "consume_password_reset"
 	methodConsumeSecondFactor                       methodName = "consume_second_factor"

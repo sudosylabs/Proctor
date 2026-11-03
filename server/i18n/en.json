@@ -1416,24 +1416,28 @@
     "translation": "Verify your new email address for Proctor"
   },
   {
+    "id": "mail.identity.email_change_warning_old.action_label",
+    "translation": "Undo this change"
+  },
+  {
     "id": "mail.identity.email_change_warning_old.body",
-    "translation": "A request was made to replace the email address on your Proctor account. If you did not request this change, contact your institution immediately."
+    "translation": "The email address on your Proctor account was changed to a different address. If you made or expected this change, you don’t need to do anything. If you didn’t, use the link below to restore this address; every device signed in to the account will be signed out."
   },
   {
     "id": "mail.identity.email_change_warning_old.footer",
-    "translation": "This automated message was sent by your Proctor installation. Please do not reply."
+    "translation": "This link can be used once and expires a few days after the change. Proctor will never ask you to send your password or recovery codes by email."
   },
   {
     "id": "mail.identity.email_change_warning_old.heading",
-    "translation": "Email address change requested"
+    "translation": "Your email address was changed"
   },
   {
     "id": "mail.identity.email_change_warning_old.preheader",
-    "translation": "A change was requested for the email address on your account."
+    "translation": "Didn’t change it? Restore this address with the link inside."
   },
   {
     "id": "mail.identity.email_change_warning_old.subject",
-    "translation": "Your Proctor email address is being changed"
+    "translation": "Your Proctor email address was changed"
   },
   {
     "id": "mail.identity.email_verified_by_admin.body",
@@ -1966,6 +1970,10 @@
   {
     "id": "session.revocation.desktop_registration_revoked",
     "translation": "The Desktop Registration was revoked."
+  },
+  {
+    "id": "session.revocation.email_change_undone",
+    "translation": "An email change was undone from the previous address."
   },
   {
     "id": "session.revocation.exam_attempt_session_lock",
@@ -3706,6 +3714,130 @@
   {
     "id": "webapp.setup.status_failure.retry",
     "translation": "Try again"
+  },
+  {
+    "id": "webapp.undo_email_change.conflict.body",
+    "translation": "Proctor could not restore your previous email address because another account now uses it."
+  },
+  {
+    "id": "webapp.undo_email_change.conflict.heading",
+    "translation": "Previous address is in use"
+  },
+  {
+    "id": "webapp.undo_email_change.conflict.label",
+    "translation": "Not restored"
+  },
+  {
+    "id": "webapp.undo_email_change.conflict.notice",
+    "translation": "Contact your institution so an administrator can review the change. This link can no longer be used."
+  },
+  {
+    "id": "webapp.undo_email_change.document_title",
+    "translation": "Undo email change · Proctor"
+  },
+  {
+    "id": "webapp.undo_email_change.invalid.body",
+    "translation": "This undo link is missing, already used, expired, or replaced by a newer one."
+  },
+  {
+    "id": "webapp.undo_email_change.invalid.heading",
+    "translation": "Undo link unavailable"
+  },
+  {
+    "id": "webapp.undo_email_change.invalid.label",
+    "translation": "Link unavailable"
+  },
+  {
+    "id": "webapp.undo_email_change.invalid.notice",
+    "translation": "If you still don’t recognize the email change, contact your institution."
+  },
+  {
+    "id": "webapp.undo_email_change.rate_limited.body",
+    "translation": "Too many attempts were made. Wait a few minutes, then try again."
+  },
+  {
+    "id": "webapp.undo_email_change.ready.action",
+    "translation": "Restore previous email"
+  },
+  {
+    "id": "webapp.undo_email_change.ready.body",
+    "translation": "If you didn’t ask to change the email address on your Proctor account, restore the previous address. Every device signed in to the account will be signed out."
+  },
+  {
+    "id": "webapp.undo_email_change.ready.heading",
+    "translation": "Undo the email change"
+  },
+  {
+    "id": "webapp.undo_email_change.ready.label",
+    "translation": "Email change"
+  },
+  {
+    "id": "webapp.undo_email_change.ready.notice",
+    "translation": "This link works once and only for a limited time after the change."
+  },
+  {
+    "id": "webapp.undo_email_change.restored.body",
+    "translation": "Your previous email address is back on the account, and every session was signed out."
+  },
+  {
+    "id": "webapp.undo_email_change.restored.heading",
+    "translation": "Previous email restored"
+  },
+  {
+    "id": "webapp.undo_email_change.restored.label",
+    "translation": "Restored"
+  },
+  {
+    "id": "webapp.undo_email_change.restored.notice",
+    "translation": "Sign in again. If you don’t know your password, reset it from the sign-in page, and tell your institution about the unexpected change."
+  },
+  {
+    "id": "webapp.undo_email_change.sign_in",
+    "translation": "Sign in"
+  },
+  {
+    "id": "webapp.undo_email_change.skip_to_main",
+    "translation": "Skip to main content"
+  },
+  {
+    "id": "webapp.undo_email_change.unavailable.body",
+    "translation": "Proctor couldn’t restore the address right now. Your link has not been used; try again."
+  },
+  {
+    "id": "webapp.undo_email_change.unavailable.heading",
+    "translation": "Undo unavailable"
+  },
+  {
+    "id": "webapp.undo_email_change.unavailable.label",
+    "translation": "Try again"
+  },
+  {
+    "id": "webapp.undo_email_change.unavailable.notice",
+    "translation": "If this keeps happening, contact your institution."
+  },
+  {
+    "id": "webapp.undo_email_change.unavailable.retry",
+    "translation": "Try again"
+  },
+  {
+    "id": "webapp.undo_email_change.undoing.action",
+    "translation": "Restoring"
+  },
+  {
+    "id": "webapp.undo_email_change.undoing.body",
+    "translation": "Restoring your previous email address."
+  },
+  {
+    "id": "webapp.undo_email_change.undoing.heading",
+    "translation": "Restoring previous email"
+  },
+  {
+    "id": "webapp.undo_email_change.undoing.label",
+    "translation": "Working"
+  },
+  {
+    "id": "webapp.undo_email_change.undoing.notice",
+    "translation": "Keep this page open until it finishes."
   },
   {
     "id": "webapp.verify_email.document_title",

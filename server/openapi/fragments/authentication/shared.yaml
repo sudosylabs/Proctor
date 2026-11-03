@@ -156,6 +156,7 @@ components:
             - authentication_audit_failed
             - desktop_authorization_failed
             - desktop_registration_revoked
+            - email_change_undone
             - external_identity_unlinked
             - inactive_user
             - password_changed

@@ -1630,7 +1630,7 @@ CREATE TABLE sessions (
 		(revoked_at IS NULL AND revocation_reason = '') OR
 		(revoked_at IS NOT NULL AND revocation_reason IN (
 			'access_policy_changed', 'account_disabled', 'administrator_all_sessions',
-			'administrator_session', 'authentication_audit_failed', 'desktop_authorization_failed', 'external_identity_unlinked',
+			'administrator_session', 'authentication_audit_failed', 'desktop_authorization_failed', 'email_change_undone', 'external_identity_unlinked',
 			'inactive_user', 'password_changed', 'password_removed', 'password_reset', 'refresh_replay', 'mfa_reset',
 			'user_all_sessions', 'user_logout', 'user_session', 'desktop_registration_revoked',
 			'exam_attempt_session_lock', 'expired'
@@ -3089,7 +3089,7 @@ CREATE TABLE user_tokens (
     updated_at timestamptz NOT NULL,
     archived_at timestamptz,
     user_id varchar(26) NOT NULL REFERENCES users(id),
-    purpose varchar(32) NOT NULL CHECK (purpose IN ('password_reset', 'email_verification')),
+    purpose varchar(32) NOT NULL CHECK (purpose IN ('password_reset', 'email_verification', 'email_change_undo')),
     token_hash char(64) NOT NULL,
     target varchar(254) NOT NULL,
     expires_at timestamptz NOT NULL,

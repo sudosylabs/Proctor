@@ -38,7 +38,8 @@ func TestMailCatalogRestrictsCredentialAndActionDelivery(t *testing.T) {
 	for _, key := range model.AllMailTemplateKeys() {
 		definition, _ := definitionFor(key)
 		wantCredential := key == model.MailTemplateIdentityVerifyEmail || key == model.MailTemplateIdentityPasswordReset ||
-			key == model.MailTemplateIdentityEmailChangeVerifyNew || key == model.MailTemplateAccessStudentClassInvitation ||
+			key == model.MailTemplateIdentityEmailChangeVerifyNew || key == model.MailTemplateIdentityEmailChangeWarningOld ||
+			key == model.MailTemplateAccessStudentClassInvitation ||
 			key == model.MailTemplateAccessTeacherAcademicUnitInvitation || key == model.MailTemplateAccessAcademicUnitRoleInvitation ||
 			key == model.MailTemplateAccessInstitutionRoleInvitation
 		assert.Equal(t, wantCredential, definition.jobType == model.JobTypeMailDeliverCredential, "mail definition %q credential/action policy = %#v", key, definition)

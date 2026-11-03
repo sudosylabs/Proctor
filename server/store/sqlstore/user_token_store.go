@@ -37,7 +37,7 @@ const (
 	userEmailChangeTokenLifetimeMinimum   = 5 * time.Minute
 	userEmailChangeTokenLifetimeMaximum   = 30 * 24 * time.Hour
 	userEmailChangeWarningLifetimeMinimum = time.Minute
-	userEmailChangeWarningLifetimeMaximum = 24 * time.Hour
+	userEmailChangeWarningLifetimeMaximum = 30 * 24 * time.Hour
 )
 
 func validateUserEmailMail(userID model.UserID, occurrence *model.MailOccurrence, delivery *model.MailDelivery, job *model.Job, kind model.MailOccurrenceKind, key model.MailTemplateKey) (string, error) {
@@ -74,9 +74,17 @@ func (s SQLUserTokenStore) ChangeEmail(ctx context.Context, input *store.UserEma
 	if token.Validate() != nil || token.UserID != input.UserID || token.Purpose != model.UserTokenEmailVerification || token.Target != input.NewEmail {
 		return nil, store.NewErrInvalidInput("user_email", "change", nil)
 	}
-	warningKey, err := validateUserEmailMail(input.UserID, input.WarningOccurrence, input.WarningDelivery, input.WarningJob, model.MailOccurrenceSecurityNotice, model.MailTemplateIdentityEmailChangeWarningOld)
-	if err != nil {
-		return nil, err
+	if input.UndoToken == nil {
+		return nil, store.NewErrInvalidInput("user_email", "undo_token", nil)
+	}
+	undoToken := *input.UndoToken
+	if undoToken.Validate() != nil || undoToken.UserID != input.UserID || undoToken.Purpose != model.UserTokenEmailChangeUndo ||
+		undoToken.Target == input.NewEmail || undoToken.TokenHash == token.TokenHash {
+		return nil, store.NewErrInvalidInput("user_email", "undo_token", nil)
+	}
+	warningKey, err := validateUserEmailMail(input.UserID, input.WarningOccurrence, input.WarningDelivery, input.WarningJob, model.MailOccurrenceAccountToken, model.MailTemplateIdentityEmailChangeWarningOld)
+	if err != nil || input.WarningOccurrence.ID.String() != undoToken.ID.String() {
+		return nil, store.NewErrInvalidInput("user_email", "warning", err)
 	}
 	verificationKey, err := validateUserEmailMail(input.UserID, input.VerificationOccurrence, input.VerificationDelivery, input.VerificationJob, model.MailOccurrenceAccountToken, model.MailTemplateIdentityEmailChangeVerifyNew)
 	if err != nil || input.VerificationOccurrence.ID.String() != token.ID.String() {
@@ -93,6 +101,9 @@ func (s SQLUserTokenStore) ChangeEmail(ctx context.Context, input *store.UserEma
 		if err := lockUserTokenPurpose(ctx, tx, input.UserID.String(), model.UserTokenEmailVerification); err != nil {
 			return nil, err
 		}
+		if err := lockUserTokenPurpose(ctx, tx, input.UserID.String(), model.UserTokenEmailChangeUndo); err != nil {
+			return nil, err
+		}
 		var databaseNow time.Time
 		if err := tx.Get(ctx, &databaseNow, `SELECT clock_timestamp()`); err != nil {
 			return nil, fmt.Errorf("read user email change database time: %w", err)
@@ -103,6 +114,12 @@ func (s SQLUserTokenStore) ChangeEmail(ctx context.Context, input *store.UserEma
 		token.ExpiresAt = at.Add(input.TokenLifetime)
 		if validationErr := token.Validate(); validationErr != nil {
 			return nil, store.NewErrInvalidInput("user_email", "token_lifetime", validationErr)
+		}
+		undoToken.CreatedAt, undoToken.UpdatedAt = at, at
+		undoToken.ArchivedAt, undoToken.ConsumedAt = model.OptionalTime{}, model.OptionalTime{}
+		undoToken.ExpiresAt = at.Add(input.WarningLifetime)
+		if validationErr := undoToken.Validate(); validationErr != nil {
+			return nil, store.NewErrInvalidInput("user_email", "undo_lifetime", validationErr)
 		}
 		warningOccurrence, warningDelivery, warningJob, err := recoveryMailAtWithLifetime(
 			input.WarningOccurrence, input.WarningDelivery, input.WarningJob, at, input.WarningLifetime,
@@ -120,7 +137,7 @@ func (s SQLUserTokenStore) ChangeEmail(ctx context.Context, input *store.UserEma
 		if err != nil {
 			return nil, err
 		}
-		if user.Revision != input.ExpectedRevision || user.Email == input.NewEmail {
+		if user.Revision != input.ExpectedRevision || user.Email == input.NewEmail || user.Email != undoToken.Target {
 			return nil, store.NewErrConflict("user", "email_revision", nil)
 		}
 		mailEligibilityRevision, err := advanceUserMailEligibilityRevision(ctx, tx)
@@ -146,6 +163,9 @@ func (s SQLUserTokenStore) ChangeEmail(ctx context.Context, input *store.UserEma
 		if err = insertUserToken(ctx, tx, &token); err != nil {
 			return nil, err
 		}
+		if err = insertUserToken(ctx, tx, &undoToken); err != nil {
+			return nil, err
+		}
 		if err = suppressSupersededTokenMail(ctx, tx, priorIDs, at); err != nil {
 			return nil, err
 		}
@@ -166,7 +186,7 @@ func (s SQLUserTokenStore) ChangeEmail(ctx context.Context, input *store.UserEma
 		if _, err = completeAuditEvent(ctx, tx, input.AuditEventID, model.AuditStatusSuccess, "", encoded, input.AuditAt); err != nil {
 			return nil, fmt.Errorf("complete user email change audit: %w", err)
 		}
-		return &store.UserEmailChangeResult{User: updated, Token: &token}, nil
+		return &store.UserEmailChangeResult{User: updated, Token: &token, UndoToken: &undoToken}, nil
 	})
 }
 
@@ -445,6 +465,9 @@ func (s SQLUserTokenStore) Issue(
 		input.Delivery.Deadline.After(candidate.ExpiresAt) || input.Delivery.State != model.MailDeliveryQueued ||
 		len(input.Delivery.EncryptedPayload) == 0 || input.Job.Type != model.JobTypeMailDeliverCredential || input.Job.Status != model.JobStatusQueued {
 		return nil, store.NewErrInvalidInput("user_token", "audit_event", nil)
+	}
+	if candidate.Purpose == model.UserTokenEmailChangeUndo {
+		return nil, store.NewErrInvalidInput("user_token", "purpose", nil)
 	}
 	if candidate.Purpose == model.UserTokenEmailVerification && input.Occurrence.TemplateKey != model.MailTemplateIdentityVerifyEmail ||
 		candidate.Purpose == model.UserTokenPasswordReset && input.Occurrence.TemplateKey != model.MailTemplateIdentityPasswordReset {

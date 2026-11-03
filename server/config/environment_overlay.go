@@ -413,6 +413,9 @@ var environmentOverrideCatalog = []environmentOverride{
 	durationEnvironmentOverride("PROCTOR_AUTHENTICATION_ACCOUNT_RECOVERY_PASSWORD_RESET_TTL", func(cfg *Config) *Duration {
 		return &cfg.Authentication.AccountRecovery.PasswordResetTTL
 	}),
+	durationEnvironmentOverride("PROCTOR_AUTHENTICATION_ACCOUNT_RECOVERY_EMAIL_CHANGE_UNDO_TTL", func(cfg *Config) *Duration {
+		return &cfg.Authentication.AccountRecovery.EmailChangeUndoTTL
+	}),
 	durationEnvironmentOverride("PROCTOR_AUTHENTICATION_ACCOUNT_RECOVERY_RATE_LIMIT_WINDOW", func(cfg *Config) *Duration {
 		return &cfg.Authentication.AccountRecovery.RateLimit.Window
 	}),

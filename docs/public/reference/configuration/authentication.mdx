@@ -88,7 +88,8 @@ delay does not reveal whether an account exists.
 | `Authentication.LoginRateLimit.MaximumAccountFailureDelay`<br />Default: `4s` | Longest delay applied to one login for an account with failed password checks. Must be between `250ms` and `30s`. |
 | `Authentication.AccountRecovery.EmailVerificationTTL`<br />Default: `24h` | Lifetime of an email-verification credential. Must be between `5m` and `720h`. |
 | `Authentication.AccountRecovery.PasswordResetTTL`<br />Default: `1h` | Lifetime of a password-reset credential. Must be between `5m` and `24h`. |
-| `Authentication.AccountRecovery.RateLimit.Window`<br />Default: `15m` | Fixed recovery-attempt window. Must be between `1s` and `24h`. |
+| `Authentication.AccountRecovery.EmailChangeUndoTTL`<br />Default: `72h` | How long the previous address may undo an email change with the single-use link Proctor mails it; also the delivery window of that notice. Must be between `1h` and `720h`. |
+| `Authentication.AccountRecovery.RateLimit.Window`<br />Default: `15m` | Fixed recovery-attempt window. Also bounds email-change notices per account and undo attempts. Must be between `1s` and `24h`. |
 | `Authentication.AccountRecovery.RateLimit.MaximumAttempts`<br />Default: `3` | Maximum recovery attempts associated with one account key in the window. Must be between `1` and `10000`. |
 | `Authentication.AccountRecovery.RateLimit.MaximumSourceAttempts`<br />Default: `100` | Maximum recovery attempts from one source in the window. Must be between the per-account value and `1000000`. |
 

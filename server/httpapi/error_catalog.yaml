@@ -128,6 +128,8 @@ codes:
     reason: "RFC 9449 answers a missing server nonce with 401 and a DPoP-Nonce challenge."
     description: "Retry with a new DPoP proof that carries the `DPoP-Nonce` from this response."
     transport: true
+  - code: authentication.email_change_undo.conflict
+    description: "The previous email address now belongs to another account, so the email change cannot be undone."
   - code: authentication.external.account_conflict
     description: "The external identity conflicts with another account."
   - code: authentication.external.account_not_linked

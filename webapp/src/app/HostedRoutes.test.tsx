@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import { DesktopAuthorizationPage } from "../features/desktop-authorization/DesktopAuthorizationPage";
 import { JoinPage } from "../features/join/JoinPage";
 import { ResetPasswordPage } from "../features/reset-password/ResetPasswordPage";
+import { UndoEmailChangePage } from "../features/undo-email-change/UndoEmailChangePage";
 import { VerifyEmailPage } from "../features/verify-email/VerifyEmailPage";
 import {
   authoredHostedRoutes,
@@ -52,6 +53,7 @@ describe("hosted route descriptors", () => {
       "/account/forgot-password": "webapp.forgot_password.document_title",
       "/account/reset-password": "webapp.reset_password.document_title",
       "/account/verify-email": "webapp.verify_email.document_title",
+      "/account/undo-email-change": "webapp.undo_email_change.document_title",
       "/account/connect-provider": "webapp.connect_provider.document_title",
       "/account/security": "webapp.security.document_title",
       "/account/reauthenticate": "webapp.reauthenticate.document_title",
@@ -117,6 +119,7 @@ describe("hosted route bootstrap", () => {
     ["/join", "invitation_claim"],
     ["/account/reset-password", "password_reset_token"],
     ["/account/verify-email", "email_verification_token"],
+    ["/account/undo-email-change", "email_change_undo_token"],
   ] as const)("purpose-types and sanitizes %s tokens", (route, kind) => {
     const result = bootstrap(route, "#token=secret");
     expect(result.replacements).toEqual([`https://proctor.example${route}`]);
@@ -130,6 +133,7 @@ describe("hosted route bootstrap", () => {
     "/join",
     "/account/reset-password",
     "/account/verify-email",
+    "/account/undo-email-change",
   ] as const)("rejects and removes a wrong credential on %s", (route) => {
     const result = bootstrap(route, "#proof=secret");
     expect(result.replacements).toEqual([`https://proctor.example${route}`]);
@@ -201,6 +205,13 @@ describe("purpose-specific page projection", () => {
     }) as ReactElement<{ token?: string }>;
     expect(verify.type).toBe(VerifyEmailPage);
     expect(verify.props.token).toBe("verify");
+
+    const undo = renderHostedPage({
+      route: "/account/undo-email-change",
+      credential: { kind: "email_change_undo_token", value: "undo" },
+    }) as ReactElement<{ token?: string }>;
+    expect(undo.type).toBe(UndoEmailChangePage);
+    expect(undo.props.token).toBe("undo");
 
     const desktop = renderHostedPage({
       route: "/authorize/desktop",

@@ -15,7 +15,7 @@ paths:
       tags:
         - Users
       description: >-
-        Replaces the target User's email only after strong recent authentication, marks the new address unverified, and starts the bounded account-recovery notification path. It never treats possession of administrator authority as proof that the new address is owned.
+        Replaces the target User's email only after strong recent authentication, marks the new address unverified, and starts the bounded account-recovery notification path: the new address receives a verification link and the previous address receives a single-use undo link valid for the configured undo window. Changes to one account share the account-recovery rate limit. It never treats possession of administrator authority as proof that the new address is owned.
       x-proctor-auth: strong_recent_session_required
       x-proctor-idempotency: none
       x-proctor-error-codes:
@@ -34,6 +34,8 @@ paths:
         - user.invalid
         - user.conflict
         - authentication.account_recovery.unavailable
+        - authentication.rate_limited
+        - authentication.rate_limit_unavailable
         - administration.unavailable
         - authentication.dpop.invalid
         - authentication.dpop.replayed
@@ -59,6 +61,8 @@ paths:
           $ref: '#/components/responses/NotFound'
         "409":
           $ref: '#/components/responses/Conflict'
+        "429":
+          $ref: '#/components/responses/TooManyRequests'
         "500":
           $ref: '#/components/responses/InternalError'
         "503":

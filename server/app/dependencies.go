@@ -131,6 +131,7 @@ type PasswordWorkRecorder interface {
 type AccountRecoveryPolicy struct {
 	EmailVerificationTTL time.Duration
 	PasswordResetTTL     time.Duration
+	EmailChangeUndoTTL   time.Duration
 	RateLimit            LoginRateLimitPolicy
 }
 

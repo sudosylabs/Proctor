@@ -197,7 +197,10 @@ revocation notice; password reset completion sends password-changed rather
 than a revocation notice; Class transfer does not send separate ended and
 enrolled messages; and automatic sealing does not claim voluntary submission.
 Email change intentionally creates an old-address warning and a new-address
-verification, while ownership transfer creates separate role-appropriate
+verification. Both are credential deliveries: the old-address warning carries
+the single-use undo link, its occurrence is the undo User Token, and its
+relevance fence requires that token to be live while the account address
+differs from the token target. Ownership transfer creates separate role-appropriate
 messages for its two recipients.
 
 Exam Manager addition and removal each create one direct occurrence for the

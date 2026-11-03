@@ -250,8 +250,11 @@ func (p *Composer) PreparePasswordChanged(request NoticePreparation) (*store.Pre
 	return p.prepareNotice(request, model.MailTemplateIdentityPasswordChanged)
 }
 
-func (p *Composer) PrepareEmailChangeWarning(request NoticePreparation) (*store.PreparedMail, error) {
-	return p.prepareNotice(request, model.MailTemplateIdentityEmailChangeWarningOld)
+// PrepareEmailChangeWarning freezes the notice to the previous address of a
+// changed account. It carries the single-use undo link, so it is a credential
+// delivery whose occurrence is the undo token.
+func (p *Composer) PrepareEmailChangeWarning(request AccountTokenPreparation) (*store.PreparedMail, error) {
+	return p.prepareAccountToken(request, model.MailTemplateIdentityEmailChangeWarningOld)
 }
 
 func (p *Composer) PrepareEmailVerifiedByAdministrator(request NoticePreparation) (*store.PreparedMail, error) {

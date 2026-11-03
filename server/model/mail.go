@@ -39,9 +39,10 @@ func (key MailTemplateKey) OccurrenceKind() (MailOccurrenceKind, bool) {
 	switch key {
 	case MailTemplateSystemTest:
 		return MailOccurrenceOperatorTest, true
-	case MailTemplateIdentityVerifyEmail, MailTemplateIdentityPasswordReset, MailTemplateIdentityEmailChangeVerifyNew:
+	case MailTemplateIdentityVerifyEmail, MailTemplateIdentityPasswordReset, MailTemplateIdentityEmailChangeVerifyNew,
+		MailTemplateIdentityEmailChangeWarningOld:
 		return MailOccurrenceAccountToken, true
-	case MailTemplateIdentityPasswordChanged, MailTemplateIdentityEmailChangeWarningOld, MailTemplateIdentityEmailVerifiedByAdmin,
+	case MailTemplateIdentityPasswordChanged, MailTemplateIdentityEmailVerifiedByAdmin,
 		MailTemplateIdentityAccountDisabled, MailTemplateIdentityAccountEnabled, MailTemplateIdentitySessionsRevokedByAdmin,
 		MailTemplateIdentityMFAReset, MailTemplateIdentityMFAEnabled, MailTemplateIdentityMFADisabled, MailTemplateIdentityMFARecoveryCodesRegenerated,
 		MailTemplateIdentityPersonalAccessTokenCreated, MailTemplateIdentityPersonalAccessTokenEnabled,

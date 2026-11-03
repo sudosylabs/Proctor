@@ -515,6 +515,7 @@ func newAccountTokenTestApp(t *testing.T, deps accountTokenTestDependencies) *Ap
 	service, err := newAccountTokenService(accountTokenServiceDependencies{Users: deps.users, Passwords: deps.passwords, Tokens: deps.tokens, AccessPolicy: deps.accessPolicy, Institutions: &accountTokenInstitutionStoreFake{institution: deps.institution}, Mail: deps.mailer, Attempts: deps.attempts, Hasher: deps.hasher, Audit: accountTokenAuditRecorder{nodeID: "node-1"}, Effects: deps.effects, Diagnostics: accountTokenDiagnosticsFake{}, Policy: AccountRecoveryPolicy{
 		EmailVerificationTTL: 24 * time.Hour,
 		PasswordResetTTL:     45 * time.Minute,
+		EmailChangeUndoTTL:   72 * time.Hour,
 		RateLimit:            deps.rateLimit,
 	}, PublicURL: "https://proctor.example.edu", NewToken: func() string { return accountTokenTestRawToken }, Now: deps.now})
 	require.NoError(t, err)
@@ -657,7 +658,7 @@ func (m *accountTokenMailerFake) PreparePasswordChanged(request NoticeMailPrepar
 		TemplateKey: model.MailTemplateIdentityPasswordChanged, CreatedAt: request.At}, Delivery: &model.MailDelivery{Deadline: request.At.Add(24 * time.Hour)},
 		Job: &model.Job{Type: model.JobTypeMailDeliver}}, nil
 }
-func (m *accountTokenMailerFake) PrepareEmailChangeWarning(NoticeMailPreparation) (*store.PreparedMail, error) {
+func (m *accountTokenMailerFake) PrepareEmailChangeWarning(AccountTokenMailPreparation) (*store.PreparedMail, error) {
 	return nil, errors.New("unexpected email change warning")
 }
 func (m *accountTokenMailerFake) PrepareEmailChangeVerification(AccountTokenMailPreparation) (*store.PreparedMail, error) {

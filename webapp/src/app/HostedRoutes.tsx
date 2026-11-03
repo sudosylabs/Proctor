@@ -17,6 +17,7 @@ import { ReauthenticatePage } from "../features/reauthenticate/ReauthenticatePag
 import type { ReauthenticationTask } from "../features/reauthenticate/ReauthenticationApi";
 import { ResetPasswordPage } from "../features/reset-password/ResetPasswordPage";
 import { SetupPage } from "../features/setup/SetupPage";
+import { UndoEmailChangePage } from "../features/undo-email-change/UndoEmailChangePage";
 import { VerifyEmailPage } from "../features/verify-email/VerifyEmailPage";
 import type { MessageID } from "../i18n/messages";
 import { isHostedRoute, type HostedRoute } from "./routes";
@@ -47,6 +48,10 @@ export type HostedPageBootstrap =
       route: "/account/verify-email";
       credential?: { kind: "email_verification_token"; value: string };
     }
+  | {
+      route: "/account/undo-email-change";
+      credential?: { kind: "email_change_undo_token"; value: string };
+    }
   | { route: "/account/connect-provider" }
   | { route: "/account/security" }
   | { route: "/account/reauthenticate"; task: ReauthenticationTask; notice?: "external_login_failed" }
@@ -64,7 +69,8 @@ type FragmentPolicy =
   | { kind: "invitation_claim"; name: "token" }
   | { kind: "desktop_browser_proof"; name: "proof" }
   | { kind: "password_reset_token"; name: "token" }
-  | { kind: "email_verification_token"; name: "token" };
+  | { kind: "email_verification_token"; name: "token" }
+  | { kind: "email_change_undo_token"; name: "token" };
 
 interface HostedRouteDescriptor<R extends HostedRoute> {
   documentTitle: MessageID;
@@ -138,6 +144,13 @@ const hostedRouteDescriptors = {
     fragment: { kind: "email_verification_token", name: "token" },
     render: (bootstrap) => (
       <VerifyEmailPage token={bootstrap.credential?.value} />
+    ),
+  },
+  "/account/undo-email-change": {
+    documentTitle: "webapp.undo_email_change.document_title",
+    fragment: { kind: "email_change_undo_token", name: "token" },
+    render: (bootstrap) => (
+      <UndoEmailChangePage token={bootstrap.credential?.value} />
     ),
   },
   "/account/connect-provider": {
@@ -227,7 +240,8 @@ export function bootstrapHostedPage(
     }
     case "invitation_claim":
     case "password_reset_token":
-    case "email_verification_token": {
+    case "email_verification_token":
+    case "email_change_undo_token": {
       const value = captureFragmentCredential(
         location,
         history,

@@ -26,6 +26,7 @@ const (
 	ActionAuthenticationEmailVerificationComplete Action = "authentication.email_verification.complete"
 	ActionAuthenticationPasswordResetRequest      Action = "authentication.password_reset.request"
 	ActionAuthenticationPasswordResetComplete     Action = "authentication.password_reset.complete"
+	ActionAuthenticationEmailChangeUndo           Action = "authentication.email_change.undo"
 	ActionAuthenticationAdministratorRecovery     Action = "authentication.administrator_recovery"
 	ActionAuthenticationAdministratorMFAReset     Action = "authentication.administrator_mfa_reset"
 	ActionInstallationBootstrap                   Action = "installation.bootstrap"
@@ -63,6 +64,7 @@ var eventAuditActions = map[Action]eventAuditActionDefinition{
 	ActionAuthenticationEmailVerificationComplete: {},
 	ActionAuthenticationPasswordResetRequest:      {},
 	ActionAuthenticationPasswordResetComplete:     {},
+	ActionAuthenticationEmailChangeUndo:           {},
 	ActionAuthenticationAdministratorRecovery:     {},
 	ActionAuthenticationAdministratorMFAReset:     {},
 	ActionInstallationBootstrap:                   {},

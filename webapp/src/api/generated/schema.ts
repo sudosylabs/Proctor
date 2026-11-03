@@ -654,6 +654,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/auth/email-change/undo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Undo an email change from the previous address
+         * @description Consumes the single-use undo token Proctor mails to an account's previous address when its email changes. Within the configured undo window it restores that address as the verified account email, cancels pending verification and password-reset links, signs out every Session of the account, and records an audit event. An invalid, expired, or already used token reveals no account details; a previous address that another account now holds is refused.
+         */
+        post: operations["undoEmailChange"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/auth/email-verification/complete": {
         parameters: {
             query?: never;
@@ -5114,7 +5134,7 @@ export interface paths {
         get?: never;
         /**
          * Explicitly change a User email address and require verification
-         * @description Replaces the target User's email only after strong recent authentication, marks the new address unverified, and starts the bounded account-recovery notification path. It never treats possession of administrator authority as proof that the new address is owned.
+         * @description Replaces the target User's email only after strong recent authentication, marks the new address unverified, and starts the bounded account-recovery notification path: the new address receives a verification link and the previous address receives a single-use undo link valid for the configured undo window. Changes to one account share the account-recovery rate limit. It never treats possession of administrator authority as proof that the new address is owned.
          */
         put: operations["changeUserEmail"];
         post?: never;
@@ -7026,6 +7046,9 @@ export interface components {
             target_tuple: string;
             /** @constant */
             visibility_class_id: "examiner_restricted";
+        };
+        EmailChangeUndoRequest: {
+            token: string;
         };
         EmailVerificationCompletionRequest: {
             token: string;
@@ -9791,7 +9814,7 @@ export interface components {
             /** @description Localized presentation of revocation_reason_code. */
             revocation_reason?: string;
             /** @enum {string} */
-            revocation_reason_code?: "account_disabled" | "access_policy_changed" | "administrator_all_sessions" | "administrator_session" | "authentication_audit_failed" | "desktop_authorization_failed" | "desktop_registration_revoked" | "external_identity_unlinked" | "inactive_user" | "mfa_reset" | "password_changed" | "password_removed" | "password_reset" | "refresh_replay" | "user_all_sessions" | "user_logout" | "user_session";
+            revocation_reason_code?: "account_disabled" | "access_policy_changed" | "administrator_all_sessions" | "administrator_session" | "authentication_audit_failed" | "desktop_authorization_failed" | "desktop_registration_revoked" | "email_change_undone" | "external_identity_unlinked" | "inactive_user" | "mfa_reset" | "password_changed" | "password_removed" | "password_reset" | "refresh_replay" | "user_all_sessions" | "user_logout" | "user_session";
             /** Format: date-time */
             revoked_at?: string;
             /** Format: date-time */
@@ -9843,7 +9866,7 @@ export interface components {
             /** @description Localized presentation of revocation_reason_code. */
             revocation_reason?: string;
             /** @enum {string} */
-            revocation_reason_code?: "mfa_reset" | "account_disabled" | "access_policy_changed" | "administrator_all_sessions" | "administrator_session" | "authentication_audit_failed" | "desktop_authorization_failed" | "desktop_registration_revoked" | "external_identity_unlinked" | "inactive_user" | "password_changed" | "password_removed" | "password_reset" | "refresh_replay" | "user_all_sessions" | "user_logout" | "user_session";
+            revocation_reason_code?: "mfa_reset" | "account_disabled" | "access_policy_changed" | "administrator_all_sessions" | "administrator_session" | "authentication_audit_failed" | "desktop_authorization_failed" | "desktop_registration_revoked" | "email_change_undone" | "external_identity_unlinked" | "inactive_user" | "password_changed" | "password_removed" | "password_reset" | "refresh_replay" | "user_all_sessions" | "user_logout" | "user_session";
             /** Format: date-time */
             revoked_at?: string;
             /** Format: date-time */
@@ -14187,6 +14210,17 @@ export interface components {
                 "application/json": components["schemas"]["TransferExamOwnershipRequest"];
             };
         };
+        /** @description Supplies the one-time undo token delivered to the previous email address. */
+        UndoEmailChange: {
+            content: {
+                /**
+                 * @example {
+                 *       "token": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+                 *     }
+                 */
+                "application/json": components["schemas"]["EmailChangeUndoRequest"];
+            };
+        };
         /** @description Closed bounded native delivery control; unknown, missing, duplicate, and invalid members are rejected. */
         UnretainedDeliverySummary: {
             content: {
@@ -15236,6 +15270,22 @@ export interface operations {
             409: components["responses"]["Conflict"];
             429: components["responses"]["TooManyRequests"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    undoEmailChange: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: components["requestBodies"]["UndoEmailChange"];
+        responses: {
+            204: components["responses"]["SensitiveNoContent"];
+            400: components["responses"]["BadRequest"];
+            409: components["responses"]["Conflict"];
+            429: components["responses"]["TooManyRequests"];
             503: components["responses"]["ServiceUnavailable"];
         };
     };
@@ -20998,6 +21048,7 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+            429: components["responses"]["TooManyRequests"];
             500: components["responses"]["InternalError"];
             503: components["responses"]["ServiceUnavailable"];
         };

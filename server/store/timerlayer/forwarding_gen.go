@@ -2690,6 +2690,12 @@ func (s *timedUserTokenStore) ConsumeEmailVerification(arg0 context.Context, arg
 	})
 }
 
+func (s *timedUserTokenStore) ConsumeEmailChangeUndo(arg0 context.Context, arg1 *store.EmailChangeUndo) (*store.EmailChangeUndoResult, error) {
+	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateUserToken, methodConsumeEmailChangeUndo), func(callCtx context.Context) (*store.EmailChangeUndoResult, error) {
+		return s.next.ConsumeEmailChangeUndo(callCtx, arg1)
+	})
+}
+
 func (s *timedUserTokenStore) ConsumePasswordReset(arg0 context.Context, arg1 *store.PasswordResetCompletion) (*store.PasswordResetResult, error) {
 	return timeStoreCall1(arg0, s.layer, storeOperation(aggregateUserToken, methodConsumePasswordReset), func(callCtx context.Context) (*store.PasswordResetResult, error) {
 		return s.next.ConsumePasswordReset(callCtx, arg1)

@@ -73,6 +73,11 @@ func (s *accountTokenService) ChangeUserEmail(ctx context.Context, invocation in
 	if current.Email == newEmail {
 		return userEmailState(current), nil
 	}
+	// Each applied change mails an undo link to the previous address, so the
+	// changes one account can receive are bounded like other recovery mail.
+	if err := s.checkAccountRecoveryRateLimit(ctx, accountRecoveryAttemptEmailChangeNotice, id.String(), invocation.RequestMetadata().IPAddress); err != nil {
+		return nil, err
+	}
 	at := model.TimeUTC(s.deps.Now())
 	return runAuditedMutation(ctx, s.administration.audit, mutationAttempt{Invocation: invocation, Action: model.ActionUserManage,
 		Resource: model.Resource{Type: model.ResourceUser, ID: id.String()}, Operation: "change_email",
@@ -122,9 +127,17 @@ func (s *accountTokenService) changeUserEmail(ctx context.Context, current *mode
 	if err != nil {
 		return nil, accountRecoveryUnavailable(err)
 	}
+	rawUndo := s.deps.NewToken()
+	undo := &model.UserToken{UserID: current.ID, Purpose: model.UserTokenEmailChangeUndo, TokenHash: model.HashToken(rawUndo), Target: current.Email, ExpiresAt: now.Add(s.deps.Policy.EmailChangeUndoTTL)}
+	undo.PrepareCreate(model.NewUserTokenID(), now)
+	undoLink, err := accountCredentialLink(s.deps.PublicURL, "/account/undo-email-change", rawUndo)
+	if err != nil {
+		return nil, accountRecoveryUnavailable(err)
+	}
 	oldRecipient, newRecipient := *current, *current
 	newRecipient.Email, newRecipient.EmailVerified = newEmail, false
-	warning, err := s.deps.Mail.PrepareEmailChangeWarning(mail.NoticePreparation{Recipient: &oldRecipient, At: now})
+	warning, err := s.deps.Mail.PrepareEmailChangeWarning(mail.AccountTokenPreparation{Recipient: &oldRecipient,
+		OccurrenceID: model.MailOccurrenceID(undo.ID.String()), ActionURL: undoLink, At: now, Deadline: undo.ExpiresAt})
 	if err != nil {
 		return nil, accountRecoveryUnavailable(err)
 	}
@@ -134,7 +147,7 @@ func (s *accountTokenService) changeUserEmail(ctx context.Context, current *mode
 		return nil, accountRecoveryUnavailable(err)
 	}
 	result, err := s.deps.Tokens.ChangeEmail(ctx, &store.UserEmailChange{UserID: current.ID, ExpectedRevision: current.Revision, NewEmail: newEmail, Token: token,
-		TokenLifetime: s.deps.Policy.EmailVerificationTTL, WarningLifetime: 24 * time.Hour,
+		UndoToken: undo, TokenLifetime: s.deps.Policy.EmailVerificationTTL, WarningLifetime: s.deps.Policy.EmailChangeUndoTTL,
 		WarningOccurrence: warning.Occurrence, WarningDelivery: warning.Delivery, WarningJob: warning.Job,
 		VerificationOccurrence: verification.Occurrence, VerificationDelivery: verification.Delivery, VerificationJob: verification.Job,
 		AuditEventID: reference.ID, AuditAt: reference.MutationAt})
@@ -142,6 +155,45 @@ func (s *accountTokenService) changeUserEmail(ctx context.Context, current *mode
 		return nil, userStoreErrors.Translate(err)
 	}
 	return result.User, nil
+}
+
+// CompleteEmailChangeUndoCommand redeems the undo link mailed to the previous
+// address of a changed account.
+type CompleteEmailChangeUndoCommand struct {
+	Token  string
+	Source string
+}
+
+// CompleteEmailChangeUndo restores the previous address an undo credential
+// names, signs every Session of the account out, and audits the undo. The
+// response conceals whether the credential ever existed.
+func (s *accountTokenService) CompleteEmailChangeUndo(ctx context.Context, invocation invocation.Invocation, command CompleteEmailChangeUndoCommand) error {
+	if err := s.checkAccountRecoveryRateLimit(ctx, accountRecoveryAttemptEmailChangeUndoComplete,
+		recoveryCredentialRateIdentity(command.Token), command.Source); err != nil {
+		return err
+	}
+	if !validRawCredential(command.Token) {
+		return invalidAccountCredential()
+	}
+	institution, err := s.accountRecoveryInstitution(ctx)
+	if err != nil {
+		return err
+	}
+	event := s.deps.Audit.Success(model.ActionAuthenticationEmailChangeUndo, model.Resource{Type: model.ResourceUser},
+		institution.ID, invocation, nil, "email_change_undo_token")
+	result, err := s.deps.Tokens.ConsumeEmailChangeUndo(ctx, &store.EmailChangeUndo{TokenHash: model.HashToken(command.Token),
+		RevocationReason: model.SessionRevocationEmailChangeUndone, AuditEvent: event})
+	switch {
+	case err == nil:
+	case store.IsNotFound(err):
+		return invalidAccountCredential()
+	case store.IsConflict(err):
+		return apperror.New("authentication.email_change_undo.conflict").Wrap(err)
+	default:
+		return accountRecoveryStoreFailure(err)
+	}
+	s.deps.Effects.SessionsRevoked(ctx, result.User.ID, sessionIDs(result.RevokedSessions), result.RevokedAccessHashes)
+	return nil
 }
 
 func (s *accountTokenService) verifyUserEmailPrivileged(ctx context.Context, current *model.User, now time.Time, reference mutationAttemptReference) (*model.User, error) {

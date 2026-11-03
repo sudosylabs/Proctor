@@ -186,6 +186,7 @@ func Default() Config {
 			AccountRecovery: AccountRecovery{
 				EmailVerificationTTL: Duration{Duration: 24 * time.Hour},
 				PasswordResetTTL:     Duration{Duration: time.Hour},
+				EmailChangeUndoTTL:   Duration{Duration: 72 * time.Hour},
 				RateLimit: AttemptRateLimit{
 					Window:                Duration{Duration: 15 * time.Minute},
 					MaximumAttempts:       3,

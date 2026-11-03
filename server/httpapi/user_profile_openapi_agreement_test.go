@@ -75,7 +75,7 @@ func TestUserProfileOpenAPIAgreesWithRuntime(t *testing.T) {
 				Key: "PUT /api/v1/users/{user_id}/email", Auth: AuthStrongRecentSessionRequired,
 				RequestBodyRef: "#/components/requestBodies/ChangeUserEmail", RequestSchema: "ChangeUserEmailRequest",
 				SuccessStatus: "200", SuccessRef: "#/components/responses/UserEmailStateOK", SuccessSchema: "UserEmailStateResponse",
-				PublicErrorCodes: principalMutationContractCodes("authentication.strong_required", "authentication.reauthentication_required", "request.invalid", "resource.not_found", "user.invalid", "user.conflict", "authentication.account_recovery.unavailable", "administration.unavailable"),
+				PublicErrorCodes: principalMutationContractCodes("authentication.strong_required", "authentication.reauthentication_required", "request.invalid", "resource.not_found", "user.invalid", "user.conflict", "authentication.account_recovery.unavailable", "authentication.rate_limited", "authentication.rate_limit_unavailable", "administration.unavailable"),
 			},
 			{
 				Key: "POST /api/v1/users/{user_id}/email/verify", Auth: AuthStrongRecentSessionRequired,

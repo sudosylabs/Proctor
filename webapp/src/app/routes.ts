@@ -8,6 +8,7 @@ export const hostedRoutes = [
   "/account/forgot-password",
   "/account/reset-password",
   "/account/verify-email",
+  "/account/undo-email-change",
   "/account/connect-provider",
   "/authorization/complete",
   "/account/security",

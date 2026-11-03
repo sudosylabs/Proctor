@@ -425,6 +425,8 @@ func recoveryTokenPurpose(key model.MailTemplateKey) (model.UserTokenPurpose, bo
 		return model.UserTokenEmailVerification, true
 	case model.MailTemplateIdentityPasswordReset:
 		return model.UserTokenPasswordReset, true
+	case model.MailTemplateIdentityEmailChangeWarningOld:
+		return model.UserTokenEmailChangeUndo, true
 	default:
 		return "", false
 	}
@@ -503,8 +505,10 @@ func activeRecoveryTokenMail(ctx context.Context, executor sqlxExecutor, deliver
 		SELECT t.id FROM user_tokens t
 		JOIN users u ON u.id=t.user_id
 		WHERE t.id=? AND t.user_id=? AND t.purpose=? AND t.archived_at IS NULL AND t.consumed_at IS NULL
-		  AND t.expires_at>? AND u.archived_at IS NULL AND u.disabled_at IS NULL AND u.email=t.target
-		FOR SHARE OF t,u`, delivery.OccurrenceID.String(), delivery.TargetUserID.String(), purpose, model.TimeUTC(at)); err != nil {
+		  AND t.expires_at>? AND u.archived_at IS NULL AND u.disabled_at IS NULL
+		  AND ((t.purpose<>? AND u.email=t.target) OR (t.purpose=? AND u.email<>t.target))
+		FOR SHARE OF t,u`, delivery.OccurrenceID.String(), delivery.TargetUserID.String(), purpose, model.TimeUTC(at),
+		model.UserTokenEmailChangeUndo, model.UserTokenEmailChangeUndo); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return false, nil
 		}

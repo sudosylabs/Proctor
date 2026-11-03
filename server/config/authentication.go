@@ -61,9 +61,12 @@ type AttemptRateLimit struct {
 }
 
 type AccountRecovery struct {
-	EmailVerificationTTL Duration         `json:"EmailVerificationTTL"`
-	PasswordResetTTL     Duration         `json:"PasswordResetTTL"`
-	RateLimit            AttemptRateLimit `json:"RateLimit"`
+	EmailVerificationTTL Duration `json:"EmailVerificationTTL"`
+	PasswordResetTTL     Duration `json:"PasswordResetTTL"`
+	// EmailChangeUndoTTL is how long the previous address may undo an email
+	// change with the link Proctor sends it.
+	EmailChangeUndoTTL Duration         `json:"EmailChangeUndoTTL"`
+	RateLimit          AttemptRateLimit `json:"RateLimit"`
 }
 
 type PersonalAccessTokens struct {
@@ -210,6 +213,13 @@ func validateAuthentication(authentication Authentication, add func(string, stri
 		add(
 			"authentication.account_recovery.password_reset_ttl",
 			"must be between 5m and 24h",
+		)
+	}
+	if recovery.EmailChangeUndoTTL.Duration < time.Hour ||
+		recovery.EmailChangeUndoTTL.Duration > 30*24*time.Hour {
+		add(
+			"authentication.account_recovery.email_change_undo_ttl",
+			"must be between 1h and 720h",
 		)
 	}
 	validateAuthenticationRateLimit(

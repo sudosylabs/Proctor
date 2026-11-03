@@ -93,6 +93,7 @@ func hasActionLabel(key model.MailTemplateKey) bool {
 	case model.MailTemplateIdentityVerifyEmail,
 		model.MailTemplateIdentityPasswordReset,
 		model.MailTemplateIdentityEmailChangeVerifyNew,
+		model.MailTemplateIdentityEmailChangeWarningOld,
 		model.MailTemplateAccessStudentClassInvitation,
 		model.MailTemplateAccessTeacherAcademicUnitInvitation,
 		model.MailTemplateAccessAcademicUnitRoleInvitation,

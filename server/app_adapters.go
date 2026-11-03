@@ -118,6 +118,7 @@ func applicationDependencies(
 		AccountRecovery: app.AccountRecoveryPolicy{
 			EmailVerificationTTL: auth.AccountRecovery.EmailVerificationTTL.Duration,
 			PasswordResetTTL:     auth.AccountRecovery.PasswordResetTTL.Duration,
+			EmailChangeUndoTTL:   auth.AccountRecovery.EmailChangeUndoTTL.Duration,
 			RateLimit: app.LoginRateLimitPolicy{
 				Window:                auth.AccountRecovery.RateLimit.Window.Duration,
 				MaximumAttempts:       auth.AccountRecovery.RateLimit.MaximumAttempts,

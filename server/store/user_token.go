@@ -40,7 +40,11 @@ type UserTokenMailIssue struct {
 
 // UserEmailChange is the named transition that replaces the account address,
 // invalidates prior verification credentials, and commits the new verification
-// credential plus frozen old/new-address notifications atomically.
+// credential, the undo credential for the previous address, and both frozen
+// credential deliveries atomically. UndoToken targets the previous address,
+// the warning occurrence is the undo token, and both the undo token and the
+// warning delivery live for WarningLifetime. Earlier undo tokens stay usable,
+// so every address in a chain of changes can still restore itself.
 // New credential, mail, and Job timestamps and deadlines use one database
 // instant. Existing User and superseded token lifecycle timestamps never move
 // backward; their creation times and superseded token expiries are preserved.
@@ -50,6 +54,7 @@ type UserEmailChange struct {
 	ExpectedRevision                          int64
 	NewEmail                                  string
 	Token                                     *model.UserToken
+	UndoToken                                 *model.UserToken
 	TokenLifetime                             time.Duration
 	WarningLifetime                           time.Duration
 	WarningOccurrence, VerificationOccurrence *model.MailOccurrence
@@ -60,8 +65,30 @@ type UserEmailChange struct {
 }
 
 type UserEmailChangeResult struct {
-	User  *model.User
-	Token *model.UserToken
+	User      *model.User
+	Token     *model.UserToken
+	UndoToken *model.UserToken
+}
+
+// EmailChangeUndo is the named aggregate that redeems one email-change undo
+// credential. In one transaction it takes the per-User Session lock, rechecks
+// the token against the database clock, restores the token's target as the
+// User's verified address, archives outstanding verification and reset
+// credentials and suppresses their unsent mail, consumes every outstanding
+// undo credential of the User, revokes all of the User's Sessions with
+// RevocationReason, and inserts the success audit. An unknown, expired,
+// consumed, or archived token, or an inactive User, returns ErrNotFound; a
+// target address another active User now holds returns a conflict.
+type EmailChangeUndo struct {
+	TokenHash        string
+	RevocationReason model.SessionRevocationReason
+	AuditEvent       *model.AuditEvent
+}
+
+type EmailChangeUndoResult struct {
+	User                *model.User
+	RevokedSessions     []*model.Session
+	RevokedAccessHashes []string
 }
 
 // PrivilegedEmailVerification records a high-assurance administrator override
@@ -108,6 +135,7 @@ type UserTokenStore interface {
 		model.UserTokenPurpose,
 	) (*model.UserToken, error)
 	ConsumeEmailVerification(context.Context, *EmailVerificationConsumption) (*EmailVerificationResult, error)
+	ConsumeEmailChangeUndo(context.Context, *EmailChangeUndo) (*EmailChangeUndoResult, error)
 	ConsumePasswordReset(
 		context.Context,
 		*PasswordResetCompletion,

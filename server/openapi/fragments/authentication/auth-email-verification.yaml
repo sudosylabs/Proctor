@@ -81,8 +81,48 @@ paths:
           $ref: '#/components/responses/TooManyRequests'
         "503":
           $ref: '#/components/responses/ServiceUnavailable'
+  /api/v1/auth/email-change/undo:
+    post:
+      operationId: undoEmailChange
+      summary: Undo an email change from the previous address
+      description: >-
+        Consumes the single-use undo token Proctor mails to an account's previous address when its email changes. Within the configured undo window it restores that address as the verified account email, cancels pending verification and password-reset links, signs out every Session of the account, and records an audit event. An invalid, expired, or already used token reveals no account details; a previous address that another account now holds is refused.
+      tags:
+        - Authentication
+      x-proctor-auth: public
+      x-proctor-error-codes:
+        - request.invalid
+        - authentication.rate_limited
+        - authentication.rate_limit_unavailable
+        - authentication.account_token.invalid
+        - authentication.account_recovery.unavailable
+        - authentication.email_change_undo.conflict
+      x-proctor-idempotency: none
+      security: []
+      requestBody:
+        $ref: '#/components/requestBodies/UndoEmailChange'
+      responses:
+        "204":
+          $ref: '#/components/responses/SensitiveNoContent'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "409":
+          $ref: '#/components/responses/Conflict'
+        "429":
+          $ref: '#/components/responses/TooManyRequests'
+        "503":
+          $ref: '#/components/responses/ServiceUnavailable'
 components:
   requestBodies:
+    UndoEmailChange:
+      required: true
+      description: Supplies the one-time undo token delivered to the previous email address.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/EmailChangeUndoRequest'
+          example:
+            token: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
     CompleteEmailVerification:
       required: true
       description: Supplies the one-time email-verification token delivered through the configured mail channel.
@@ -94,6 +134,14 @@ components:
             token: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
   schemas:
     EmailVerificationCompletionRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - token
+      properties:
+        token:
+          type: string
+    EmailChangeUndoRequest:
       type: object
       additionalProperties: false
       required:

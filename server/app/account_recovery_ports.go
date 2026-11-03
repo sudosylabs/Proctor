@@ -32,7 +32,7 @@ type accountTokenMailPreparer interface {
 	PrepareEmailVerification(mail.AccountTokenPreparation) (*store.PreparedMail, error)
 	PreparePasswordReset(mail.AccountTokenPreparation) (*store.PreparedMail, error)
 	PreparePasswordChanged(mail.NoticePreparation) (*store.PreparedMail, error)
-	PrepareEmailChangeWarning(mail.NoticePreparation) (*store.PreparedMail, error)
+	PrepareEmailChangeWarning(mail.AccountTokenPreparation) (*store.PreparedMail, error)
 	PrepareEmailChangeVerification(mail.AccountTokenPreparation) (*store.PreparedMail, error)
 	PrepareEmailVerifiedByAdministrator(mail.NoticePreparation) (*store.PreparedMail, error)
 }

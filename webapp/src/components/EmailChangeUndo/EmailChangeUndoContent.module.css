@@ -1,0 +1,96 @@
+@layer components {
+  .status {
+    --undo-status-color: var(--proctor-color-action-primary);
+
+    display: flex;
+    flex-direction: column;
+    inline-size: 100%;
+  }
+
+  .restored {
+    --undo-status-color: var(--proctor-color-state-success);
+  }
+
+  .invalid {
+    --undo-status-color: var(--proctor-color-state-danger);
+  }
+
+  .unavailable {
+    --undo-status-color: var(--proctor-color-state-warning);
+  }
+
+  .label {
+    color: var(--undo-status-color);
+    font-size: var(--proctor-font-size-label);
+    font-weight: var(--proctor-font-weight-semibold);
+    line-height: var(--proctor-line-height-label);
+    letter-spacing: var(--proctor-letter-spacing-label);
+    text-transform: uppercase;
+  }
+
+  .status h1 {
+    max-inline-size: 18ch;
+    margin-block-start: var(--proctor-space-4);
+    font-family: var(--proctor-font-family-display);
+    font-size: var(--proctor-font-size-display);
+    font-weight: var(--proctor-font-weight-semibold);
+    line-height: var(--proctor-line-height-display);
+    letter-spacing: var(--proctor-letter-spacing-display);
+    text-wrap: balance;
+  }
+
+  .body {
+    max-inline-size: 46ch;
+    margin-block-start: var(--proctor-space-4);
+    color: var(--proctor-color-foreground-muted);
+    font-size: var(--proctor-font-size-body-large);
+    line-height: var(--proctor-line-height-body-large);
+  }
+
+  .notice {
+    max-inline-size: 46ch;
+    margin-block-start: var(--proctor-space-6);
+  }
+
+  .actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--proctor-space-3) var(--proctor-space-5);
+    align-items: center;
+    margin-block-start: var(--proctor-space-6);
+  }
+
+  .signInLink {
+    display: inline-flex;
+    min-block-size: var(--proctor-control-size-default);
+    align-items: center;
+    font-weight: var(--proctor-font-weight-semibold);
+  }
+
+  .visuallyHidden {
+    position: absolute;
+    inline-size: 1px;
+    block-size: 1px;
+    padding: 0;
+    border: 0;
+    margin: -1px;
+    clip-path: inset(50%);
+    overflow: hidden;
+    white-space: nowrap;
+  }
+
+  @media (max-width: 30rem) {
+    .actions {
+      flex-direction: column;
+      align-items: stretch;
+    }
+
+    .actions button {
+      inline-size: 100%;
+    }
+
+    .signInLink {
+      align-self: flex-start;
+    }
+  }
+}

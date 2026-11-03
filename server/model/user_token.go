@@ -23,6 +23,10 @@ type UserTokenPurpose string
 const (
 	UserTokenPasswordReset     UserTokenPurpose = "password_reset"
 	UserTokenEmailVerification UserTokenPurpose = "email_verification"
+	// UserTokenEmailChangeUndo is sent to the previous address when an
+	// account's email changes; its Target is that previous address, which
+	// redeeming the token restores.
+	UserTokenEmailChangeUndo UserTokenPurpose = "email_change_undo"
 )
 
 // UserToken is a short-lived, single-use credential for one explicit account
@@ -117,7 +121,7 @@ func (t *UserToken) Validate() error {
 
 // IsValid reports whether the purpose is a recognized account operation.
 func (p UserTokenPurpose) IsValid() bool {
-	return p == UserTokenPasswordReset || p == UserTokenEmailVerification
+	return p == UserTokenPasswordReset || p == UserTokenEmailVerification || p == UserTokenEmailChangeUndo
 }
 
 // IsActiveAt reports whether the token is unarchived, unconsumed, and unexpired

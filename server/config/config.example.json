@@ -170,6 +170,7 @@
     "AccountRecovery": {
       "EmailVerificationTTL": "24h",
       "PasswordResetTTL": "1h",
+      "EmailChangeUndoTTL": "72h",
       "RateLimit": {
         "Window": "15m",
         "MaximumAttempts": 3,

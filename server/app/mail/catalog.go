@@ -58,6 +58,7 @@ var mailCatalog = func() map[model.MailTemplateKey]definition {
 		model.MailTemplateIdentityVerifyEmail,
 		model.MailTemplateIdentityPasswordReset,
 		model.MailTemplateIdentityEmailChangeVerifyNew,
+		model.MailTemplateIdentityEmailChangeWarningOld,
 		model.MailTemplateAccessStudentClassInvitation,
 		model.MailTemplateAccessTeacherAcademicUnitInvitation,
 		model.MailTemplateAccessAcademicUnitRoleInvitation,

@@ -271,6 +271,18 @@ return a generic accepted response; successful completion atomically changes
 the password, revokes all sessions, consumes the token, records the terminal
 audit, and queues only the password-changed security notice.
 
+Applying an email change also issues a hashed `email_change_undo` User Token
+bound to the previous address and mails it there as the old-address warning,
+valid for `Authentication.AccountRecovery.EmailChangeUndoTTL`. Earlier undo
+tokens stay usable so each address in a chain of changes can restore itself.
+Redeeming one, a public token flow rate-limited by token and source, takes the
+per-User Session lock, restores the target as the verified address unless
+another account holds it, archives verification and reset credentials and
+their unsent mail, consumes every outstanding undo token, revokes all
+Sessions, and inserts the `authentication.email_change.undo` audit in one
+transaction. The change itself shares the recovery rate limit per target
+account.
+
 Email changes preserve prepared User lifecycle history, including imported
 timestamps ahead of the database clock. User updates and superseded token
 archival cannot move existing lifecycle metadata backwards. Those metadata
