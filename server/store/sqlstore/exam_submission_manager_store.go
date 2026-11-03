@@ -165,27 +165,9 @@ func endExamAttemptByManager(ctx context.Context, tx *sqlxTxWrapper,
 	if err != nil {
 		return zero, err
 	}
-	if err = guardExamSittingManagerExam(ctx, tx, input.Request.ExamID, input.Request.ActorUserID,
-		input.Request.ManagerOverride, false); err != nil {
-		return zero, err
-	}
-	row, err := lockAutomaticExamSubmission(ctx, tx, input.Request.AttemptID)
+	row, target, err := lockManagerEndTarget(ctx, tx, input)
 	if err != nil {
 		return zero, err
-	}
-	target, err := automaticExamSubmissionTarget(row.automaticExamSubmissionTargetRow)
-	if err != nil {
-		return zero, err
-	}
-	if target.CandidateUserID == input.Request.ActorUserID {
-		return zero, store.NewErrNotFound("exam_attempt", input.Request.AttemptID.String())
-	}
-	if !sameManagerEndTargetIdentity(target, input.Target) || row.AttemptRevision != input.Request.ExpectedAttemptRevision {
-		return zero, store.NewErrConflict("exam_attempt", "exam_attempt_revision", nil)
-	}
-	if !model.ExamAttemptState(row.AttemptState).IsUnresolved() ||
-		(row.SittingState != string(model.ExamSittingOpen) && row.SittingState != string(model.ExamSittingPaused)) {
-		return zero, store.NewErrConflict("exam_attempt", "exam_attempt_state", nil)
 	}
 	sealAt := model.TimeUTC(input.AuditAt)
 	var databaseNow time.Time
@@ -196,44 +178,16 @@ func endExamAttemptByManager(ctx context.Context, tx *sqlxTxWrapper,
 	if sealAt.After(databaseNow) || !databaseNow.Before(row.ScheduledEndAt) {
 		return zero, store.NewErrConflict("exam_sitting", "exam_sitting_deadline_reached", nil)
 	}
-	if input.ExpectedRecipientRevision < 1 || recipient.Revision != input.ExpectedRecipientRevision {
-		return zero, store.NewErrConflict("exam_submission", "receipt_recipient_changed", nil)
-	}
-	payloadKeyID, err := validateExamSubmissionReceiptMail(input.Notice, recipient, input.SubmissionID, input.AuditAt,
-		model.MailTemplateExamSubmissionManagerEnded)
+	payloadKeyID, err := prepareAutomaticExamSubmissionReceipt(ctx, tx, input.Notice, recipient, input.ExpectedRecipientRevision,
+		input.SubmissionID, input.AuditAt, model.MailTemplateExamSubmissionManagerEnded)
 	if err != nil {
 		return zero, err
 	}
-	if payloadKeyID != "" {
-		if err = requireMailPayloadPrimary(ctx, tx, payloadKeyID); err != nil {
-			return zero, err
-		}
-	}
-	integrity, err := lockAutomaticExamSubmissionIntegrity(ctx, tx, target.AttemptID)
+	accounting, err := lockAutomaticExamSubmissionAccounting(ctx, tx, row, target.AttemptID, "current_policy")
 	if err != nil {
 		return zero, err
 	}
-	unresolved := integrity.TotalUnresolved
-	policy, err := model.DecodeExamPolicySet(row.PolicyCanonical)
-	if err != nil {
-		return zero, invalidPersistedState("exam_submission", "current_policy", err)
-	}
-	if policy.FocusLoss.Enabled {
-		if unresolved == math.MaxInt64 {
-			return zero, invalidPersistedState("exam_submission", "integrity_gaps", errors.New("unresolved gap count overflows"))
-		}
-		unresolved++
-	}
-	focusUnresolved := unresolved
-	missingCorrections, err := listAutomaticPendingCorrectionAcknowledgements(ctx, tx, row)
-	if err != nil {
-		return zero, err
-	}
-	pendingAcknowledgements := int64(len(missingCorrections))
-	if pendingAcknowledgements > math.MaxInt64-unresolved {
-		return zero, invalidPersistedState("exam_submission", "integrity_gaps", errors.New("unresolved gap count overflows"))
-	}
-	unresolved += pendingAcknowledgements
+	unresolved := accounting.Unresolved
 	browserUnresolved, browserActivity, err := settleSubmissionBrowserSources(ctx, tx, target.AttemptID, model.DeliveryClosedManagerEnd, sealAt)
 	if err != nil {
 		return zero, err
@@ -260,7 +214,7 @@ func endExamAttemptByManager(ctx context.Context, tx *sqlxTxWrapper,
 	}
 	submission, err := model.NewExamSubmission(model.ExamSubmissionSpecification{ID: input.SubmissionID,
 		AttemptID: target.AttemptID, ExamRevisionID: target.CurrentRevisionID, WorkspaceID: target.WorkspaceID,
-		Manifest: manifest, FinalFocusLossSequence: integrity.LatestAcceptedSequence, BrowserActivity: browserActivity,
+		Manifest: manifest, FinalFocusLossSequence: accounting.Integrity.LatestAcceptedSequence, BrowserActivity: browserActivity,
 		UnresolvedIntegrityCount: unresolved, Provenance: model.ExamSubmissionManagerEndedAttempt, SubmittedAt: sealAt})
 	if err != nil {
 		return zero, store.NewErrInvalidInput("exam_submission", "value", nil).Wrap(err)
@@ -268,17 +222,10 @@ func endExamAttemptByManager(ctx context.Context, tx *sqlxTxWrapper,
 	if err = insertAutomaticExamSubmission(ctx, tx, submission, target, manifestRows, entries); err != nil {
 		return zero, err
 	}
-	focusReason := model.IntegrityDiscrepancyFocusLossSequenceGap
-	if policy.FocusLoss.Enabled {
-		focusReason = model.IntegrityDiscrepancyFocusLossSourceNotFinalized
-		if integrity.TotalUnresolved > 0 {
-			focusReason = model.IntegrityDiscrepancyFocusLossSequenceGapAndSourceNotFinalized
-		}
-	}
 	if err = insertTerminalIntegrityDiscrepancies(ctx, tx, submission, automaticIntegrityDiscrepancyTarget(target),
-		terminalIntegrityDiscrepancies{FocusUnresolved: focusUnresolved, FocusReason: focusReason,
+		terminalIntegrityDiscrepancies{FocusUnresolved: accounting.FocusUnresolved, FocusReason: accounting.focusLossReason(),
 			BrowserUnresolved:  browserUnresolved,
-			MissingCorrections: missingCorrections}); err != nil {
+			MissingCorrections: accounting.MissingCorrections}); err != nil {
 		return zero, err
 	}
 	if _, err = tx.Exec(ctx, `DELETE FROM exam_attempt_focus_loss_pending WHERE exam_attempt_id=?`, target.AttemptID.String()); err != nil {
@@ -287,11 +234,8 @@ func endExamAttemptByManager(ctx context.Context, tx *sqlxTxWrapper,
 	if err = persistManagerEndedExamAttempt(ctx, tx, attempt, participation, connection, beforeParticipation, beforeConnection); err != nil {
 		return zero, err
 	}
-	if _, err = tx.Exec(ctx, `INSERT INTO exam_attempt_manager_end_actions
-		(submission_id,exam_attempt_id,actor_user_id,private_reason,audit_event_id,ended_at) VALUES (?,?,?,?,?,?)`,
-		submission.ID.String(), submission.AttemptID.String(), input.Request.ActorUserID.String(), input.Request.PrivateReason,
-		input.AuditEventID, submission.SubmittedAt); err != nil {
-		return zero, fmt.Errorf("record manager-ended Exam Attempt action: %w", err)
+	if err = recordManagerEndAction(ctx, tx, submission, input); err != nil {
+		return zero, err
 	}
 	outcome := automaticExamSubmissionOutcome(submission, target)
 	outcome.ConnectionClosed = beforeConnection == model.AttemptConnectionOpen
@@ -302,6 +246,52 @@ func endExamAttemptByManager(ctx context.Context, tx *sqlxTxWrapper,
 		return zero, err
 	}
 	return outcome, nil
+}
+
+// lockManagerEndTarget guards the manager's Exam authority, locks the Attempt,
+// and requires it to be another candidate's unresolved Attempt in an open or
+// paused Sitting at the expected identity and revision.
+func lockManagerEndTarget(ctx context.Context, tx *sqlxTxWrapper, input *store.ExamSubmissionManagerEnd,
+) (automaticExamSubmissionRow, store.ExamSubmissionAutomaticSealTarget, error) {
+	var zeroRow automaticExamSubmissionRow
+	var zeroTarget store.ExamSubmissionAutomaticSealTarget
+	if err := guardExamSittingManagerExam(ctx, tx, input.Request.ExamID, input.Request.ActorUserID,
+		input.Request.ManagerOverride, false); err != nil {
+		return zeroRow, zeroTarget, err
+	}
+	row, err := lockAutomaticExamSubmission(ctx, tx, input.Request.AttemptID)
+	if err != nil {
+		return zeroRow, zeroTarget, err
+	}
+	target, err := automaticExamSubmissionTarget(row.automaticExamSubmissionTargetRow)
+	if err != nil {
+		return zeroRow, zeroTarget, err
+	}
+	if target.CandidateUserID == input.Request.ActorUserID {
+		return zeroRow, zeroTarget, store.NewErrNotFound("exam_attempt", input.Request.AttemptID.String())
+	}
+	if !sameManagerEndTargetIdentity(target, input.Target) || row.AttemptRevision != input.Request.ExpectedAttemptRevision {
+		return zeroRow, zeroTarget, store.NewErrConflict("exam_attempt", "exam_attempt_revision", nil)
+	}
+	if !model.ExamAttemptState(row.AttemptState).IsUnresolved() ||
+		(row.SittingState != string(model.ExamSittingOpen) && row.SittingState != string(model.ExamSittingPaused)) {
+		return zeroRow, zeroTarget, store.NewErrConflict("exam_attempt", "exam_attempt_state", nil)
+	}
+	return row, target, nil
+}
+
+// recordManagerEndAction records the manager's end action and private reason
+// against the sealed Submission.
+func recordManagerEndAction(ctx context.Context, tx *sqlxTxWrapper, submission *model.ExamSubmission,
+	input *store.ExamSubmissionManagerEnd,
+) error {
+	if _, err := tx.Exec(ctx, `INSERT INTO exam_attempt_manager_end_actions
+		(submission_id,exam_attempt_id,actor_user_id,private_reason,audit_event_id,ended_at) VALUES (?,?,?,?,?,?)`,
+		submission.ID.String(), submission.AttemptID.String(), input.Request.ActorUserID.String(), input.Request.PrivateReason,
+		input.AuditEventID, submission.SubmittedAt); err != nil {
+		return fmt.Errorf("record manager-ended Exam Attempt action: %w", err)
+	}
+	return nil
 }
 
 func sameManagerEndTargetIdentity(left, right store.ExamSubmissionAutomaticSealTarget) bool {

@@ -206,49 +206,19 @@ func sealAutomaticExamSubmission(ctx context.Context, tx *sqlxTxWrapper,
 	if row.AttemptState == string(model.ExamAttemptSubmitted) {
 		return replayAutomaticExamSubmission(ctx, tx, input, target)
 	}
-	if input.ExpectedRecipientRevision < 1 || recipient.Revision != input.ExpectedRecipientRevision {
-		return nil, store.NewErrConflict("exam_submission", "receipt_recipient_changed", nil)
-	}
-	payloadKeyID, err := validateExamSubmissionReceiptMail(input.Notice, recipient, input.SubmissionID, input.AuditAt,
-		model.MailTemplateExamSubmissionAutomaticallySealed)
+	payloadKeyID, err := prepareAutomaticExamSubmissionReceipt(ctx, tx, input.Notice, recipient, input.ExpectedRecipientRevision,
+		input.SubmissionID, input.AuditAt, model.MailTemplateExamSubmissionAutomaticallySealed)
 	if err != nil {
 		return nil, err
 	}
-	if payloadKeyID != "" {
-		if err = requireMailPayloadPrimary(ctx, tx, payloadKeyID); err != nil {
-			return nil, err
-		}
-	}
-	if row.SittingState != string(model.ExamSittingClosing) ||
-		(row.AttemptState != string(model.ExamAttemptActive) && row.AttemptState != string(model.ExamAttemptReady) &&
-			row.AttemptState != string(model.ExamAttemptSuspended)) {
+	if !automaticExamSubmissionSealable(row) {
 		return nil, store.NewErrConflict("exam_attempt", "exam_attempt_state", nil)
 	}
-	integrity, err := lockAutomaticExamSubmissionIntegrity(ctx, tx, target.AttemptID)
+	accounting, err := lockAutomaticExamSubmissionAccounting(ctx, tx, row, target.AttemptID, "admission_policy")
 	if err != nil {
 		return nil, err
 	}
-	policy, err := model.DecodeExamPolicySet(row.PolicyCanonical)
-	if err != nil {
-		return nil, invalidPersistedState("exam_submission", "admission_policy", err)
-	}
-	unresolved := integrity.TotalUnresolved
-	if policy.FocusLoss.Enabled {
-		if unresolved == math.MaxInt64 {
-			return nil, invalidPersistedState("exam_submission", "integrity_gaps", errors.New("unresolved gap count overflows"))
-		}
-		unresolved++
-	}
-	focusUnresolved := unresolved
-	missingCorrections, err := listAutomaticPendingCorrectionAcknowledgements(ctx, tx, row)
-	if err != nil {
-		return nil, err
-	}
-	pendingAcknowledgements := int64(len(missingCorrections))
-	if pendingAcknowledgements > math.MaxInt64-unresolved {
-		return nil, invalidPersistedState("exam_submission", "integrity_gaps", errors.New("unresolved gap count overflows"))
-	}
-	unresolved += pendingAcknowledgements
+	unresolved := accounting.Unresolved
 	var databaseNow time.Time
 	if err = tx.Get(ctx, &databaseNow, `SELECT statement_timestamp()`); err != nil {
 		return nil, fmt.Errorf("read automatic Exam Submission time: %w", err)
@@ -284,7 +254,7 @@ func sealAutomaticExamSubmission(ctx context.Context, tx *sqlxTxWrapper,
 	}
 	submission, err := model.NewExamSubmission(model.ExamSubmissionSpecification{ID: input.SubmissionID,
 		AttemptID: target.AttemptID, ExamRevisionID: target.CurrentRevisionID, WorkspaceID: target.WorkspaceID, Manifest: manifest,
-		FinalFocusLossSequence: integrity.LatestAcceptedSequence, UnresolvedIntegrityCount: unresolved,
+		FinalFocusLossSequence: accounting.Integrity.LatestAcceptedSequence, UnresolvedIntegrityCount: unresolved,
 		BrowserActivity: browserActivity,
 		Provenance:      model.ExamSubmissionSittingClosed, SubmittedAt: sealAt})
 	if err != nil {
@@ -293,17 +263,10 @@ func sealAutomaticExamSubmission(ctx context.Context, tx *sqlxTxWrapper,
 	if err = insertAutomaticExamSubmission(ctx, tx, submission, target, manifestRows, entries); err != nil {
 		return nil, err
 	}
-	focusReason := model.IntegrityDiscrepancyFocusLossSequenceGap
-	if policy.FocusLoss.Enabled {
-		focusReason = model.IntegrityDiscrepancyFocusLossSourceNotFinalized
-		if integrity.TotalUnresolved > 0 {
-			focusReason = model.IntegrityDiscrepancyFocusLossSequenceGapAndSourceNotFinalized
-		}
-	}
 	if err = insertTerminalIntegrityDiscrepancies(ctx, tx, submission, automaticIntegrityDiscrepancyTarget(target),
-		terminalIntegrityDiscrepancies{FocusUnresolved: focusUnresolved,
-			FocusReason: focusReason, BrowserUnresolved: browserUnresolved,
-			MissingCorrections: missingCorrections}); err != nil {
+		terminalIntegrityDiscrepancies{FocusUnresolved: accounting.FocusUnresolved,
+			FocusReason: accounting.focusLossReason(), BrowserUnresolved: browserUnresolved,
+			MissingCorrections: accounting.MissingCorrections}); err != nil {
 		return nil, err
 	}
 	if _, err = tx.Exec(ctx, `DELETE FROM exam_attempt_focus_loss_pending WHERE exam_attempt_id=?`, target.AttemptID.String()); err != nil {
@@ -319,12 +282,106 @@ func sealAutomaticExamSubmission(ctx context.Context, tx *sqlxTxWrapper,
 	if err = insertExamSubmissionReceiptMail(ctx, tx, input.Notice, payloadKeyID); err != nil {
 		return nil, err
 	}
+	return automaticExamSubmissionSealResult(outcome, beforeConnection == model.AttemptConnectionOpen)
+}
+
+// automaticExamSubmissionSealable reports whether the locked Attempt is an
+// active, ready or suspended Attempt of a closing Sitting.
+func automaticExamSubmissionSealable(row automaticExamSubmissionRow) bool {
+	return row.SittingState == string(model.ExamSittingClosing) &&
+		(row.AttemptState == string(model.ExamAttemptActive) || row.AttemptState == string(model.ExamAttemptReady) ||
+			row.AttemptState == string(model.ExamAttemptSuspended))
+}
+
+// automaticExamSubmissionSealResult converts a fresh automatic seal outcome
+// into its result, reporting whether the seal closed an open Connection.
+func automaticExamSubmissionSealResult(outcome examSubmissionSealOutcome, connectionClosed bool,
+) (*store.ExamSubmissionAutomaticSealResult, error) {
 	result, err := examSubmissionSealResult(outcome)
 	if err != nil {
 		return nil, err
 	}
 	return &store.ExamSubmissionAutomaticSealResult{ExamSubmissionSealResult: *result,
-		ConnectionClosed: beforeConnection == model.AttemptConnectionOpen}, nil
+		ConnectionClosed: connectionClosed}, nil
+}
+
+// prepareAutomaticExamSubmissionReceipt requires the receipt recipient to be
+// unchanged, validates the prepared receipt mail, and requires its payload key
+// to be primary, returning that key.
+func prepareAutomaticExamSubmissionReceipt(ctx context.Context, tx *sqlxTxWrapper, notice *store.PreparedMail,
+	recipient *model.User, expectedRecipientRevision int64, submissionID model.SubmissionID, auditAt time.Time,
+	template model.MailTemplateKey,
+) (string, error) {
+	if expectedRecipientRevision < 1 || recipient.Revision != expectedRecipientRevision {
+		return "", store.NewErrConflict("exam_submission", "receipt_recipient_changed", nil)
+	}
+	payloadKeyID, err := validateExamSubmissionReceiptMail(notice, recipient, submissionID, auditAt, template)
+	if err != nil {
+		return "", err
+	}
+	if payloadKeyID != "" {
+		if err = requireMailPayloadPrimary(ctx, tx, payloadKeyID); err != nil {
+			return "", err
+		}
+	}
+	return payloadKeyID, nil
+}
+
+// automaticExamSubmissionAccounting is the locked integrity tail, decoded
+// policy and unresolved integrity counts of an automatically ended Attempt.
+type automaticExamSubmissionAccounting struct {
+	Integrity          automaticExamSubmissionIntegrity
+	Policy             model.ExamPolicySet
+	FocusUnresolved    int64
+	Unresolved         int64
+	MissingCorrections []model.ExamRevisionID
+}
+
+// lockAutomaticExamSubmissionAccounting locks the Attempt's integrity tail,
+// decodes its policy, and counts the unresolved Focus Loss gaps plus missing
+// correction acknowledgements; policyField names the policy in errors.
+func lockAutomaticExamSubmissionAccounting(ctx context.Context, tx *sqlxTxWrapper, row automaticExamSubmissionRow,
+	attemptID model.ExamAttemptID, policyField string,
+) (automaticExamSubmissionAccounting, error) {
+	integrity, err := lockAutomaticExamSubmissionIntegrity(ctx, tx, attemptID)
+	if err != nil {
+		return automaticExamSubmissionAccounting{}, err
+	}
+	policy, err := model.DecodeExamPolicySet(row.PolicyCanonical)
+	if err != nil {
+		return automaticExamSubmissionAccounting{}, invalidPersistedState("exam_submission", policyField, err)
+	}
+	unresolved := integrity.TotalUnresolved
+	if policy.FocusLoss.Enabled {
+		if unresolved == math.MaxInt64 {
+			return automaticExamSubmissionAccounting{}, invalidPersistedState("exam_submission", "integrity_gaps", errors.New("unresolved gap count overflows"))
+		}
+		unresolved++
+	}
+	focusUnresolved := unresolved
+	missingCorrections, err := listAutomaticPendingCorrectionAcknowledgements(ctx, tx, row)
+	if err != nil {
+		return automaticExamSubmissionAccounting{}, err
+	}
+	pendingAcknowledgements := int64(len(missingCorrections))
+	if pendingAcknowledgements > math.MaxInt64-unresolved {
+		return automaticExamSubmissionAccounting{}, invalidPersistedState("exam_submission", "integrity_gaps", errors.New("unresolved gap count overflows"))
+	}
+	return automaticExamSubmissionAccounting{Integrity: integrity, Policy: policy, FocusUnresolved: focusUnresolved,
+		Unresolved: unresolved + pendingAcknowledgements, MissingCorrections: missingCorrections}, nil
+}
+
+// focusLossReason names why the automatically ended Attempt's Focus Loss
+// evidence is incomplete.
+func (accounting automaticExamSubmissionAccounting) focusLossReason() model.IntegrityDiscrepancyFocusLossGapReason {
+	focusReason := model.IntegrityDiscrepancyFocusLossSequenceGap
+	if accounting.Policy.FocusLoss.Enabled {
+		focusReason = model.IntegrityDiscrepancyFocusLossSourceNotFinalized
+		if accounting.Integrity.TotalUnresolved > 0 {
+			focusReason = model.IntegrityDiscrepancyFocusLossSequenceGapAndSourceNotFinalized
+		}
+	}
+	return focusReason
 }
 
 func lockAutomaticExamSubmission(ctx context.Context, tx *sqlxTxWrapper, attemptID model.ExamAttemptID) (automaticExamSubmissionRow, error) {
