@@ -221,55 +221,9 @@ func (s *onboardingImportService) previewProgression(ctx context.Context, id mod
 	}
 	rows := make([]store.OnboardingImportRow, 0, len(members))
 	for index, member := range members {
-		row := store.OnboardingImportRow{ImportID: id, RowNumber: index + 1, Reference: member.ID.String(), ScopeType: model.RoleScopeClass,
-			ScopeID: destinationClass.ID.String(), TargetRevision: destinationClass.Revision, UserID: member.UserID, RelationshipID: member.ID.String(),
-			RelationshipRevision: member.Revision, StartsAt: model.OptionalTimeFrom(current.EffectiveAt), PreviewStatus: model.OnboardingImportRowValid,
-			Status: model.OnboardingImportRowValid, UpdatedAt: current.CreatedAt}
-		if current.SourcePeriodID == current.DestinationPeriodID {
-			row.Operation = string(AcademicAdministrationClassTransfer)
-			if studentProgressionTransferEffectiveDateConflict(member, current.EffectiveAt) {
-				row.PreviewStatus, row.Status, row.PreviewCode = model.OnboardingImportRowInvalid, model.OnboardingImportRowInvalid, "student_progression.effective_date_conflict"
-				rows = append(rows, row)
-				continue
-			}
-		} else {
-			row.Operation = string(AcademicAdministrationClassEnroll)
-		}
-		user, userErr := s.deps.Users.Get(ctx, member.UserID)
-		if userErr != nil {
-			return userErr
-		}
-		if !user.IsActive() {
-			row.PreviewStatus, row.Status, row.PreviewCode = model.OnboardingImportRowInvalid, model.OnboardingImportRowInvalid, "student_progression.ineligible_target"
-			rows = append(rows, row)
-			continue
-		}
-		affiliations, affiliationErr := s.deps.Affiliations.ListActiveByUser(ctx, member.UserID, current.EffectiveAt)
-		if affiliationErr != nil {
-			return affiliationErr
-		}
-		if !studentProgressionEligibleAffiliation(affiliations) {
-			row.PreviewStatus, row.Status, row.PreviewCode = model.OnboardingImportRowInvalid, model.OnboardingImportRowInvalid, "student_progression.ineligible_target"
-			rows = append(rows, row)
-			continue
-		}
-		active, activeErr := s.deps.ClassMembers.ListActiveByUser(ctx, member.UserID, current.EffectiveAt)
-		if activeErr != nil {
-			return activeErr
-		}
-		for _, existing := range active {
-			if existing.AcademicPeriodID != current.DestinationPeriodID {
-				continue
-			}
-			if existing.ClassID == current.DestinationClassID {
-				row.Operation = string(AcademicAdministrationClassEnroll)
-				row.PreviewCode = "student_progression.destination_exists"
-				row.DestinationRelationshipID = existing.ID.String()
-				row.DestinationRelationshipRevision = existing.Revision
-			} else if existing.ID != member.ID {
-				row.PreviewStatus, row.Status, row.PreviewCode = model.OnboardingImportRowInvalid, model.OnboardingImportRowInvalid, "student_progression.destination_conflict"
-			}
-			break
+		row, rowErr := s.previewProgressionRow(ctx, id, current, destinationClass, index, member)
+		if rowErr != nil {
+			return rowErr
 		}
 		rows = append(rows, row)
 	}
@@ -281,6 +235,60 @@ func (s *onboardingImportService) previewProgression(ctx context.Context, id mod
 	_, err = s.deps.Imports.CompleteOnboardingImportPreview(ctx, &store.OnboardingImportPreviewCompletion{ID: id, ExpectedRevision: current.Revision,
 		Digest: hex.EncodeToString(digest[:]), Rows: rows, At: model.TimeUTC(s.deps.Now())})
 	return err
+}
+
+// previewProgressionRow builds the preview row for one source roster member, classifying the member's eligibility
+// and any existing destination membership.
+func (s *onboardingImportService) previewProgressionRow(ctx context.Context, id model.OnboardingImportID, current *store.OnboardingImport,
+	destinationClass *model.Class, index int, member *model.ClassMember) (store.OnboardingImportRow, error) {
+	row := store.OnboardingImportRow{ImportID: id, RowNumber: index + 1, Reference: member.ID.String(), ScopeType: model.RoleScopeClass,
+		ScopeID: destinationClass.ID.String(), TargetRevision: destinationClass.Revision, UserID: member.UserID, RelationshipID: member.ID.String(),
+		RelationshipRevision: member.Revision, StartsAt: model.OptionalTimeFrom(current.EffectiveAt), PreviewStatus: model.OnboardingImportRowValid,
+		Status: model.OnboardingImportRowValid, UpdatedAt: current.CreatedAt}
+	if current.SourcePeriodID == current.DestinationPeriodID {
+		row.Operation = string(AcademicAdministrationClassTransfer)
+		if studentProgressionTransferEffectiveDateConflict(member, current.EffectiveAt) {
+			row.PreviewStatus, row.Status, row.PreviewCode = model.OnboardingImportRowInvalid, model.OnboardingImportRowInvalid, "student_progression.effective_date_conflict"
+			return row, nil
+		}
+	} else {
+		row.Operation = string(AcademicAdministrationClassEnroll)
+	}
+	user, userErr := s.deps.Users.Get(ctx, member.UserID)
+	if userErr != nil {
+		return store.OnboardingImportRow{}, userErr
+	}
+	if !user.IsActive() {
+		row.PreviewStatus, row.Status, row.PreviewCode = model.OnboardingImportRowInvalid, model.OnboardingImportRowInvalid, "student_progression.ineligible_target"
+		return row, nil
+	}
+	affiliations, affiliationErr := s.deps.Affiliations.ListActiveByUser(ctx, member.UserID, current.EffectiveAt)
+	if affiliationErr != nil {
+		return store.OnboardingImportRow{}, affiliationErr
+	}
+	if !studentProgressionEligibleAffiliation(affiliations) {
+		row.PreviewStatus, row.Status, row.PreviewCode = model.OnboardingImportRowInvalid, model.OnboardingImportRowInvalid, "student_progression.ineligible_target"
+		return row, nil
+	}
+	active, activeErr := s.deps.ClassMembers.ListActiveByUser(ctx, member.UserID, current.EffectiveAt)
+	if activeErr != nil {
+		return store.OnboardingImportRow{}, activeErr
+	}
+	for _, existing := range active {
+		if existing.AcademicPeriodID != current.DestinationPeriodID {
+			continue
+		}
+		if existing.ClassID == current.DestinationClassID {
+			row.Operation = string(AcademicAdministrationClassEnroll)
+			row.PreviewCode = "student_progression.destination_exists"
+			row.DestinationRelationshipID = existing.ID.String()
+			row.DestinationRelationshipRevision = existing.Revision
+		} else if existing.ID != member.ID {
+			row.PreviewStatus, row.Status, row.PreviewCode = model.OnboardingImportRowInvalid, model.OnboardingImportRowInvalid, "student_progression.destination_conflict"
+		}
+		break
+	}
+	return row, nil
 }
 
 func studentProgressionTransferEffectiveDateConflict(member *model.ClassMember, effectiveAt time.Time) bool {
