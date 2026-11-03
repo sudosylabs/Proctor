@@ -377,28 +377,9 @@ func (s *accessControlService) authorizedScopesAt(
 			return constraint, nil
 		}
 	}
-	bindings, err := s.deps.Bindings.ListActiveByUser(ctx, principal.UserID, model.TimeUTC(at))
+	bindings, grants, err := s.activeBindingGrants(ctx, principal, action, at)
 	if err != nil {
-		return constraint, authorizationUnavailableError(err)
-	}
-	if len(bindings) > 256 {
-		return constraint, authorizationUnavailableError(errors.New("active binding bound exceeded"))
-	}
-	roleIDs := make([]model.RoleID, 0, len(bindings))
-	seenRoles := map[model.RoleID]struct{}{}
-	for _, binding := range bindings {
-		if _, exists := seenRoles[binding.RoleID]; !exists {
-			seenRoles[binding.RoleID] = struct{}{}
-			roleIDs = append(roleIDs, binding.RoleID)
-		}
-	}
-	roles, err := s.deps.Roles.GetByIDs(ctx, roleIDs)
-	if err != nil {
-		return constraint, authorizationUnavailableError(err)
-	}
-	grants := map[string]bool{}
-	for _, role := range roles {
-		grants[role.ID.String()] = slices.Contains(role.Permissions, string(action))
+		return constraint, err
 	}
 	unitRoots := map[model.AcademicUnitID]struct{}{}
 	classIDs := map[model.ClassID]struct{}{}
@@ -406,51 +387,8 @@ func (s *accessControlService) authorizedScopesAt(
 		if !grants[binding.RoleID.String()] {
 			continue
 		}
-		switch binding.ScopeType {
-		case model.RoleScopeInstitution:
-			if !definition.InheritInstitutionScope {
-				continue
-			}
-			resolved, resolveErr := s.deps.Resolver.resolve(ctx, model.Resource{Type: model.ResourceInstitution, ID: binding.ScopeID})
-			if resolveErr != nil {
-				return constraint, resolveErr
-			}
-			constraint.InstitutionID = resolved.institutionID
-			if principal.AcademicUnitID.IsZero() {
-				constraint.InstitutionWide = true
-			} else {
-				unitRoots[principal.AcademicUnitID] = struct{}{}
-			}
-		case model.RoleScopeAcademicUnit:
-			if !definition.InheritAcademicUnitScopes {
-				continue
-			}
-			resolved, resolveErr := s.deps.Resolver.resolve(ctx, model.Resource{Type: model.ResourceAcademicUnit, ID: binding.ScopeID})
-			if resolveErr != nil {
-				return constraint, resolveErr
-			}
-			if !principal.AcademicUnitID.IsZero() {
-				if _, withinCeiling := resolved.academicUnitID[principal.AcademicUnitID]; !withinCeiling {
-					continue
-				}
-			}
-			constraint.InstitutionID = resolved.institutionID
-			unitRoots[model.AcademicUnitID(binding.ScopeID)] = struct{}{}
-		case model.RoleScopeClass:
-			if !definition.AcceptsResource(model.ResourceClass) {
-				continue
-			}
-			resolved, resolveErr := s.deps.Resolver.resolve(ctx, model.Resource{Type: model.ResourceClass, ID: binding.ScopeID})
-			if resolveErr != nil {
-				return constraint, resolveErr
-			}
-			if !principal.AcademicUnitID.IsZero() {
-				if _, withinCeiling := resolved.academicUnitID[principal.AcademicUnitID]; !withinCeiling {
-					continue
-				}
-			}
-			constraint.InstitutionID = resolved.institutionID
-			classIDs[model.ClassID(binding.ScopeID)] = struct{}{}
+		if err := s.accumulateBindingScope(ctx, principal, definition, binding, &constraint, unitRoots, classIDs); err != nil {
+			return constraint, err
 		}
 	}
 	for id := range unitRoots {
@@ -462,6 +400,90 @@ func (s *accessControlService) authorizedScopesAt(
 	slices.Sort(constraint.AcademicUnitRootIDs)
 	slices.Sort(constraint.ClassIDs)
 	return constraint, nil
+}
+
+// activeBindingGrants loads the principal's active Role Bindings and records which of their Roles grant the action.
+func (s *accessControlService) activeBindingGrants(
+	ctx context.Context, principal model.Principal, action model.Action, at time.Time,
+) ([]*model.RoleBinding, map[string]bool, error) {
+	bindings, err := s.deps.Bindings.ListActiveByUser(ctx, principal.UserID, model.TimeUTC(at))
+	if err != nil {
+		return nil, nil, authorizationUnavailableError(err)
+	}
+	if len(bindings) > 256 {
+		return nil, nil, authorizationUnavailableError(errors.New("active binding bound exceeded"))
+	}
+	roleIDs := make([]model.RoleID, 0, len(bindings))
+	seenRoles := map[model.RoleID]struct{}{}
+	for _, binding := range bindings {
+		if _, exists := seenRoles[binding.RoleID]; !exists {
+			seenRoles[binding.RoleID] = struct{}{}
+			roleIDs = append(roleIDs, binding.RoleID)
+		}
+	}
+	roles, err := s.deps.Roles.GetByIDs(ctx, roleIDs)
+	if err != nil {
+		return nil, nil, authorizationUnavailableError(err)
+	}
+	grants := map[string]bool{}
+	for _, role := range roles {
+		grants[role.ID.String()] = slices.Contains(role.Permissions, string(action))
+	}
+	return bindings, grants, nil
+}
+
+// accumulateBindingScope adds the scope of one granting Role Binding to the constraint within the principal's ceiling.
+func (s *accessControlService) accumulateBindingScope(
+	ctx context.Context, principal model.Principal, definition model.ActionDefinition, binding *model.RoleBinding,
+	constraint *authorizedScopeConstraint, unitRoots map[model.AcademicUnitID]struct{}, classIDs map[model.ClassID]struct{},
+) error {
+	switch binding.ScopeType {
+	case model.RoleScopeInstitution:
+		if !definition.InheritInstitutionScope {
+			return nil
+		}
+		resolved, resolveErr := s.deps.Resolver.resolve(ctx, model.Resource{Type: model.ResourceInstitution, ID: binding.ScopeID})
+		if resolveErr != nil {
+			return resolveErr
+		}
+		constraint.InstitutionID = resolved.institutionID
+		if principal.AcademicUnitID.IsZero() {
+			constraint.InstitutionWide = true
+		} else {
+			unitRoots[principal.AcademicUnitID] = struct{}{}
+		}
+	case model.RoleScopeAcademicUnit:
+		if !definition.InheritAcademicUnitScopes {
+			return nil
+		}
+		resolved, resolveErr := s.deps.Resolver.resolve(ctx, model.Resource{Type: model.ResourceAcademicUnit, ID: binding.ScopeID})
+		if resolveErr != nil {
+			return resolveErr
+		}
+		if !principal.AcademicUnitID.IsZero() {
+			if _, withinCeiling := resolved.academicUnitID[principal.AcademicUnitID]; !withinCeiling {
+				return nil
+			}
+		}
+		constraint.InstitutionID = resolved.institutionID
+		unitRoots[model.AcademicUnitID(binding.ScopeID)] = struct{}{}
+	case model.RoleScopeClass:
+		if !definition.AcceptsResource(model.ResourceClass) {
+			return nil
+		}
+		resolved, resolveErr := s.deps.Resolver.resolve(ctx, model.Resource{Type: model.ResourceClass, ID: binding.ScopeID})
+		if resolveErr != nil {
+			return resolveErr
+		}
+		if !principal.AcademicUnitID.IsZero() {
+			if _, withinCeiling := resolved.academicUnitID[principal.AcademicUnitID]; !withinCeiling {
+				return nil
+			}
+		}
+		constraint.InstitutionID = resolved.institutionID
+		classIDs[model.ClassID(binding.ScopeID)] = struct{}{}
+	}
+	return nil
 }
 
 // accessScopeResolverDependencies are the collaborators of accessScopeResolver;
@@ -503,265 +525,266 @@ func (r *accessScopeResolver) resolve(
 	resource model.Resource,
 ) (resolvedAuthorizationResource, error) {
 	resolved := resolvedAuthorizationResource{academicUnitID: make(map[model.AcademicUnitID]struct{})}
+	var err error
 	switch resource.Type {
 	case model.ResourceInstitution:
-		institution, err := r.deps.Institutions.Get(ctx, model.InstitutionID(resource.ID))
-		if err != nil {
-			return resolved, authorizationResourceError("institution", err)
-		}
-		if institution.IsArchived() {
-			return resolved, apperror.New("resource.not_found").WithField("resource", "institution")
-		}
-		resolved.institutionID = institution.ID
+		err = r.resolveInstitution(ctx, resource, &resolved)
 	case model.ResourceAcademicUnit:
-		units, err := r.deps.AcademicUnits.ListAncestors(ctx, model.AcademicUnitID(resource.ID))
-		if err != nil {
-			return resolved, authorizationResourceError("academic_unit", err)
-		}
-		if len(units) == 0 {
-			return resolved, apperror.New("resource.not_found").WithField("resource", "academic_unit")
-		}
-		resolved.institutionID = units[0].InstitutionID
-		resolved.targetAcademicUnitID = model.AcademicUnitID(resource.ID)
-		for _, unit := range units {
-			if unit == nil || unit.IsArchived() {
-				return resolved, apperror.New("resource.not_found").WithField("resource", "academic_unit")
-			}
-			resolved.academicUnitID[unit.ID] = struct{}{}
-		}
+		err = r.resolveAcademicUnit(ctx, resource, &resolved)
 	case model.ResourceAcademicPeriod:
-		period, err := r.deps.AcademicPeriods.Get(ctx, model.AcademicPeriodID(resource.ID))
-		if err != nil {
-			return resolved, authorizationResourceError("academic_period", err)
-		}
-		if period == nil || period.IsArchived() {
-			return resolved, apperror.New("resource.not_found").WithField("resource", "academic_period")
-		}
-		if period.Owner.InstitutionID.IsValid() {
-			institution, institutionErr := r.deps.Institutions.Get(ctx, period.Owner.InstitutionID)
-			if institutionErr != nil {
-				return resolved, authorizationResourceError("academic_period_institution", institutionErr)
-			}
-			if institution.IsArchived() {
-				return resolved, apperror.New("resource.not_found").WithField("resource", "academic_period")
-			}
-			resolved.institutionID = institution.ID
-			resolved.academicPeriodInstitutionOwned = true
-			break
-		}
-		units, err := r.deps.AcademicUnits.ListAncestors(ctx, period.Owner.AcademicUnitID)
-		if err != nil {
-			return resolved, authorizationResourceError("academic_period_academic_unit", err)
-		}
-		if len(units) == 0 {
-			return resolved, apperror.New("resource.not_found").WithField("resource", "academic_period")
-		}
-		resolved.institutionID = units[0].InstitutionID
-		resolved.targetAcademicUnitID = period.Owner.AcademicUnitID
-		for _, unit := range units {
-			if unit == nil || unit.IsArchived() {
-				return resolved, apperror.New("resource.not_found").WithField("resource", "academic_period")
-			}
-			resolved.academicUnitID[unit.ID] = struct{}{}
-		}
+		err = r.resolveAcademicPeriod(ctx, resource, &resolved)
 	case model.ResourceProgramme:
-		if r.programmes == nil {
-			return resolved, authorizationUnavailableError(errors.New("Programme persistence is required"))
-		}
-		programme, err := r.programmes.Get(ctx, model.ProgrammeID(resource.ID))
-		if err != nil {
-			return resolved, authorizationResourceError("programme", err)
-		}
-		if programme == nil || programme.IsArchived() {
-			return resolved, apperror.New("resource.not_found").WithField("resource", "programme")
-		}
-		units, err := r.deps.AcademicUnits.ListAncestors(ctx, programme.AcademicUnitID)
-		if err != nil {
-			return resolved, authorizationResourceError("programme_academic_unit", err)
-		}
-		if len(units) == 0 {
-			return resolved, apperror.New("resource.not_found").WithField("resource", "programme")
-		}
-		resolved.institutionID = units[0].InstitutionID
-		resolved.targetAcademicUnitID = programme.AcademicUnitID
-		for _, unit := range units {
-			if unit == nil || unit.IsArchived() {
-				return resolved, apperror.New("resource.not_found").WithField("resource", "programme")
-			}
-			resolved.academicUnitID[unit.ID] = struct{}{}
-		}
+		err = r.resolveProgramme(ctx, resource, &resolved)
 	case model.ResourceProgrammeLevel:
-		if r.programmeLevels == nil || r.programmes == nil {
-			return resolved, authorizationUnavailableError(errors.New("Programme Level persistence is required"))
-		}
-		level, err := r.programmeLevels.Get(ctx, model.ProgrammeLevelID(resource.ID))
-		if err != nil {
-			return resolved, authorizationResourceError("programme_level", err)
-		}
-		if level == nil || level.IsArchived() {
-			return resolved, apperror.New("resource.not_found").WithField("resource", "programme_level")
-		}
-		programme, err := r.programmes.Get(ctx, level.ProgrammeID)
-		if err != nil {
-			return resolved, authorizationResourceError("programme_level_programme", err)
-		}
-		if programme == nil || programme.IsArchived() {
-			return resolved, apperror.New("resource.not_found").WithField("resource", "programme_level")
-		}
-		units, err := r.deps.AcademicUnits.ListAncestors(ctx, programme.AcademicUnitID)
-		if err != nil {
-			return resolved, authorizationResourceError("programme_level_academic_unit", err)
-		}
-		if len(units) == 0 {
-			return resolved, apperror.New("resource.not_found").WithField("resource", "programme_level")
-		}
-		resolved.institutionID = units[0].InstitutionID
-		resolved.targetAcademicUnitID = programme.AcademicUnitID
-		for _, unit := range units {
-			if unit == nil || unit.IsArchived() {
-				return resolved, apperror.New("resource.not_found").WithField("resource", "programme_level")
-			}
-			resolved.academicUnitID[unit.ID] = struct{}{}
-		}
+		err = r.resolveProgrammeLevel(ctx, resource, &resolved)
 	case model.ResourceClass:
-		class, err := r.deps.Classes.Get(ctx, model.ClassID(resource.ID))
-		if err != nil {
-			return resolved, authorizationResourceError("class", err)
-		}
-		if class.IsArchived() {
-			return resolved, apperror.New("resource.not_found").WithField("resource", "class")
-		}
-		academicUnitID, err := r.deps.Classes.GetAcademicUnitID(ctx, model.ClassID(resource.ID))
-		if err != nil {
-			return resolved, authorizationResourceError("class", err)
-		}
-		units, err := r.deps.AcademicUnits.ListAncestors(ctx, academicUnitID)
-		if err != nil {
-			return resolved, authorizationResourceError("class_academic_unit", err)
-		}
-		if len(units) == 0 {
-			return resolved, apperror.New("resource.not_found").WithField("resource", "class")
-		}
-		resolved.classID = model.ClassID(resource.ID)
-		resolved.institutionID = units[0].InstitutionID
-		resolved.targetAcademicUnitID = academicUnitID
-		for _, unit := range units {
-			if unit == nil || unit.IsArchived() {
-				return resolved, apperror.New("resource.not_found").WithField("resource", "class")
-			}
-			resolved.academicUnitID[unit.ID] = struct{}{}
-		}
-		periodScope, err := r.resolve(ctx, model.Resource{Type: model.ResourceAcademicPeriod, ID: class.AcademicPeriodID.String()})
-		if err != nil {
-			if apperror.Is(err, "resource.not_found") {
-				return resolved, apperror.New("resource.not_found").WithField("resource", "class")
-			}
-			return resolved, err
-		}
-		if periodScope.institutionID != resolved.institutionID {
-			return resolved, apperror.New("resource.not_found").WithField("resource", "class")
-		}
-		if !periodScope.academicPeriodInstitutionOwned {
-			if _, applicable := resolved.academicUnitID[periodScope.targetAcademicUnitID]; !applicable {
-				return resolved, apperror.New("resource.not_found").WithField("resource", "class")
-			}
-		}
+		err = r.resolveClass(ctx, resource, &resolved)
 	case model.ResourceExam:
-		if r.deps.Exams == nil {
-			return resolved, authorizationUnavailableError(errors.New("exam persistence is required"))
-		}
-		exam, err := r.deps.Exams.Resolve(ctx, model.ExamID(resource.ID))
-		if err != nil {
-			return resolved, authorizationResourceError("exam", err)
-		}
-		units, err := r.deps.AcademicUnits.ListAncestors(ctx, exam.AcademicUnitID)
-		if err != nil {
-			return resolved, authorizationResourceError("exam_academic_unit", err)
-		}
-		if len(units) == 0 {
-			return resolved, apperror.New("resource.not_found").WithField("resource", "exam")
-		}
-		resolved.institutionID = units[0].InstitutionID
-		resolved.targetAcademicUnitID = exam.AcademicUnitID
-		for _, unit := range units {
-			if unit == nil || unit.IsArchived() {
-				return resolved, apperror.New("resource.not_found").WithField("resource", "exam")
-			}
-			resolved.academicUnitID[unit.ID] = struct{}{}
-		}
+		err = r.resolveExam(ctx, resource, &resolved)
 	case model.ResourceExamSitting:
-		snapshot, err := r.deps.Sittings.Resolve(ctx, model.ExamSittingID(resource.ID))
-		if err != nil {
-			return resolved, authorizationResourceError("exam_sitting", err)
-		}
-		if snapshot == nil || snapshot.Sitting == nil {
-			return resolved, authorizationUnavailableError(errors.New("Exam Sitting persistence returned no projection"))
-		}
-		exam, err := r.deps.Exams.Resolve(ctx, snapshot.Sitting.ExamID)
-		if err != nil {
-			return resolved, authorizationResourceError("exam_sitting_exam", err)
-		}
-		units, err := r.deps.AcademicUnits.ListAncestors(ctx, exam.AcademicUnitID)
-		if err != nil {
-			return resolved, authorizationResourceError("exam_sitting_academic_unit", err)
-		}
-		if len(units) == 0 {
-			return resolved, apperror.New("resource.not_found").WithField("resource", "exam_sitting")
-		}
-		resolved.institutionID = units[0].InstitutionID
-		resolved.targetAcademicUnitID = exam.AcademicUnitID
-		for _, unit := range units {
-			if unit == nil || unit.IsArchived() {
-				return resolved, apperror.New("resource.not_found").WithField("resource", "exam_sitting")
-			}
-			resolved.academicUnitID[unit.ID] = struct{}{}
-		}
+		err = r.resolveExamSitting(ctx, resource, &resolved)
 	case model.ResourceSubmission:
-		submissionID, err := model.ParseSubmissionID(resource.ID)
-		if err != nil {
-			return resolved, apperror.New("authorization.request.invalid").Wrap(err)
-		}
-		ownership, err := r.deps.Submissions.Resolve(ctx, submissionID)
-		if err != nil {
-			return resolved, authorizationResourceError("submission", err)
-		}
-		if ownership == nil || ownership.SubmissionID != submissionID || !ownership.ExamID.IsValid() ||
-			!ownership.SittingID.IsValid() || !ownership.AttemptID.IsValid() || !ownership.AcademicUnitID.IsValid() {
-			return resolved, authorizationUnavailableError(errors.New("Submission persistence returned no ownership projection"))
-		}
-		units, err := r.deps.AcademicUnits.ListAncestors(ctx, ownership.AcademicUnitID)
-		if err != nil {
-			return resolved, authorizationResourceError("submission_academic_unit", err)
-		}
-		if len(units) == 0 {
-			return resolved, apperror.New("resource.not_found").WithField("resource", "submission")
-		}
-		resolved.institutionID = units[0].InstitutionID
-		resolved.targetAcademicUnitID = ownership.AcademicUnitID
-		for _, unit := range units {
-			if unit == nil || unit.IsArchived() {
-				return resolved, apperror.New("resource.not_found").WithField("resource", "submission")
-			}
-			resolved.academicUnitID[unit.ID] = struct{}{}
-		}
+		err = r.resolveSubmission(ctx, resource, &resolved)
 	case model.ResourceUser:
-		user, err := r.deps.Users.Get(ctx, model.UserID(resource.ID))
-		if err != nil {
-			return resolved, authorizationResourceError("user", err)
-		}
-		if !user.IsActive() {
-			return resolved, apperror.New("resource.not_found").WithField("resource", "user")
-		}
-		institution, err := r.deps.Institutions.GetSingleton(ctx)
-		if err != nil {
-			return resolved, authorizationResourceError("institution", err)
-		}
-		if institution.IsArchived() {
-			return resolved, apperror.New("resource.not_found").WithField("resource", "institution")
-		}
-		resolved.institutionID = institution.ID
+		err = r.resolveUser(ctx, resource, &resolved)
 	default:
 		return resolved, apperror.New("authorization.request.invalid")
 	}
+	if err != nil {
+		return resolved, err
+	}
 	return resolved, nil
+}
+
+// listScopeAncestors loads the Academic Unit ancestry of a scoped resource and rejects an empty chain.
+func (r *accessScopeResolver) listScopeAncestors(
+	ctx context.Context, academicUnitID model.AcademicUnitID, lookupResource, notFoundResource string,
+) ([]*model.AcademicUnit, error) {
+	units, err := r.deps.AcademicUnits.ListAncestors(ctx, academicUnitID)
+	if err != nil {
+		return nil, authorizationResourceError(lookupResource, err)
+	}
+	if len(units) == 0 {
+		return nil, apperror.New("resource.not_found").WithField("resource", notFoundResource)
+	}
+	return units, nil
+}
+
+// applyScopeAncestors records the Institution, target unit and live ancestry, rejecting an archived ancestor.
+func applyScopeAncestors(
+	resolved *resolvedAuthorizationResource, units []*model.AcademicUnit, target model.AcademicUnitID, notFoundResource string,
+) error {
+	resolved.institutionID = units[0].InstitutionID
+	resolved.targetAcademicUnitID = target
+	for _, unit := range units {
+		if unit == nil || unit.IsArchived() {
+			return apperror.New("resource.not_found").WithField("resource", notFoundResource)
+		}
+		resolved.academicUnitID[unit.ID] = struct{}{}
+	}
+	return nil
+}
+
+// resolveAcademicUnitScope loads and applies the ancestry of a resource owned by one Academic Unit.
+func (r *accessScopeResolver) resolveAcademicUnitScope(
+	ctx context.Context, resolved *resolvedAuthorizationResource, academicUnitID model.AcademicUnitID,
+	lookupResource, notFoundResource string,
+) error {
+	units, err := r.listScopeAncestors(ctx, academicUnitID, lookupResource, notFoundResource)
+	if err != nil {
+		return err
+	}
+	return applyScopeAncestors(resolved, units, academicUnitID, notFoundResource)
+}
+
+// resolveInstitution resolves a live Institution scope.
+func (r *accessScopeResolver) resolveInstitution(ctx context.Context, resource model.Resource, resolved *resolvedAuthorizationResource) error {
+	institution, err := r.deps.Institutions.Get(ctx, model.InstitutionID(resource.ID))
+	if err != nil {
+		return authorizationResourceError("institution", err)
+	}
+	if institution.IsArchived() {
+		return apperror.New("resource.not_found").WithField("resource", "institution")
+	}
+	resolved.institutionID = institution.ID
+	return nil
+}
+
+// resolveAcademicUnit resolves a live Academic Unit and its ancestry.
+func (r *accessScopeResolver) resolveAcademicUnit(ctx context.Context, resource model.Resource, resolved *resolvedAuthorizationResource) error {
+	units, err := r.deps.AcademicUnits.ListAncestors(ctx, model.AcademicUnitID(resource.ID))
+	if err != nil {
+		return authorizationResourceError("academic_unit", err)
+	}
+	if len(units) == 0 {
+		return apperror.New("resource.not_found").WithField("resource", "academic_unit")
+	}
+	return applyScopeAncestors(resolved, units, model.AcademicUnitID(resource.ID), "academic_unit")
+}
+
+// resolveAcademicPeriod resolves a live Academic Period through its owning Institution or Academic Unit.
+func (r *accessScopeResolver) resolveAcademicPeriod(ctx context.Context, resource model.Resource, resolved *resolvedAuthorizationResource) error {
+	period, err := r.deps.AcademicPeriods.Get(ctx, model.AcademicPeriodID(resource.ID))
+	if err != nil {
+		return authorizationResourceError("academic_period", err)
+	}
+	if period == nil || period.IsArchived() {
+		return apperror.New("resource.not_found").WithField("resource", "academic_period")
+	}
+	if period.Owner.InstitutionID.IsValid() {
+		institution, institutionErr := r.deps.Institutions.Get(ctx, period.Owner.InstitutionID)
+		if institutionErr != nil {
+			return authorizationResourceError("academic_period_institution", institutionErr)
+		}
+		if institution.IsArchived() {
+			return apperror.New("resource.not_found").WithField("resource", "academic_period")
+		}
+		resolved.institutionID = institution.ID
+		resolved.academicPeriodInstitutionOwned = true
+		return nil
+	}
+	return r.resolveAcademicUnitScope(ctx, resolved, period.Owner.AcademicUnitID,
+		"academic_period_academic_unit", "academic_period")
+}
+
+// resolveProgramme resolves a live Programme through its owning Academic Unit.
+func (r *accessScopeResolver) resolveProgramme(ctx context.Context, resource model.Resource, resolved *resolvedAuthorizationResource) error {
+	if r.programmes == nil {
+		return authorizationUnavailableError(errors.New("Programme persistence is required"))
+	}
+	programme, err := r.programmes.Get(ctx, model.ProgrammeID(resource.ID))
+	if err != nil {
+		return authorizationResourceError("programme", err)
+	}
+	if programme == nil || programme.IsArchived() {
+		return apperror.New("resource.not_found").WithField("resource", "programme")
+	}
+	return r.resolveAcademicUnitScope(ctx, resolved, programme.AcademicUnitID, "programme_academic_unit", "programme")
+}
+
+// resolveProgrammeLevel resolves a live Programme Level through its Programme's owning Academic Unit.
+func (r *accessScopeResolver) resolveProgrammeLevel(ctx context.Context, resource model.Resource, resolved *resolvedAuthorizationResource) error {
+	if r.programmeLevels == nil || r.programmes == nil {
+		return authorizationUnavailableError(errors.New("Programme Level persistence is required"))
+	}
+	level, err := r.programmeLevels.Get(ctx, model.ProgrammeLevelID(resource.ID))
+	if err != nil {
+		return authorizationResourceError("programme_level", err)
+	}
+	if level == nil || level.IsArchived() {
+		return apperror.New("resource.not_found").WithField("resource", "programme_level")
+	}
+	programme, err := r.programmes.Get(ctx, level.ProgrammeID)
+	if err != nil {
+		return authorizationResourceError("programme_level_programme", err)
+	}
+	if programme == nil || programme.IsArchived() {
+		return apperror.New("resource.not_found").WithField("resource", "programme_level")
+	}
+	return r.resolveAcademicUnitScope(ctx, resolved, programme.AcademicUnitID,
+		"programme_level_academic_unit", "programme_level")
+}
+
+// resolveClass resolves a live Class, its ancestry and the applicability of its Academic Period.
+func (r *accessScopeResolver) resolveClass(ctx context.Context, resource model.Resource, resolved *resolvedAuthorizationResource) error {
+	class, err := r.deps.Classes.Get(ctx, model.ClassID(resource.ID))
+	if err != nil {
+		return authorizationResourceError("class", err)
+	}
+	if class.IsArchived() {
+		return apperror.New("resource.not_found").WithField("resource", "class")
+	}
+	academicUnitID, err := r.deps.Classes.GetAcademicUnitID(ctx, model.ClassID(resource.ID))
+	if err != nil {
+		return authorizationResourceError("class", err)
+	}
+	units, err := r.listScopeAncestors(ctx, academicUnitID, "class_academic_unit", "class")
+	if err != nil {
+		return err
+	}
+	resolved.classID = model.ClassID(resource.ID)
+	if err = applyScopeAncestors(resolved, units, academicUnitID, "class"); err != nil {
+		return err
+	}
+	periodScope, err := r.resolve(ctx, model.Resource{Type: model.ResourceAcademicPeriod, ID: class.AcademicPeriodID.String()})
+	if err != nil {
+		if apperror.Is(err, "resource.not_found") {
+			return apperror.New("resource.not_found").WithField("resource", "class")
+		}
+		return err
+	}
+	if periodScope.institutionID != resolved.institutionID {
+		return apperror.New("resource.not_found").WithField("resource", "class")
+	}
+	if !periodScope.academicPeriodInstitutionOwned {
+		if _, applicable := resolved.academicUnitID[periodScope.targetAcademicUnitID]; !applicable {
+			return apperror.New("resource.not_found").WithField("resource", "class")
+		}
+	}
+	return nil
+}
+
+// resolveExam resolves an Exam through its owning Academic Unit.
+func (r *accessScopeResolver) resolveExam(ctx context.Context, resource model.Resource, resolved *resolvedAuthorizationResource) error {
+	if r.deps.Exams == nil {
+		return authorizationUnavailableError(errors.New("exam persistence is required"))
+	}
+	exam, err := r.deps.Exams.Resolve(ctx, model.ExamID(resource.ID))
+	if err != nil {
+		return authorizationResourceError("exam", err)
+	}
+	return r.resolveAcademicUnitScope(ctx, resolved, exam.AcademicUnitID, "exam_academic_unit", "exam")
+}
+
+// resolveExamSitting resolves an Exam Sitting through its Exam's owning Academic Unit.
+func (r *accessScopeResolver) resolveExamSitting(ctx context.Context, resource model.Resource, resolved *resolvedAuthorizationResource) error {
+	snapshot, err := r.deps.Sittings.Resolve(ctx, model.ExamSittingID(resource.ID))
+	if err != nil {
+		return authorizationResourceError("exam_sitting", err)
+	}
+	if snapshot == nil || snapshot.Sitting == nil {
+		return authorizationUnavailableError(errors.New("Exam Sitting persistence returned no projection"))
+	}
+	exam, err := r.deps.Exams.Resolve(ctx, snapshot.Sitting.ExamID)
+	if err != nil {
+		return authorizationResourceError("exam_sitting_exam", err)
+	}
+	return r.resolveAcademicUnitScope(ctx, resolved, exam.AcademicUnitID, "exam_sitting_academic_unit", "exam_sitting")
+}
+
+// resolveSubmission resolves a Submission through its ownership projection's Academic Unit.
+func (r *accessScopeResolver) resolveSubmission(ctx context.Context, resource model.Resource, resolved *resolvedAuthorizationResource) error {
+	submissionID, err := model.ParseSubmissionID(resource.ID)
+	if err != nil {
+		return apperror.New("authorization.request.invalid").Wrap(err)
+	}
+	ownership, err := r.deps.Submissions.Resolve(ctx, submissionID)
+	if err != nil {
+		return authorizationResourceError("submission", err)
+	}
+	if ownership == nil || ownership.SubmissionID != submissionID || !ownership.ExamID.IsValid() ||
+		!ownership.SittingID.IsValid() || !ownership.AttemptID.IsValid() || !ownership.AcademicUnitID.IsValid() {
+		return authorizationUnavailableError(errors.New("Submission persistence returned no ownership projection"))
+	}
+	return r.resolveAcademicUnitScope(ctx, resolved, ownership.AcademicUnitID, "submission_academic_unit", "submission")
+}
+
+// resolveUser resolves an active User within the singleton Institution.
+func (r *accessScopeResolver) resolveUser(ctx context.Context, resource model.Resource, resolved *resolvedAuthorizationResource) error {
+	user, err := r.deps.Users.Get(ctx, model.UserID(resource.ID))
+	if err != nil {
+		return authorizationResourceError("user", err)
+	}
+	if !user.IsActive() {
+		return apperror.New("resource.not_found").WithField("resource", "user")
+	}
+	institution, err := r.deps.Institutions.GetSingleton(ctx)
+	if err != nil {
+		return authorizationResourceError("institution", err)
+	}
+	if institution.IsArchived() {
+		return apperror.New("resource.not_found").WithField("resource", "institution")
+	}
+	resolved.institutionID = institution.ID
+	return nil
 }
