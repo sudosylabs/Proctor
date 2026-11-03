@@ -168,47 +168,85 @@ func openRuntimeInfrastructure(
 	if err := checkAcquisitionContext(ctx, "begin infrastructure acquisition"); err != nil {
 		return result, err
 	}
-	if result.configuration == nil {
+	if err := result.acquireConfigurationAndLogger(ctx, configPath); err != nil {
+		return result, err
+	}
+	cfg := result.configuration.Get()
+	if err := result.acquirePersistence(ctx, cfg, schema); err != nil {
+		return result, err
+	}
+	metricsModule, tracingModule, err := result.constructTelemetry(cfg)
+	if err != nil {
+		return result, err
+	}
+	if err = result.decoratePersistenceWithRetryAndTiming(ctx, cfg, overrides, metricsModule, tracingModule); err != nil {
+		return result, err
+	}
+	if err = result.acquireCacheMailerAndVFS(ctx, cfg, metricsModule); err != nil {
+		return result, err
+	}
+	if err = result.acquireCluster(ctx, cfg, metricsModule); err != nil {
+		return result, err
+	}
+	if err = result.decoratePersistenceWithLocalCache(ctx, overrides, metricsModule); err != nil {
+		return result, err
+	}
+	externalAuthentication, err := newExternalAuthenticationRegistry()
+	if err != nil {
+		return result, fmt.Errorf("construct external authentication registry: %w", err)
+	}
+	result.externalAuthentication = externalAuthentication
+	if err := checkAcquisitionContext(ctx, "acquire external authentication registry"); err != nil {
+		return result, err
+	}
+	return result, nil
+}
+
+// acquireConfigurationAndLogger opens the configuration and then the logger unless overrides supplied them.
+func (i *ownedInfrastructure) acquireConfigurationAndLogger(ctx context.Context, configPath string) error {
+	if i.configuration == nil {
 		configuration, err := openConfiguration(ctx, configPath)
 		if err != nil {
-			return result, fmt.Errorf("acquire configuration: %w", err)
+			return fmt.Errorf("acquire configuration: %w", err)
 		}
-		result.configuration = configuration
+		i.configuration = configuration
 	}
 	if err := checkAcquisitionContext(ctx, "acquire configuration"); err != nil {
-		return result, err
+		return err
 	}
 
-	if result.logger == nil {
+	if i.logger == nil {
 		logger, err := logging.New()
 		if err != nil {
-			return result, fmt.Errorf("create logger: %w", err)
+			return fmt.Errorf("create logger: %w", err)
 		}
-		result.logger = logger
+		i.logger = logger
 	}
-	result.logger.SetContextFields(logCorrelationFields)
-	if err := checkAcquisitionContext(ctx, "acquire logger"); err != nil {
-		return result, err
-	}
+	i.logger.SetContextFields(logCorrelationFields)
+	return checkAcquisitionContext(ctx, "acquire logger")
+}
 
-	cfg := result.configuration.Get()
-	if result.persistence == nil {
+// acquirePersistence opens the SQL store and prepares its schema unless overrides supplied a store.
+func (i *ownedInfrastructure) acquirePersistence(ctx context.Context, cfg config.Config, schema schemaPolicy) error {
+	if i.persistence == nil {
 		persistence, err := sqlstore.New(ctx, sqlstore.SettingsFromConfig(cfg.Database))
 		if err != nil {
-			return result, fmt.Errorf("open database: %w", err)
+			return fmt.Errorf("open database: %w", err)
 		}
 		migration, err := prepareSchema(ctx, persistence, schema)
 		if err != nil {
-			return result, errors.Join(err, persistence.Close())
+			return errors.Join(err, persistence.Close())
 		}
-		result.migration = migration
-		result.persistence = persistence
+		i.migration = migration
+		i.persistence = persistence
 	}
-	if err := checkAcquisitionContext(ctx, "acquire persistence"); err != nil {
-		return result, err
-	}
+	return checkAcquisitionContext(ctx, "acquire persistence")
+}
+
+// constructTelemetry builds the metrics and then the tracing module over the acquired store and logger and records each for release.
+func (i *ownedInfrastructure) constructTelemetry(cfg config.Config) (*metrics.Module, *tracing.Module, error) {
 	var databaseStats func() sql.DBStats
-	if source, ok := result.persistence.(interface{ Stats() sql.DBStats }); ok {
+	if source, ok := i.persistence.(interface{ Stats() sql.DBStats }); ok {
 		databaseStats = source.Stats
 	}
 	currentBuild := app.CurrentBuildInfo()
@@ -216,23 +254,34 @@ func openRuntimeInfrastructure(
 		Version: currentBuild.Version, Commit: currentBuild.Commit, GoVersion: currentBuild.GoVersion,
 	}, metrics.Sources{
 		Database: databaseStats,
-		ErrorLog: result.logger.StdLogger(slog.LevelError),
+		ErrorLog: i.logger.StdLogger(slog.LevelError),
 		Logging: func() metrics.LogStats {
-			stats := result.logger.Stats()
+			stats := i.logger.Stats()
 			return metrics.LogStats{Dropped: stats.Dropped, InternalErrors: stats.InternalErrors}
 		},
 	})
 	if err != nil {
-		return result, fmt.Errorf("construct metrics module: %w", err)
+		return nil, nil, fmt.Errorf("construct metrics module: %w", err)
 	}
-	result.metrics = metricsModule
+	i.metrics = metricsModule
 	tracingModule, err := tracing.New(cfg.Tracing, tracing.Identity{
 		Version: currentBuild.Version, NodeID: cfg.Cluster.NodeID,
-	}, result.logger.StdLogger(slog.LevelError))
+	}, i.logger.StdLogger(slog.LevelError))
 	if err != nil {
-		return result, fmt.Errorf("construct tracing module: %w", err)
+		return nil, nil, fmt.Errorf("construct tracing module: %w", err)
 	}
-	result.tracing = tracingModule
+	i.tracing = tracingModule
+	return metricsModule, tracingModule, nil
+}
+
+// decoratePersistenceWithRetryAndTiming wraps the store in the retry layer and then the timing layer.
+func (i *ownedInfrastructure) decoratePersistenceWithRetryAndTiming(
+	ctx context.Context,
+	cfg config.Config,
+	overrides TestingOverrides,
+	metricsModule *metrics.Module,
+	tracingModule *tracing.Module,
+) error {
 	storeRetry := retrylayer.DefaultPolicy(sqlstore.IsTransientError)
 	if overrides.StoreRetry != nil {
 		storeRetry = *overrides.StoreRetry
@@ -241,13 +290,13 @@ func openRuntimeInfrastructure(
 	if metricsModule.Enabled() {
 		storeRetryMetrics = metricsModule
 	}
-	retriedPersistence, err := retrylayer.NewWithRecorder(result.persistence, storeRetry, storeRetryMetrics)
+	retriedPersistence, err := retrylayer.NewWithRecorder(i.persistence, storeRetry, storeRetryMetrics)
 	if err != nil {
-		return result, fmt.Errorf("construct store retry layer: %w", err)
+		return fmt.Errorf("construct store retry layer: %w", err)
 	}
-	result.replacePersistence(retriedPersistence)
+	i.replacePersistence(retriedPersistence)
 	if err := checkAcquisitionContext(ctx, "decorate persistence with retry"); err != nil {
-		return result, err
+		return err
 	}
 	storeMetrics := overrides.StoreMetrics
 	if storeMetrics == nil {
@@ -259,87 +308,98 @@ func openRuntimeInfrastructure(
 	}
 	timerOptions := timerlayer.Options{
 		SlowThreshold: cfg.Database.SlowOperationThreshold.Duration,
-		Slow:          slowStoreOperationLog{logger: result.logger},
+		Slow:          slowStoreOperationLog{logger: i.logger},
 	}
 	if tracingModule.Enabled() {
 		timerOptions.Tracer = storeTracing{tracing: tracingModule}
 	}
-	timedPersistence, err := timerlayer.New(result.persistence, storeMetrics, timerOptions)
+	timedPersistence, err := timerlayer.New(i.persistence, storeMetrics, timerOptions)
 	if err != nil {
-		return result, fmt.Errorf("construct store timing layer: %w", err)
+		return fmt.Errorf("construct store timing layer: %w", err)
 	}
-	result.replacePersistence(timedPersistence)
-	if err := checkAcquisitionContext(ctx, "decorate persistence with timing"); err != nil {
-		return result, err
-	}
-	if result.cache == nil {
+	i.replacePersistence(timedPersistence)
+	return checkAcquisitionContext(ctx, "decorate persistence with timing")
+}
+
+// acquireCacheMailerAndVFS opens the cache, mail transport and VFS in order, measuring each when metrics are enabled.
+func (i *ownedInfrastructure) acquireCacheMailerAndVFS(ctx context.Context, cfg config.Config, metricsModule *metrics.Module) error {
+	if i.cache == nil {
 		cache, err := newCache(cfg.Cache)
 		if err != nil {
-			return result, fmt.Errorf("open cache: %w", err)
+			return fmt.Errorf("open cache: %w", err)
 		}
-		result.cache = cache
+		i.cache = cache
 	}
 	if metricsModule.Enabled() {
-		result.cache = &measuredCache{next: result.cache, backend: cfg.Cache.Backend, metrics: metricsModule}
+		i.cache = &measuredCache{next: i.cache, backend: cfg.Cache.Backend, metrics: metricsModule}
 	}
 	if err := checkAcquisitionContext(ctx, "acquire cache"); err != nil {
-		return result, err
+		return err
 	}
-	if result.mailer == nil {
+	if i.mailer == nil {
 		mailer, err := newMailer(cfg.Mail)
 		if err != nil {
-			return result, fmt.Errorf("open mail transport: %w", err)
+			return fmt.Errorf("open mail transport: %w", err)
 		}
-		result.mailer = mailer
+		i.mailer = mailer
 	}
 	if metricsModule.Enabled() {
-		result.mailer = &measuredMailer{next: result.mailer, metrics: metricsModule}
+		i.mailer = &measuredMailer{next: i.mailer, metrics: metricsModule}
 	}
 	if err := checkAcquisitionContext(ctx, "acquire mail transport"); err != nil {
-		return result, err
+		return err
 	}
-	if result.filesystem == nil {
+	if i.filesystem == nil {
 		filesystem, err := newVFS(cfg.VFS)
 		if err != nil {
-			return result, fmt.Errorf("open VFS: %w", err)
+			return fmt.Errorf("open VFS: %w", err)
 		}
-		result.filesystem = filesystem
+		i.filesystem = filesystem
 	}
 	if metricsModule.Enabled() {
-		result.filesystem = &measuredVFS{next: result.filesystem, backend: cfg.VFS.Backend, metrics: metricsModule}
+		i.filesystem = &measuredVFS{next: i.filesystem, backend: cfg.VFS.Backend, metrics: metricsModule}
 	}
-	if err := checkAcquisitionContext(ctx, "acquire VFS"); err != nil {
-		return result, err
-	}
-	if result.cluster == nil {
+	return checkAcquisitionContext(ctx, "acquire VFS")
+}
+
+// acquireCluster opens the cluster transport unless overrides supplied one, measuring it when metrics are enabled.
+func (i *ownedInfrastructure) acquireCluster(ctx context.Context, cfg config.Config, metricsModule *metrics.Module) error {
+	if i.cluster == nil {
 		var discovery store.ClusterDiscoveryStore
-		if result.persistence != nil {
-			discovery = result.persistence.ClusterDiscovery()
+		if i.persistence != nil {
+			discovery = i.persistence.ClusterDiscovery()
 		}
 		var clusterMetrics cluster.Metrics
 		if metricsModule.Enabled() {
 			clusterMetrics = metricsModule
 		}
-		cluster, err := newCluster(cfg.Cluster, result.logger, discovery, app.Version, clusterMetrics)
+		cluster, err := newCluster(cfg.Cluster, i.logger, discovery, app.Version, clusterMetrics)
 		if err != nil {
-			return result, fmt.Errorf("open cluster transport: %w", err)
+			return fmt.Errorf("open cluster transport: %w", err)
 		}
-		result.cluster = cluster
+		i.cluster = cluster
 	}
 	if metricsModule.Enabled() {
-		if peers, ok := result.cluster.(interface{ PeerCount() int }); ok {
+		if peers, ok := i.cluster.(interface{ PeerCount() int }); ok {
 			metricsModule.SetClusterPeerSource(peers.PeerCount)
 		}
-		result.cluster = &measuredCluster{next: result.cluster, metrics: metricsModule, events: make(map[cluster.Event]struct{})}
+		i.cluster = &measuredCluster{next: i.cluster, metrics: metricsModule, events: make(map[cluster.Event]struct{})}
 	}
-	if err := checkAcquisitionContext(ctx, "acquire cluster transport"); err != nil {
-		return result, err
-	}
+	return checkAcquisitionContext(ctx, "acquire cluster transport")
+}
+
+// decoratePersistenceWithLocalCache wraps the store in the cluster-invalidated local cache layer.
+func (i *ownedInfrastructure) decoratePersistenceWithLocalCache(
+	ctx context.Context,
+	overrides TestingOverrides,
+	metricsModule *metrics.Module,
+) error {
 	storeLocalCache := overrides.StoreLocalCache
 	if storeLocalCache == nil {
+		var err error
 		storeLocalCache, err = newStoreLocalMemoryCache(storeLocalCacheMaxEntries)
 		if err != nil {
-			return result, fmt.Errorf("construct local store cache: %w", err)
+			return fmt.Errorf("construct local store cache: %w", err)
 		}
 	}
 	storeCachePolicy := localcachelayer.DefaultPolicy()
@@ -354,33 +414,22 @@ func openRuntimeInfrastructure(
 			storeCacheMetrics = localcachelayer.NopRecorder{}
 		}
 	}
-	cacheInvalidation, err := newLocalCacheClusterAdapter(result.cluster)
+	cacheInvalidation, err := newLocalCacheClusterAdapter(i.cluster)
 	if err != nil {
-		return result, fmt.Errorf("construct local-cache invalidation adapter: %w", err)
+		return fmt.Errorf("construct local-cache invalidation adapter: %w", err)
 	}
 	cachedPersistence, err := localcachelayer.New(
-		result.persistence,
+		i.persistence,
 		storeLocalCache,
 		storeCachePolicy,
 		storeCacheMetrics,
 		cacheInvalidation,
 	)
 	if err != nil {
-		return result, fmt.Errorf("construct local-cache store layer: %w", err)
+		return fmt.Errorf("construct local-cache store layer: %w", err)
 	}
-	result.replacePersistence(cachedPersistence)
-	if err := checkAcquisitionContext(ctx, "decorate persistence with local cache"); err != nil {
-		return result, err
-	}
-	externalAuthentication, err := newExternalAuthenticationRegistry()
-	if err != nil {
-		return result, fmt.Errorf("construct external authentication registry: %w", err)
-	}
-	result.externalAuthentication = externalAuthentication
-	if err := checkAcquisitionContext(ctx, "acquire external authentication registry"); err != nil {
-		return result, err
-	}
-	return result, nil
+	i.replacePersistence(cachedPersistence)
+	return checkAcquisitionContext(ctx, "decorate persistence with local cache")
 }
 
 func newStoreLocalMemoryCache(maxEntries int) (localcachelayer.Cache, error) {
