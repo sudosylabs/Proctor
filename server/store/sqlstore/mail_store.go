@@ -245,176 +245,205 @@ func (s SQLMailStore) ListDeliveries(ctx context.Context, options store.MailDeli
 
 // StartDelivery moves a queued delivery at the expected revision to sending at the input instant.
 func (s SQLMailStore) StartDelivery(ctx context.Context, input *store.MailDeliveryStart) (*model.MailDelivery, error) {
-	id := input.ID
-	expectedRevision := input.ExpectedRevision
-	at := input.At
-	if !id.IsValid() || expectedRevision <= 0 || at.IsZero() {
+	if !input.ID.IsValid() || input.ExpectedRevision <= 0 || input.At.IsZero() {
 		return nil, store.NewErrInvalidInput("mail_delivery", "start", nil)
 	}
 	return executeSQLTransaction(ctx, s.GetMaster().Begin, rawSQLTransactionPolicy[*model.MailDelivery](true, func(_ *model.MailDelivery, err error) error {
 		return fmt.Errorf("commit mail delivery start: %w", err)
 	}), func(ctx context.Context, tx *sqlxTxWrapper) (*model.MailDelivery, error) {
-		// Read immutable routing fields before taking the purpose advisory lock.
-		// Issuance takes the same lock before suppressing superseded deliveries;
-		// this ordering prevents Start from deadlocking with or escaping reissue.
-		var route struct {
-			OccurrenceID       string         `db:"occurrence_id"`
-			TargetUserID       sql.NullString `db:"target_user_id"`
-			TargetInvitationID sql.NullString `db:"target_invitation_id"`
-			TemplateKey        string         `db:"template_key"`
+		return startMailDelivery(ctx, tx, input)
+	})
+}
+
+// mailDeliveryRouteFences is what a delivery's immutable routing fields
+// require a transition to lock and recheck before it applies.
+type mailDeliveryRouteFences struct {
+	purpose              model.UserTokenPurpose
+	credential           bool
+	invitationCredential bool
+	sittingFence         *sittingMailDeliveryFence
+	retentionMail        bool
+	retentionRelevant    bool
+}
+
+// startMailDelivery locks the delivery's purpose fences and row, suppresses
+// it when it is no longer relevant, and otherwise moves it to sending.
+func startMailDelivery(ctx context.Context, tx *sqlxTxWrapper, input *store.MailDeliveryStart) (*model.MailDelivery, error) {
+	id := input.ID
+	route, err := lockMailDeliveryStartRoute(ctx, tx, id)
+	if err != nil {
+		return nil, err
+	}
+	databaseNow, err := jobDatabaseNow(ctx, tx)
+	if err != nil {
+		return nil, err
+	}
+	var row mailDeliveryRow
+	if err = tx.Get(ctx, &row, `SELECT `+mailDeliveryColumns+` FROM mail_deliveries WHERE id=? FOR UPDATE`, id.String()); err != nil {
+		return nil, translateError("mail_delivery", id.String(), err)
+	}
+	current, err := row.model()
+	if err != nil {
+		return nil, err
+	}
+	if current.Revision != input.ExpectedRevision {
+		return nil, store.NewErrConflict("mail_delivery", "stale_revision", nil)
+	}
+	if suppressed, done, suppressErr := suppressIrrelevantMailDeliveryStart(ctx, tx, current, route, databaseNow); suppressErr != nil {
+		return nil, suppressErr
+	} else if done {
+		return suppressed, nil
+	}
+	// Operator and fenced transitions record PostgreSQL time; the worker's
+	// clock never moves the delivery's modification time backwards.
+	startAt := latestTime(current.UpdatedAt, input.At)
+	if route.credential || route.invitationCredential || route.sittingFence != nil || route.retentionMail {
+		startAt = databaseNow
+		if startAt.Before(current.UpdatedAt) {
+			startAt = current.UpdatedAt
 		}
-		if err := tx.Get(ctx, &route, `SELECT occurrence_id,target_user_id,target_invitation_id,template_key FROM mail_deliveries WHERE id=?`, id.String()); err != nil {
-			return nil, translateError("mail_delivery", id.String(), err)
+	}
+	updated, err := current.Start(startAt)
+	if err != nil {
+		return nil, store.NewErrConflict("mail_delivery", "invalid_transition", err)
+	}
+	if err = updateMailDelivery(ctx, tx, current, updated); err != nil {
+		return nil, err
+	}
+	return updated, nil
+}
+
+// lockMailDeliveryStartRoute reads the delivery's immutable routing fields
+// and takes the token purpose, Invitation, Sitting and retention locks they
+// call for.
+func lockMailDeliveryStartRoute(ctx context.Context, tx *sqlxTxWrapper, id model.MailDeliveryID) (mailDeliveryRouteFences, error) {
+	var start mailDeliveryRouteFences
+	// Read immutable routing fields before taking the purpose advisory lock.
+	// Issuance takes the same lock before suppressing superseded deliveries;
+	// this ordering prevents Start from deadlocking with or escaping reissue.
+	var route struct {
+		OccurrenceID       string         `db:"occurrence_id"`
+		TargetUserID       sql.NullString `db:"target_user_id"`
+		TargetInvitationID sql.NullString `db:"target_invitation_id"`
+		TemplateKey        string         `db:"template_key"`
+	}
+	if err := tx.Get(ctx, &route, `SELECT occurrence_id,target_user_id,target_invitation_id,template_key FROM mail_deliveries WHERE id=?`, id.String()); err != nil {
+		return start, translateError("mail_delivery", id.String(), err)
+	}
+	templateKey := model.MailTemplateKey(route.TemplateKey)
+	start.purpose, start.credential = recoveryTokenPurpose(templateKey)
+	if start.credential {
+		if !route.TargetUserID.Valid {
+			return start, invalidPersistedState("mail_delivery", "target_user_id", errors.New("credential delivery has no user target"))
 		}
-		templateKey := model.MailTemplateKey(route.TemplateKey)
-		purpose, credential := recoveryTokenPurpose(templateKey)
-		if credential {
-			if !route.TargetUserID.Valid {
-				return nil, invalidPersistedState("mail_delivery", "target_user_id", errors.New("credential delivery has no user target"))
-			}
-			if err := lockUserTokenPurpose(ctx, tx, route.TargetUserID.String, purpose); err != nil {
-				return nil, err
-			}
+		if err := lockUserTokenPurpose(ctx, tx, route.TargetUserID.String, start.purpose); err != nil {
+			return start, err
 		}
-		invitationCredential := isInvitationCredentialTemplate(templateKey)
-		if invitationCredential {
-			if !route.TargetInvitationID.Valid {
-				return nil, invalidPersistedState("mail_delivery", "target_invitation_id", errors.New("invitation credential delivery has no Invitation target"))
-			}
-			if _, err := lockActiveInvitationMail(ctx, tx, route.TargetInvitationID.String); err != nil {
-				return nil, err
-			}
+	}
+	start.invitationCredential = isInvitationCredentialTemplate(templateKey)
+	if start.invitationCredential {
+		if !route.TargetInvitationID.Valid {
+			return start, invalidPersistedState("mail_delivery", "target_invitation_id", errors.New("invitation credential delivery has no Invitation target"))
 		}
-		var sittingFence *sittingMailDeliveryFence
-		if isSittingScheduleMailTemplate(templateKey) {
-			if !route.TargetUserID.Valid {
-				return nil, invalidPersistedState("mail_delivery", "target_user_id", errors.New("Sitting delivery has no user target"))
-			}
-			fence, fenceErr := lockSittingMailDeliveryFence(ctx, tx, id)
-			if fenceErr != nil {
-				return nil, fenceErr
-			}
-			sittingFence = fence
+		if _, err := lockActiveInvitationMail(ctx, tx, route.TargetInvitationID.String); err != nil {
+			return start, err
 		}
-		retentionMail := templateKey == model.MailTemplateExamRetentionScheduled
-		retentionRelevant := true
-		if retentionMail {
-			var err error
-			retentionRelevant, err = lockRetentionNoticeMail(ctx, tx, id)
-			if err != nil {
-				return nil, err
-			}
+	}
+	if isSittingScheduleMailTemplate(templateKey) {
+		if !route.TargetUserID.Valid {
+			return start, invalidPersistedState("mail_delivery", "target_user_id", errors.New("Sitting delivery has no user target"))
 		}
-		databaseNow, err := jobDatabaseNow(ctx, tx)
+		fence, fenceErr := lockSittingMailDeliveryFence(ctx, tx, id)
+		if fenceErr != nil {
+			return start, fenceErr
+		}
+		start.sittingFence = fence
+	}
+	start.retentionMail = templateKey == model.MailTemplateExamRetentionScheduled
+	start.retentionRelevant = true
+	if start.retentionMail {
+		var err error
+		start.retentionRelevant, err = lockRetentionNoticeMail(ctx, tx, id)
 		if err != nil {
-			return nil, err
+			return start, err
 		}
-		var row mailDeliveryRow
-		if err := tx.Get(ctx, &row, `SELECT `+mailDeliveryColumns+` FROM mail_deliveries WHERE id=? FOR UPDATE`, id.String()); err != nil {
-			return nil, translateError("mail_delivery", id.String(), err)
+	}
+	return start, nil
+}
+
+// suppressIrrelevantMailDeliveryStart suppresses the delivery as obsolete when
+// its retention notice, recovery token, Invitation or Sitting schedule is no
+// longer current, returning nil when the delivery may start.
+func suppressIrrelevantMailDeliveryStart(ctx context.Context, tx *sqlxTxWrapper, current *model.MailDelivery, route mailDeliveryRouteFences, databaseNow time.Time) (*model.MailDelivery, bool, error) {
+	if route.retentionMail && !route.retentionRelevant {
+		transitionAt := databaseNow
+		if transitionAt.Before(current.UpdatedAt) {
+			transitionAt = current.UpdatedAt
 		}
-		current, err := row.model()
+		updated, err := current.Suppress(model.MailDeliveryObsoleteCode, transitionAt)
 		if err != nil {
-			return nil, err
+			return nil, false, err
 		}
-		if current.Revision != expectedRevision {
-			return nil, store.NewErrConflict("mail_delivery", "stale_revision", nil)
+		if err = updateMailDelivery(ctx, tx, current, updated); err != nil {
+			return nil, false, err
 		}
-		if retentionMail && !retentionRelevant {
-			transitionAt := databaseNow
+		return updated, true, nil
+	}
+	if route.credential {
+		relevant, relevanceErr := activeRecoveryTokenMail(ctx, tx, current, route.purpose, databaseNow)
+		if relevanceErr != nil {
+			return nil, false, relevanceErr
+		}
+		if !relevant {
+			updated, err := suppressObsoleteMailDelivery(ctx, tx, current, databaseNow)
+			return updated, true, err
+		}
+	}
+	if route.invitationCredential {
+		relevant, relevanceErr := activeInvitationMail(ctx, tx, current, databaseNow)
+		if relevanceErr != nil {
+			return nil, false, relevanceErr
+		}
+		if !relevant {
+			updated, err := suppressObsoleteMailDelivery(ctx, tx, current, databaseNow)
+			return updated, true, err
+		}
+	}
+	if route.sittingFence != nil {
+		relevant, relevanceErr := route.sittingFence.relevant(ctx, tx, current.ID)
+		if relevanceErr != nil {
+			return nil, false, relevanceErr
+		}
+		if !relevant {
+			transitionAt := route.sittingFence.Now
 			if transitionAt.Before(current.UpdatedAt) {
 				transitionAt = current.UpdatedAt
 			}
-			updated, err := current.Suppress(model.MailDeliveryObsoleteCode, transitionAt)
-			if err != nil {
-				return nil, err
+			if err := clearExactSittingDesiredDelivery(ctx, tx, route.sittingFence, current.ID, transitionAt); err != nil {
+				return nil, false, err
 			}
-			if err = updateMailDelivery(ctx, tx, current, updated); err != nil {
-				return nil, err
-			}
-			return updated, nil
+			updated, err := suppressObsoleteMailDelivery(ctx, tx, current, route.sittingFence.Now)
+			return updated, true, err
 		}
-		if credential {
-			relevant, relevanceErr := activeRecoveryTokenMail(ctx, tx, current, purpose, databaseNow)
-			if relevanceErr != nil {
-				return nil, relevanceErr
-			}
-			if !relevant {
-				transitionAt := databaseNow
-				if transitionAt.Before(current.UpdatedAt) {
-					transitionAt = current.UpdatedAt
-				}
-				updated, suppressErr := current.Suppress(model.MailDeliveryObsoleteCode, transitionAt)
-				if suppressErr != nil {
-					return nil, invalidPersistedState("mail_delivery", "suppression", suppressErr)
-				}
-				if err = updateMailDelivery(ctx, tx, current, updated); err != nil {
-					return nil, err
-				}
-				return updated, nil
-			}
-		}
-		if invitationCredential {
-			relevant, relevanceErr := activeInvitationMail(ctx, tx, current, databaseNow)
-			if relevanceErr != nil {
-				return nil, relevanceErr
-			}
-			if !relevant {
-				transitionAt := databaseNow
-				if transitionAt.Before(current.UpdatedAt) {
-					transitionAt = current.UpdatedAt
-				}
-				updated, suppressErr := current.Suppress(model.MailDeliveryObsoleteCode, transitionAt)
-				if suppressErr != nil {
-					return nil, invalidPersistedState("mail_delivery", "suppression", suppressErr)
-				}
-				if err = updateMailDelivery(ctx, tx, current, updated); err != nil {
-					return nil, err
-				}
-				return updated, nil
-			}
-		}
-		if sittingFence != nil {
-			relevant, relevanceErr := sittingFence.relevant(ctx, tx, current.ID)
-			if relevanceErr != nil {
-				return nil, relevanceErr
-			}
-			if !relevant {
-				transitionAt := sittingFence.Now
-				if transitionAt.Before(current.UpdatedAt) {
-					transitionAt = current.UpdatedAt
-				}
-				if err = clearExactSittingDesiredDelivery(ctx, tx, sittingFence, current.ID, transitionAt); err != nil {
-					return nil, err
-				}
-				updated, suppressErr := current.Suppress(model.MailDeliveryObsoleteCode, transitionAt)
-				if suppressErr != nil {
-					return nil, invalidPersistedState("mail_delivery", "suppression", suppressErr)
-				}
-				if err = updateMailDelivery(ctx, tx, current, updated); err != nil {
-					return nil, err
-				}
-				return updated, nil
-			}
-		}
-		// Operator and fenced transitions record PostgreSQL time; the worker's
-		// clock never moves the delivery's modification time backwards.
-		startAt := latestTime(current.UpdatedAt, at)
-		if credential || invitationCredential || sittingFence != nil || retentionMail {
-			startAt = databaseNow
-			if startAt.Before(current.UpdatedAt) {
-				startAt = current.UpdatedAt
-			}
-		}
-		updated, err := current.Start(startAt)
-		if err != nil {
-			return nil, store.NewErrConflict("mail_delivery", "invalid_transition", err)
-		}
-		if err = updateMailDelivery(ctx, tx, current, updated); err != nil {
-			return nil, err
-		}
-		return updated, nil
-	})
+	}
+	return nil, false, nil
+}
+
+// suppressObsoleteMailDelivery suppresses the delivery as obsolete at the
+// later of the instant and its last modification.
+func suppressObsoleteMailDelivery(ctx context.Context, tx *sqlxTxWrapper, current *model.MailDelivery, at time.Time) (*model.MailDelivery, error) {
+	transitionAt := at
+	if transitionAt.Before(current.UpdatedAt) {
+		transitionAt = current.UpdatedAt
+	}
+	updated, err := current.Suppress(model.MailDeliveryObsoleteCode, transitionAt)
+	if err != nil {
+		return nil, invalidPersistedState("mail_delivery", "suppression", err)
+	}
+	if err = updateMailDelivery(ctx, tx, current, updated); err != nil {
+		return nil, err
+	}
+	return updated, nil
 }
 
 func recoveryTokenPurpose(key model.MailTemplateKey) (model.UserTokenPurpose, bool) {
@@ -686,115 +715,142 @@ func (s SQLMailStore) mutateOperatorDelivery(ctx context.Context, input *store.M
 		return nil, store.NewErrInvalidInput("mail_delivery", operation, nil)
 	}
 	return executeSQLTransaction(ctx, s.GetMaster().Begin, rawSQLTransactionPolicy[*model.MailDelivery](true, func(_ *model.MailDelivery, err error) error { return err }), func(ctx context.Context, tx *sqlxTxWrapper) (*model.MailDelivery, error) {
-		var route struct {
-			TargetUserID       sql.NullString `db:"target_user_id"`
-			TargetInvitationID sql.NullString `db:"target_invitation_id"`
-			TemplateKey        string         `db:"template_key"`
-		}
-		if err := tx.Get(ctx, &route, `SELECT target_user_id,target_invitation_id,template_key FROM mail_deliveries WHERE id=?`, input.ID.String()); err != nil {
-			return nil, translateError("mail_delivery", input.ID.String(), err)
-		}
-		templateKey := model.MailTemplateKey(route.TemplateKey)
-		purpose, credential := recoveryTokenPurpose(templateKey)
-		if credential {
-			if !route.TargetUserID.Valid {
-				return nil, invalidPersistedState("mail_delivery", "target_user_id", errors.New("credential delivery has no user target"))
-			}
-			if err := lockUserTokenPurpose(ctx, tx, route.TargetUserID.String, purpose); err != nil {
-				return nil, err
-			}
-		}
-		invitationCredential := isInvitationCredentialTemplate(templateKey)
-		if invitationCredential {
-			if !route.TargetInvitationID.Valid {
-				return nil, invalidPersistedState("mail_delivery", "target_invitation_id", errors.New("invitation credential delivery has no Invitation target"))
-			}
-			if _, err := lockActiveInvitationMail(ctx, tx, route.TargetInvitationID.String); err != nil {
-				return nil, err
-			}
-		}
-		var sittingFence *sittingMailDeliveryFence
-		if operation == "retry" && isSittingScheduleMailTemplate(templateKey) {
-			fence, fenceErr := lockSittingMailDeliveryFence(ctx, tx, input.ID)
-			if fenceErr != nil {
-				return nil, fenceErr
-			}
-			sittingFence = fence
-		}
-		databaseNow, err := jobDatabaseNow(ctx, tx)
-		if err != nil {
-			return nil, err
-		}
-		var row mailDeliveryRow
-		if err = tx.Get(ctx, &row, `SELECT `+mailDeliveryColumns+` FROM mail_deliveries WHERE id = ? FOR UPDATE`, input.ID.String()); err != nil {
-			return nil, translateError("mail_delivery", input.ID.String(), err)
-		}
-		current, err := row.model()
-		if err != nil {
-			return nil, err
-		}
-		if current.Revision != input.ExpectedRevision {
-			return nil, store.NewErrConflict("mail_delivery", "stale_revision", nil)
-		}
-		if operation == "retry" && credential {
-			relevant, relevanceErr := activeRecoveryTokenMail(ctx, tx, current, purpose, databaseNow)
-			if relevanceErr != nil {
-				return nil, relevanceErr
-			}
-			if !relevant {
-				return nil, store.NewErrConflict("mail_delivery", "obsolete", nil)
-			}
-		}
-		if operation == "retry" && invitationCredential {
-			relevant, relevanceErr := activeInvitationMail(ctx, tx, current, databaseNow)
-			if relevanceErr != nil {
-				return nil, relevanceErr
-			}
-			if !relevant {
-				return nil, store.NewErrConflict("mail_delivery", "obsolete", nil)
-			}
-		}
-		if sittingFence != nil {
-			relevant, relevanceErr := sittingFence.relevant(ctx, tx, current.ID)
-			if relevanceErr != nil {
-				return nil, relevanceErr
-			}
-			if !relevant {
-				return nil, store.NewErrConflict("mail_delivery", "obsolete", nil)
-			}
-		}
-		if err = validateMailMutationAudit(ctx, tx, input.AuditEventID, current.ID); err != nil {
-			return nil, err
-		}
-		job, err := getJob(ctx, tx, current.JobID, true)
-		if err != nil {
-			return nil, err
-		}
-		if !isMailDeliveryJobType(job.Type) || job.DedupeKey != current.ID.String() {
-			return nil, store.NewErrConflict("mail_delivery", "job_mismatch", nil)
-		}
-		// Delivery outcomes carry the reporting node's clock; an operator
-		// transition at PostgreSQL time never records an instant before them.
-		at := latestTime(latestTime(databaseNow, current.UpdatedAt), job.UpdatedAt)
-		updated, updatedJob, err := transition(current, job, at)
-		if err != nil {
-			return nil, store.NewErrConflict("mail_delivery", "invalid_transition", err)
-		}
-		if err = updateMailDelivery(ctx, tx, current, updated); err != nil {
-			return nil, err
-		}
-		if err = updateJob(ctx, tx, updatedJob); err != nil {
-			return nil, err
-		}
-		result, err := model.EncodeAuditData(updated.Auditable())
-		if err != nil {
-			return nil, err
-		}
-		if _, err = completeAuditEvent(ctx, tx, input.AuditEventID, model.AuditStatusSuccess, "", result, input.AuditAt); err != nil {
-			return nil, fmt.Errorf("complete mail %s audit: %w", operation, err)
-		}
-		return updated, nil
+		return applyOperatorMailDeliveryTransition(ctx, tx, input, operation, transition)
 	})
+}
+
+// applyOperatorMailDeliveryTransition locks the delivery's purpose fences,
+// row, attempted audit and Job, applies the operator transition at
+// PostgreSQL time, and completes the audit.
+func applyOperatorMailDeliveryTransition(ctx context.Context, tx *sqlxTxWrapper, input *store.MailDeliveryMutation, operation string, transition func(*model.MailDelivery, *model.Job, time.Time) (*model.MailDelivery, *model.Job, error)) (*model.MailDelivery, error) {
+	route, err := lockOperatorMailDeliveryRoute(ctx, tx, input.ID, operation)
+	if err != nil {
+		return nil, err
+	}
+	databaseNow, err := jobDatabaseNow(ctx, tx)
+	if err != nil {
+		return nil, err
+	}
+	var row mailDeliveryRow
+	if err = tx.Get(ctx, &row, `SELECT `+mailDeliveryColumns+` FROM mail_deliveries WHERE id = ? FOR UPDATE`, input.ID.String()); err != nil {
+		return nil, translateError("mail_delivery", input.ID.String(), err)
+	}
+	current, err := row.model()
+	if err != nil {
+		return nil, err
+	}
+	if current.Revision != input.ExpectedRevision {
+		return nil, store.NewErrConflict("mail_delivery", "stale_revision", nil)
+	}
+	if err = requireRelevantOperatorMailDelivery(ctx, tx, current, route, operation, databaseNow); err != nil {
+		return nil, err
+	}
+	if err = validateMailMutationAudit(ctx, tx, input.AuditEventID, current.ID); err != nil {
+		return nil, err
+	}
+	job, err := getJob(ctx, tx, current.JobID, true)
+	if err != nil {
+		return nil, err
+	}
+	if !isMailDeliveryJobType(job.Type) || job.DedupeKey != current.ID.String() {
+		return nil, store.NewErrConflict("mail_delivery", "job_mismatch", nil)
+	}
+	// Delivery outcomes carry the reporting node's clock; an operator
+	// transition at PostgreSQL time never records an instant before them.
+	at := latestTime(latestTime(databaseNow, current.UpdatedAt), job.UpdatedAt)
+	updated, updatedJob, err := transition(current, job, at)
+	if err != nil {
+		return nil, store.NewErrConflict("mail_delivery", "invalid_transition", err)
+	}
+	if err = updateMailDelivery(ctx, tx, current, updated); err != nil {
+		return nil, err
+	}
+	if err = updateJob(ctx, tx, updatedJob); err != nil {
+		return nil, err
+	}
+	result, err := model.EncodeAuditData(updated.Auditable())
+	if err != nil {
+		return nil, err
+	}
+	if _, err = completeAuditEvent(ctx, tx, input.AuditEventID, model.AuditStatusSuccess, "", result, input.AuditAt); err != nil {
+		return nil, fmt.Errorf("complete mail %s audit: %w", operation, err)
+	}
+	return updated, nil
+}
+
+// lockOperatorMailDeliveryRoute reads the delivery's immutable routing fields
+// and takes the token purpose and Invitation locks they call for, plus the
+// Sitting fence for a retry.
+func lockOperatorMailDeliveryRoute(ctx context.Context, tx *sqlxTxWrapper, id model.MailDeliveryID, operation string) (mailDeliveryRouteFences, error) {
+	var fences mailDeliveryRouteFences
+	var route struct {
+		TargetUserID       sql.NullString `db:"target_user_id"`
+		TargetInvitationID sql.NullString `db:"target_invitation_id"`
+		TemplateKey        string         `db:"template_key"`
+	}
+	if err := tx.Get(ctx, &route, `SELECT target_user_id,target_invitation_id,template_key FROM mail_deliveries WHERE id=?`, id.String()); err != nil {
+		return fences, translateError("mail_delivery", id.String(), err)
+	}
+	templateKey := model.MailTemplateKey(route.TemplateKey)
+	fences.purpose, fences.credential = recoveryTokenPurpose(templateKey)
+	if fences.credential {
+		if !route.TargetUserID.Valid {
+			return fences, invalidPersistedState("mail_delivery", "target_user_id", errors.New("credential delivery has no user target"))
+		}
+		if err := lockUserTokenPurpose(ctx, tx, route.TargetUserID.String, fences.purpose); err != nil {
+			return fences, err
+		}
+	}
+	fences.invitationCredential = isInvitationCredentialTemplate(templateKey)
+	if fences.invitationCredential {
+		if !route.TargetInvitationID.Valid {
+			return fences, invalidPersistedState("mail_delivery", "target_invitation_id", errors.New("invitation credential delivery has no Invitation target"))
+		}
+		if _, err := lockActiveInvitationMail(ctx, tx, route.TargetInvitationID.String); err != nil {
+			return fences, err
+		}
+	}
+	if operation == "retry" && isSittingScheduleMailTemplate(templateKey) {
+		fence, fenceErr := lockSittingMailDeliveryFence(ctx, tx, id)
+		if fenceErr != nil {
+			return fences, fenceErr
+		}
+		fences.sittingFence = fence
+	}
+	return fences, nil
+}
+
+// requireRelevantOperatorMailDelivery rejects a retry whose recovery token,
+// Invitation or Sitting schedule is no longer current.
+func requireRelevantOperatorMailDelivery(ctx context.Context, tx *sqlxTxWrapper, current *model.MailDelivery, route mailDeliveryRouteFences, operation string, databaseNow time.Time) error {
+	if operation == "retry" && route.credential {
+		relevant, relevanceErr := activeRecoveryTokenMail(ctx, tx, current, route.purpose, databaseNow)
+		if relevanceErr != nil {
+			return relevanceErr
+		}
+		if !relevant {
+			return store.NewErrConflict("mail_delivery", "obsolete", nil)
+		}
+	}
+	if operation == "retry" && route.invitationCredential {
+		relevant, relevanceErr := activeInvitationMail(ctx, tx, current, databaseNow)
+		if relevanceErr != nil {
+			return relevanceErr
+		}
+		if !relevant {
+			return store.NewErrConflict("mail_delivery", "obsolete", nil)
+		}
+	}
+	if route.sittingFence != nil {
+		relevant, relevanceErr := route.sittingFence.relevant(ctx, tx, current.ID)
+		if relevanceErr != nil {
+			return relevanceErr
+		}
+		if !relevant {
+			return store.NewErrConflict("mail_delivery", "obsolete", nil)
+		}
+	}
+	return nil
 }
 
 func isMailDeliveryJobType(jobType model.JobType) bool {
