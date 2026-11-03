@@ -82,6 +82,7 @@ type PrivilegedEmailVerification struct {
 type PasswordResetCompletion struct {
 	TokenHash        string
 	PasswordHash     string
+	Reuse            PasswordReuseCheck
 	At               time.Time
 	RevocationReason model.SessionRevocationReason
 	AuditEvent       *model.AuditEvent

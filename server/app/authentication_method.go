@@ -129,7 +129,7 @@ func (s *authenticationMethodService) EnrollPassword(ctx context.Context, invoca
 		Operation: "enroll_password", Value: map[string]any{"method": "password"}}, s.deps.Now,
 		func(ctx context.Context, reference mutationAttemptReference) (*store.AuthenticationMethodMutationResult, error) {
 			return s.deps.Passwords.Enroll(ctx, &store.PasswordCredentialEnrollment{
-				Credential:   &model.PasswordCredential{UserID: userID, PasswordHash: hash},
+				Credential: &model.PasswordCredential{UserID: userID, PasswordHash: hash}, Reuse: s.deps.Hasher.ReuseCheck(password),
 				Capabilities: accessDeploymentCapabilities(s.deps.Capabilities.Snapshot()), AuditEventID: reference.ID, AuditAt: reference.MutationAt})
 		}, authenticationMethodStoreErrors.Translate)
 	return appErr
@@ -164,7 +164,7 @@ func (s *authenticationMethodService) ChangePassword(ctx context.Context, invoca
 		Operation: "change_password", Value: map[string]any{"method": "password"}}, s.deps.Now,
 		func(ctx context.Context, reference mutationAttemptReference) (*store.AuthenticationMethodMutationResult, error) {
 			return s.deps.Passwords.Change(ctx, &store.PasswordCredentialChange{UserID: user.ID, KeepSessionID: principal.SessionID,
-				PasswordHash: hash, RevocationReason: model.SessionRevocationPasswordChanged,
+				PasswordHash: hash, Reuse: s.deps.Hasher.ReuseCheck(command.Password), RevocationReason: model.SessionRevocationPasswordChanged,
 				Occurrence: prepared.Occurrence, Delivery: prepared.Delivery, Job: prepared.Job,
 				AuditEventID: reference.ID, AuditAt: reference.MutationAt})
 		}, authenticationMethodStoreErrors.Translate)

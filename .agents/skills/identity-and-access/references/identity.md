@@ -296,7 +296,16 @@ only by digits and symbols); and the account's username, email local part, or
 name (letters and digits compared, attributes shorter than four characters
 ignored). A login rehash re-checks only the length bounds, so the policy never
 locks out an existing password. No password is ever sent to an external breach
-service. Self-service change keeps the calling Session, revokes the User's
+service. Reset, change, and enrollment also refuse any of the User's
+`Authentication.Password.HistoryCount` most recent passwords (active and
+archived credentials plus `password_history_entries`, newest first). The Store
+runs that comparison with the Argon2 verifier inside the credential
+transaction, under the per-User Session lock, so a concurrent change cannot
+slip between check and write; this is the one deliberate exception to hashing
+before locks, bounded by the history limit. An in-place replacement moves the
+old hash into history and prunes it to the limit, zero discards it, and the
+rows cascade with the User. Offline administrator recovery bypasses the
+history. Self-service change keeps the calling Session, revokes the User's
 other Sessions, archives outstanding reset links, and queues the
 password-changed notice in one transaction.
 

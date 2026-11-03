@@ -617,7 +617,7 @@ func (s SQLUserTokenStore) ConsumePasswordReset(
 	input *store.PasswordResetCompletion,
 ) (*store.PasswordResetResult, error) {
 	if input == nil || !model.IsValidTokenHash(input.TokenHash) ||
-		!model.IsValidPasswordHash(input.PasswordHash) || input.At.IsZero() || input.AuditEvent == nil ||
+		!model.IsValidPasswordHash(input.PasswordHash) || !input.Reuse.Valid() || input.At.IsZero() || input.AuditEvent == nil ||
 		!input.RevocationReason.IsValid() || input.Occurrence == nil || input.Delivery == nil || input.Job == nil {
 		return nil, store.NewErrInvalidInput("user_token", "password_reset", nil)
 	}
@@ -679,6 +679,13 @@ func (s SQLUserTokenStore) ConsumePasswordReset(
 		); err != nil {
 			return nil, translateError("password_credential", token.UserID, err)
 		}
+		resetUser, err := model.ParseUserID(token.UserID)
+		if err != nil {
+			return nil, invalidPersistedState("user_token", "user_id", err)
+		}
+		if err := refusePasswordReuse(ctx, tx, resetUser, input.Reuse); err != nil {
+			return nil, err
+		}
 		var sessionFloor sql.NullTime
 		if err = tx.Get(ctx, &sessionFloor, `SELECT MAX(GREATEST(s.updated_at, c.updated_at)) FROM sessions s
 			LEFT JOIN session_credentials c ON c.session_id=s.id AND c.archived_at IS NULL AND c.revoked_at IS NULL
@@ -689,6 +696,9 @@ func (s SQLUserTokenStore) ConsumePasswordReset(
 			credential.UpdatedAt, credential.PasswordChangedAt, TimeFromNullTime(sessionFloor))
 		occurrence, delivery, job, err := recoveryMailAt(input.Occurrence, input.Delivery, input.Job, at)
 		if err != nil {
+			return nil, err
+		}
+		if err := retainSupersededPassword(ctx, tx, resetUser, credential.PasswordHash, credential.PasswordChangedAt, at, input.Reuse.Limit); err != nil {
 			return nil, err
 		}
 		credential.Revision++

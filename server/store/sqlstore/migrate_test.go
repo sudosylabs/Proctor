@@ -113,6 +113,7 @@ var baselineTables = []string{
 	"onboarding_import_rows",
 	"onboarding_imports",
 	"password_credentials",
+	"password_history_entries",
 	"personal_access_token_mutation_preparations",
 	"personal_access_tokens",
 	"programme_levels",

@@ -20,6 +20,7 @@ import (
 
 type accountTokenPasswordHasher interface {
 	Hash(context.Context, string) (string, error)
+	ReuseCheck(string) store.PasswordReuseCheck
 }
 
 type accountTokenEffects interface {

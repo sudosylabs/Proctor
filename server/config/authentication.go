@@ -22,6 +22,9 @@ type Password struct {
 	ArgonParallelism            int `json:"ArgonParallelism"`
 	ArgonSaltBytes              int `json:"ArgonSaltBytes"`
 	ArgonKeyBytes               int `json:"ArgonKeyBytes"`
+	// HistoryCount is how many of a User's most recent passwords a new
+	// password must differ from; zero disables the check and keeps no history.
+	HistoryCount int `json:"HistoryCount"`
 }
 
 type Sessions struct {
@@ -126,6 +129,9 @@ func validateAuthentication(authentication Authentication, add func(string, stri
 	}
 	if password.ArgonKeyBytes < 16 || password.ArgonKeyBytes > 64 {
 		add("authentication.password.argon_key_bytes", "must be between 16 and 64")
+	}
+	if password.HistoryCount < 0 || password.HistoryCount > 24 {
+		add("authentication.password.history_count", "must be between 0 and 24")
 	}
 
 	sessions := authentication.Sessions

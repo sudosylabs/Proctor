@@ -91,6 +91,7 @@ func applicationDependencies(
 			ArgonParallelism:            auth.Password.ArgonParallelism,
 			ArgonSaltBytes:              auth.Password.ArgonSaltBytes,
 			ArgonKeyBytes:               auth.Password.ArgonKeyBytes,
+			HistoryCount:                auth.Password.HistoryCount,
 		},
 		Sessions: app.SessionPolicy{
 			AccessTTL:              auth.Sessions.AccessTTL.Duration,

@@ -21,6 +21,7 @@ import (
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/config"
+	"github.com/sudosylabs/proctor/server/store"
 )
 
 func testPasswordPolicy() PasswordPolicy {
@@ -205,6 +206,10 @@ type passwordHashFunc func(context.Context, string) (string, error)
 
 func (h passwordHashFunc) Hash(ctx context.Context, password string) (string, error) {
 	return h(ctx, password)
+}
+
+func (passwordHashFunc) ReuseCheck(string) store.PasswordReuseCheck {
+	return store.PasswordReuseCheck{}
 }
 
 func testPasswordHashFailures(t *testing.T, unavailableCode string, invoke func(*testing.T, context.Context, passwordHash) error) {

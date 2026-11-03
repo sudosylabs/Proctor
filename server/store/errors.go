@@ -28,6 +28,10 @@ var ErrAuthenticationMethodDisabled = errors.New("authentication method is disab
 // no longer names the active credential. Public authentication fails generically.
 var ErrPasswordCredentialChanged = errors.New("password credential has changed")
 
+// ErrPasswordReused reports that a new password matches one of the User's
+// retained recent passwords, so the credential change was refused.
+var ErrPasswordReused = errors.New("password matches a recent password")
+
 // ErrLastUsableAuthenticationMethod reports that removing a credential would
 // leave the User without a method admitted by current policy and deployment.
 var ErrLastUsableAuthenticationMethod = errors.New("cannot remove the last usable authentication method")

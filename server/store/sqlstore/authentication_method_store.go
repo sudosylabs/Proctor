@@ -147,7 +147,7 @@ func (s SQLExternalIdentityStore) Unlink(ctx context.Context, input *store.Exter
 // login is enabled, completing the audit event in the same transaction.
 func (s SQLPasswordCredentialStore) Enroll(ctx context.Context, input *store.PasswordCredentialEnrollment) (*store.AuthenticationMethodMutationResult, error) {
 	if input == nil || input.Credential == nil || !input.Credential.ID.IsZero() || !input.Credential.UserID.IsValid() ||
-		!input.AuditEventID.IsValid() || input.AuditAt.IsZero() || !validAccessDeploymentCapabilities(input.Capabilities) {
+		!input.Reuse.Valid() || !input.AuditEventID.IsValid() || input.AuditAt.IsZero() || !validAccessDeploymentCapabilities(input.Capabilities) {
 		return nil, store.NewErrInvalidInput("password_credential", "enroll", nil)
 	}
 	credential := *input.Credential
@@ -165,6 +165,9 @@ func (s SQLPasswordCredentialStore) Enroll(ctx context.Context, input *store.Pas
 			return nil, err
 		}
 		if err := requireCurrentLocalLogin(ctx, tx); err != nil {
+			return nil, err
+		}
+		if err := refusePasswordReuse(ctx, tx, credential.UserID, input.Reuse); err != nil {
 			return nil, err
 		}
 		credential.PrepareCreate(model.NewPasswordCredentialID(), model.TimeUTC(input.AuditAt))
@@ -247,7 +250,7 @@ func (s SQLPasswordCredentialStore) Remove(ctx context.Context, input *store.Pas
 // password-changed notice in one transaction at one database instant.
 func (s SQLPasswordCredentialStore) Change(ctx context.Context, input *store.PasswordCredentialChange) (*store.AuthenticationMethodMutationResult, error) {
 	if input == nil || !input.UserID.IsValid() || !input.KeepSessionID.IsValid() || !model.IsValidPasswordHash(input.PasswordHash) ||
-		!input.RevocationReason.IsValid() || !input.AuditEventID.IsValid() || input.AuditAt.IsZero() {
+		!input.Reuse.Valid() || !input.RevocationReason.IsValid() || !input.AuditEventID.IsValid() || input.AuditAt.IsZero() {
 		return nil, store.NewErrInvalidInput("password_credential", "change", nil)
 	}
 	keyID, err := validateUserEmailMail(input.UserID, input.Occurrence, input.Delivery, input.Job, model.MailOccurrenceSecurityNotice, model.MailTemplateIdentityPasswordChanged)
@@ -271,11 +274,17 @@ func (s SQLPasswordCredentialStore) Change(ctx context.Context, input *store.Pas
 		if err != nil {
 			return nil, err
 		}
+		if err := refusePasswordReuse(ctx, tx, input.UserID, input.Reuse); err != nil {
+			return nil, err
+		}
 		databaseNow, err := jobDatabaseNow(ctx, tx)
 		if err != nil {
 			return nil, err
 		}
 		at := transitionInstant(databaseNow, credential.UpdatedAt, credential.PasswordChangedAt)
+		if err := retainSupersededPassword(ctx, tx, input.UserID, credential.PasswordHash, credential.PasswordChangedAt, at, input.Reuse.Limit); err != nil {
+			return nil, err
+		}
 		occurrence, delivery, job, err := recoveryMailAt(input.Occurrence, input.Delivery, input.Job, at)
 		if err != nil {
 			return nil, err

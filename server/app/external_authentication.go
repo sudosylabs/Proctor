@@ -255,6 +255,7 @@ var authenticationMethodStoreErrors = apperror.StoreTable{
 	Rules: []apperror.StoreRule{
 		{Kind: apperror.StoreSentinel, Sentinel: store.ErrAuthenticationMethodDisabled, Code: "authentication.method.disabled"},
 		{Kind: apperror.StoreSentinel, Sentinel: store.ErrLastUsableAuthenticationMethod, Code: "authentication.method.last_usable"},
+		{Kind: apperror.StoreSentinel, Sentinel: store.ErrPasswordReused, Code: "authentication.password.reused"},
 	},
 	Constraints: map[string]apperror.Code{"external_identities_provider_subject_key": "authentication.method.provider_conflict"},
 	NotFound:    "authentication.method.not_found",

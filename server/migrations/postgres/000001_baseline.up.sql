@@ -792,6 +792,21 @@ CREATE TABLE password_credentials (
 CREATE UNIQUE INDEX password_credentials_user_id_key
     ON password_credentials (user_id) WHERE archived_at IS NULL;
 
+-- Superseded local password hashes, kept only so a new password can be
+-- compared against recent ones. Each credential change prunes a User's rows
+-- to Authentication.Password.HistoryCount, and the rows go with the User.
+CREATE TABLE password_history_entries (
+    id varchar(26) PRIMARY KEY,
+    created_at timestamptz NOT NULL,
+    user_id varchar(26) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    password_hash varchar(1024) NOT NULL,
+    password_changed_at timestamptz NOT NULL,
+    CONSTRAINT password_history_entries_lifecycle_check CHECK (created_at >= password_changed_at)
+);
+
+CREATE INDEX password_history_entries_user_id_password_changed_at_idx
+    ON password_history_entries (user_id, password_changed_at DESC);
+
 CREATE TABLE affiliations (
     id varchar(26) PRIMARY KEY,
     created_at timestamptz NOT NULL,

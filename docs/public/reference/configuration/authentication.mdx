@@ -37,6 +37,7 @@ bootstrap secret through protected configuration.
 | `Authentication.Password.ArgonParallelism`<br />Default: `2` | Argon2 lanes per operation. Must be between `1` and `64`. |
 | `Authentication.Password.ArgonSaltBytes`<br />Default: `16` | Random salt length for new password hashes. Must be between `16` and `64` bytes. |
 | `Authentication.Password.ArgonKeyBytes`<br />Default: `32` | Derived-key length for new password hashes. Must be between `16` and `64` bytes. |
+| `Authentication.Password.HistoryCount`<br />Default: `5` | How many of a User's most recent passwords a new password must differ from, on reset, change, and enrollment. Must be between `0` and `24`; `0` disables the check and discards retained history at the next password change. Each retained password costs one Argon2 verification during a change. |
 
 Changing Argon2 parameters affects newly produced hashes and may cause stored
 passwords to be upgraded after successful verification. Benchmark the complete

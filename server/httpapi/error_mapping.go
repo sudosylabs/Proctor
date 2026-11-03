@@ -76,6 +76,7 @@ var applicationErrorMappings = map[string]applicationErrorMapping{
 	"authentication.password.identity_invalid":                    {status: http.StatusBadRequest},
 	"authentication.password.invalid":                             {status: http.StatusBadRequest},
 	"authentication.password.pattern_invalid":                     {status: http.StatusBadRequest},
+	"authentication.password.reused":                              {status: http.StatusConflict},
 	"authentication.rate_limit_unavailable":                       {status: http.StatusServiceUnavailable},
 	"authentication.rate_limited":                                 {status: http.StatusTooManyRequests},
 	"authentication.reauthentication_method_required":             {status: http.StatusConflict},

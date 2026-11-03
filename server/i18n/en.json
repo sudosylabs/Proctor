@@ -2820,6 +2820,10 @@
     "translation": "That password is a repeated character or a simple sequence. Choose something less predictable."
   },
   {
+    "id": "webapp.password_policy.reused",
+    "translation": "You used that password recently. Choose a password you haven’t used before."
+  },
+  {
     "id": "webapp.reauthenticate.action",
     "translation": "Confirm your sign-in"
   },

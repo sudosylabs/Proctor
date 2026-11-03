@@ -39,6 +39,7 @@ describe("completePasswordReset", () => {
     ["authentication.password.pattern_invalid", "pattern"],
     ["authentication.password.common_invalid", "common"],
     ["authentication.password.identity_invalid", "identity"],
+    ["authentication.password.reused", "reused"],
   ])("maps %s to a %s password rejection", async (problemCode, reason) => {
     vi.spyOn(apiClient, "POST").mockResolvedValue(
       apiResult(400, { problemCode }),

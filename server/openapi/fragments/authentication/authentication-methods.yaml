@@ -59,6 +59,7 @@ paths:
         - authentication.password.pattern_invalid
         - authentication.password.common_invalid
         - authentication.password.identity_invalid
+        - authentication.password.reused
         - authentication.method.disabled
         - authentication.method.conflict
         - authentication.method.unavailable
@@ -149,7 +150,7 @@ paths:
       operationId: changePassword
       summary: Replace the current User's local password after strong recent authentication
       description: >-
-        Replaces the current User's existing local password when Access Policy permits local login and the interactive Session has strong recent assurance. The new password must satisfy the password policy: it must fit the configured length bounds and must not be a common password, a simple pattern, or derived from the account's username, email local part, or name. The calling Session stays signed in; every other Session of the User is revoked, outstanding password-reset links stop working, and the account address receives a password-changed notice.
+        Replaces the current User's existing local password when Access Policy permits local login and the interactive Session has strong recent assurance. The new password must satisfy the password policy: it must fit the configured length bounds and must not be a common password, a simple pattern, derived from the account's username, email local part, or name, or one of the account's recent passwords. The calling Session stays signed in; every other Session of the User is revoked, outstanding password-reset links stop working, and the account address receives a password-changed notice.
       x-codeSamples:
         - lang: Shell
           label: Change the local password
@@ -175,6 +176,7 @@ paths:
         - authentication.password.pattern_invalid
         - authentication.password.common_invalid
         - authentication.password.identity_invalid
+        - authentication.password.reused
         - authentication.method.not_found
         - authentication.method.disabled
         - authentication.method.conflict

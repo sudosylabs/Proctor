@@ -202,6 +202,7 @@ export const catalogs = {
     "webapp.password_policy.common": "That password is too common. Choose something longer or less predictable, such as several unrelated words.",
     "webapp.password_policy.identity": "Don’t use your name, username, or email address in your password.",
     "webapp.password_policy.pattern": "That password is a repeated character or a simple sequence. Choose something less predictable.",
+    "webapp.password_policy.reused": "You used that password recently. Choose a password you haven’t used before.",
     "webapp.reauthenticate.action": "Confirm your sign-in",
     "webapp.reauthenticate.body": "Provide fresh proof for this session. You’ll return to your task to review and submit the action yourself.",
     "webapp.reauthenticate.cancel": "Cancel and return",

@@ -979,7 +979,7 @@ export interface paths {
         put?: never;
         /**
          * Replace the current User's local password after strong recent authentication
-         * @description Replaces the current User's existing local password when Access Policy permits local login and the interactive Session has strong recent assurance. The new password must satisfy the password policy: it must fit the configured length bounds and must not be a common password, a simple pattern, or derived from the account's username, email local part, or name. The calling Session stays signed in; every other Session of the User is revoked, outstanding password-reset links stop working, and the account address receives a password-changed notice.
+         * @description Replaces the current User's existing local password when Access Policy permits local login and the interactive Session has strong recent assurance. The new password must satisfy the password policy: it must fit the configured length bounds and must not be a common password, a simple pattern, derived from the account's username, email local part, or name, or one of the account's recent passwords. The calling Session stays signed in; every other Session of the User is revoked, outstanding password-reset links stop working, and the account address receives a password-changed notice.
          */
         post: operations["changePassword"];
         delete?: never;
@@ -15317,6 +15317,7 @@ export interface operations {
         responses: {
             204: components["responses"]["SensitiveNoContent"];
             400: components["responses"]["BadRequest"];
+            409: components["responses"]["Conflict"];
             429: components["responses"]["TooManyRequests"];
             503: components["responses"]["ServiceUnavailable"];
         };

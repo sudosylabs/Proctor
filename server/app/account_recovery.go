@@ -343,13 +343,19 @@ func (s *accountTokenService) CompletePasswordReset(
 		return nil, accountRecoveryUnavailable(err)
 	}
 	result, err := s.deps.Tokens.ConsumePasswordReset(ctx, &store.PasswordResetCompletion{
-		TokenHash: model.HashToken(command.Token), PasswordHash: passwordHash, At: now,
+		TokenHash: model.HashToken(command.Token), PasswordHash: passwordHash, Reuse: s.deps.Hasher.ReuseCheck(command.Password), At: now,
 		RevocationReason: model.SessionRevocationPasswordReset, AuditEvent: event, Occurrence: prepared.Occurrence,
 		Delivery: prepared.Delivery, Job: prepared.Job,
 	})
 	if err != nil {
 		if errors.Is(err, store.ErrAuthenticationMethodDisabled) {
 			return nil, invalidAccountCredential()
+		}
+		if errors.Is(err, store.ErrPasswordReused) {
+			return nil, passwordReused()
+		}
+		if apperror.Is(err, "service.busy") {
+			return nil, err
 		}
 		if store.IsNotFound(err) {
 			return nil, invalidAccountCredential()

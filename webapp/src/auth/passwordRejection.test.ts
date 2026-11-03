@@ -11,6 +11,7 @@ describe("passwordRejection", () => {
     ["authentication.password.pattern_invalid", "pattern"],
     ["authentication.password.common_invalid", "common"],
     ["authentication.password.identity_invalid", "identity"],
+    ["authentication.password.reused", "reused"],
   ])("names %s as a %s rejection", (code, rejection) => {
     expect(passwordRejection(code)).toBe(rejection);
   });
@@ -37,5 +38,8 @@ describe("passwordRejectionMessage", () => {
     expect(
       passwordRejectionMessage("identity", "webapp.join.form.error.password_invalid"),
     ).toBe("webapp.password_policy.identity");
+    expect(
+      passwordRejectionMessage("reused", "webapp.join.form.error.password_invalid"),
+    ).toBe("webapp.password_policy.reused");
   });
 });

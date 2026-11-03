@@ -156,6 +156,7 @@ DROP TABLE IF EXISTS exam_drafts;
 DROP TABLE IF EXISTS exams;
 DROP TABLE IF EXISTS academic_unit_members;
 DROP TABLE IF EXISTS affiliations;
+DROP TABLE IF EXISTS password_history_entries;
 DROP TABLE IF EXISTS password_credentials;
 DROP TABLE IF EXISTS external_identities;
 DROP TABLE IF EXISTS file_legal_holds;

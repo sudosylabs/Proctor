@@ -24,8 +24,8 @@ for (const match of source.matchAll(matcher)) {
   variables.push({name, parser});
 }
 
-if (variables.length !== 135) {
-  throw new Error(`expected 135 environment overrides, found ${variables.length}`);
+if (variables.length !== 136) {
+  throw new Error(`expected 136 environment overrides, found ${variables.length}`);
 }
 
 const typeLabel = {

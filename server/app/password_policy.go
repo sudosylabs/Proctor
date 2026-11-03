@@ -13,13 +13,16 @@
 package app
 
 import (
+	"context"
 	_ "embed"
+	"errors"
 	"strings"
 	"unicode"
 	"unicode/utf8"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
+	"github.com/sudosylabs/proctor/server/store"
 )
 
 //go:embed password_blocklist.txt
@@ -185,4 +188,34 @@ func compactPasswordText(value string) string {
 		}
 		return -1
 	}, value)
+}
+
+// ReuseCheck returns the Store-side check that refuses password when it
+// matches one of the User's configured number of recent passwords. The Store
+// runs it inside the credential transaction, so each comparison takes an
+// ordinary password work permit there.
+func (h *passwordHasher) ReuseCheck(password string) store.PasswordReuseCheck {
+	if h.historyCount == 0 {
+		return store.PasswordReuseCheck{}
+	}
+	return store.PasswordReuseCheck{Limit: h.historyCount, Matcher: passwordReuseMatcher{hasher: h, password: password}}
+}
+
+// passwordReuseMatcher compares one candidate password with retained hashes.
+type passwordReuseMatcher struct {
+	hasher   *passwordHasher
+	password string
+}
+
+func (m passwordReuseMatcher) Matches(ctx context.Context, encoded string) (bool, error) {
+	err := m.hasher.Verify(ctx, encoded, m.password)
+	if errors.Is(err, ErrPasswordMismatch) {
+		return false, nil
+	}
+	return err == nil, err
+}
+
+// passwordReused is the public refusal for a password the history check matched.
+func passwordReused() error {
+	return apperror.Invalid("authentication.password.reused", "password")
 }

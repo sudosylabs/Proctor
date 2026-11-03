@@ -115,6 +115,7 @@ type PasswordPolicy struct {
 	ArgonSaltBytes              int
 	ArgonKeyBytes               int
 	MaximumConcurrentOperations int
+	HistoryCount                int
 }
 
 // PasswordWorkRecorder observes bounded runtime password work. Implementations

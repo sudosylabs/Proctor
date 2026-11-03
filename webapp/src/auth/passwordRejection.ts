@@ -4,13 +4,19 @@ import type { MessageID } from "../i18n/messages";
  * Why the server refused a new password. Each reason is a distinct public
  * error code; "length" also covers invalid text the browser cannot produce.
  */
-export type PasswordRejection = "length" | "pattern" | "common" | "identity";
+export type PasswordRejection =
+  | "length"
+  | "pattern"
+  | "common"
+  | "identity"
+  | "reused";
 
 const rejectionByCode: Readonly<Record<string, PasswordRejection>> = {
   "authentication.password.invalid": "length",
   "authentication.password.pattern_invalid": "pattern",
   "authentication.password.common_invalid": "common",
   "authentication.password.identity_invalid": "identity",
+  "authentication.password.reused": "reused",
 };
 
 /** Returns the rejection a Problem Details code names, if it is one. */
@@ -28,6 +34,7 @@ const sharedMessages: Readonly<
   pattern: "webapp.password_policy.pattern",
   common: "webapp.password_policy.common",
   identity: "webapp.password_policy.identity",
+  reused: "webapp.password_policy.reused",
 };
 
 /**

@@ -47,8 +47,38 @@ type PasswordCredentialProof struct {
 
 func (p PasswordCredentialProof) IsValid() bool { return p.ID.IsValid() && p.Revision > 0 }
 
+// PasswordMatcher reports whether the password being set matches one encoded
+// hash. Implementations verify with the password hasher; an error aborts the
+// credential change.
+type PasswordMatcher interface {
+	Matches(context.Context, string) (bool, error)
+}
+
+// PasswordReuseCheck refuses a new password that matches one of the User's
+// Limit most recent passwords: the active and archived credentials and the
+// retained history of superseded hashes, newest first. The Store reads them
+// under the credential transaction's per-User locks and asks Matcher about
+// each, so a concurrent change cannot slip between check and write; a match
+// fails the operation with ErrPasswordReused. A credential replaced in place
+// moves its old hash into history, and history is pruned to Limit entries per
+// User in the same transaction. Limit zero disables the check and discards
+// the User's history.
+type PasswordReuseCheck struct {
+	Limit   int
+	Matcher PasswordMatcher
+}
+
+// Valid reports whether the check is complete enough to run.
+func (c PasswordReuseCheck) Valid() bool {
+	return c.Limit >= 0 && c.Limit <= MaximumPasswordHistory && (c.Limit == 0 || c.Matcher != nil)
+}
+
+// MaximumPasswordHistory bounds the retained password history per User.
+const MaximumPasswordHistory = 24
+
 type PasswordCredentialEnrollment struct {
 	Credential   *model.PasswordCredential
+	Reuse        PasswordReuseCheck
 	Capabilities AccessDeploymentCapabilities
 	AuditEventID model.AuditEventID
 	AuditAt      time.Time
@@ -76,6 +106,7 @@ type PasswordCredentialChange struct {
 	UserID           model.UserID
 	KeepSessionID    model.SessionID
 	PasswordHash     string
+	Reuse            PasswordReuseCheck
 	RevocationReason model.SessionRevocationReason
 	Occurrence       *model.MailOccurrence
 	Delivery         *model.MailDelivery

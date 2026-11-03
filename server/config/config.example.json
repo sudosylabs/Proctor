@@ -147,7 +147,8 @@
       "ArgonIterations": 3,
       "ArgonParallelism": 2,
       "ArgonSaltBytes": 16,
-      "ArgonKeyBytes": 32
+      "ArgonKeyBytes": 32,
+      "HistoryCount": 5
     },
     "Sessions": {
       "AccessTTL": "15m",

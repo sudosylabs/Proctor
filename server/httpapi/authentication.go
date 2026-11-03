@@ -304,7 +304,7 @@ func authenticationResource(authentication authenticationEntryApplication, cooki
 			http.MethodPost,
 			apiPath(literal("auth"), literal("password-reset"), literal("complete")),
 			[]string{
-				"request.invalid", "authentication.password.invalid", "authentication.password.pattern_invalid", "authentication.password.common_invalid", "authentication.password.identity_invalid", "service.busy", "authentication.rate_limited",
+				"request.invalid", "authentication.password.invalid", "authentication.password.pattern_invalid", "authentication.password.common_invalid", "authentication.password.identity_invalid", "authentication.password.reused", "service.busy", "authentication.rate_limited",
 				"authentication.rate_limit_unavailable", "authentication.account_token.invalid",
 				"authentication.account_recovery.unavailable",
 			},

@@ -197,6 +197,8 @@ codes:
     description: "The password is not valid UTF-8 or falls outside the configured length bounds."
   - code: authentication.password.pattern_invalid
     description: "The new password is a single repeated character, a short repeated unit, or a simple sequence."
+  - code: authentication.password.reused
+    description: "The new password matches one of the account's recent passwords; choose one not used recently."
   - code: authentication.rate_limit_unavailable
     description: "Authentication rate limiting is temporarily unavailable; retry later."
   - code: authentication.rate_limited

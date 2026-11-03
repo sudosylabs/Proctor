@@ -355,6 +355,59 @@ func TestCompletePasswordResetMapsTerminalAccessPolicyFenceToInvalidCredential(t
 	require.True(t, apperror.Is(err, "authentication.account_token.invalid"), "result=%#v err=%v", result, err)
 }
 
+func TestCompletePasswordResetRefusesARecentPasswordAndPassesTheHistoryCheck(t *testing.T) {
+	t.Parallel()
+
+	hasher, err := newPasswordHasher(passwordHasherDependencies{Settings: func() PasswordPolicy {
+		policy := testPasswordPolicy()
+		policy.HistoryCount = 4
+		return policy
+	}()})
+	require.NoError(t, err)
+	user := &model.User{ID: model.NewUserID(), Email: "student@example.edu"}
+	var reuse store.PasswordReuseCheck
+	tokens := &accountTokenStoreFake{byHash: &model.UserToken{UserID: user.ID, Purpose: model.UserTokenPasswordReset}}
+	tokens.consumeResetInput = func(input *store.PasswordResetCompletion) { reuse = input.Reuse }
+	tokens.consumeReset = func(string, string, time.Time, *model.AuditEvent) (*store.PasswordResetResult, error) {
+		return nil, store.ErrPasswordReused
+	}
+	app := newAccountTokenTestApp(t, accountTokenTestDependencies{
+		users: &accountTokenUserStoreFake{byID: user}, passwords: &accountTokenPasswordStoreFake{}, tokens: tokens,
+		institution: &model.Institution{ID: model.NewInstitutionID()}, mailer: &accountTokenMailerFake{enabled: true}, hasher: hasher,
+	})
+	result, err := app.CompletePasswordReset(context.Background(), invocation.Invocation{}, CompletePasswordResetCommand{
+		Token: accountTokenTestRawToken, Password: "lantern-orchard-copper-tide", Source: "192.0.2.8",
+	})
+	require.Nil(t, result)
+	require.Equal(t, "authentication.password.reused", apperror.CodeOf(err, ""))
+	require.Equal(t, 4, reuse.Limit)
+	previous, err := hasher.Hash(context.Background(), "lantern-orchard-copper-tide")
+	require.NoError(t, err)
+	matched, err := reuse.Matcher.Matches(context.Background(), previous)
+	require.NoError(t, err)
+	require.True(t, matched, "the history check did not recognize the same password")
+	other, err := hasher.Hash(context.Background(), "a different passphrase entirely")
+	require.NoError(t, err)
+	matched, err = reuse.Matcher.Matches(context.Background(), other)
+	require.NoError(t, err)
+	require.False(t, matched)
+	matched, err = reuse.Matcher.Matches(context.Background(), "not-an-argon2-hash")
+	require.NoError(t, err)
+	require.False(t, matched, "an unparsable retained hash must not match")
+}
+
+func TestPasswordHistoryDisabledYieldsAnEmptyCheck(t *testing.T) {
+	t.Parallel()
+	policy := testPasswordPolicy()
+	policy.HistoryCount = 0
+	hasher, err := newPasswordHasher(passwordHasherDependencies{Settings: policy})
+	require.NoError(t, err)
+	require.Equal(t, store.PasswordReuseCheck{}, hasher.ReuseCheck("anything at all"))
+	policy.HistoryCount = store.MaximumPasswordHistory + 1
+	_, err = newPasswordHasher(passwordHasherDependencies{Settings: policy})
+	require.Error(t, err)
+}
+
 func TestAccountTokenCompletionConcealsTerminalTokenStates(t *testing.T) {
 	t.Parallel()
 
@@ -407,7 +460,7 @@ func TestPasswordResetWorkFailuresDoNotConsumeResetToken(t *testing.T) {
 		application := newAccountTokenTestApp(t, accountTokenTestDependencies{
 			users: &accountTokenUserStoreFake{byID: user}, passwords: &accountTokenPasswordStoreFake{}, tokens: tokens,
 			institution: &model.Institution{ID: model.NewInstitutionID()},
-			mailer:      &accountTokenMailerFake{enabled: true}, hasher: hasher,
+			mailer:      &accountTokenMailerFake{enabled: true}, hasher: hasher.(accountTokenPasswordHasher),
 		})
 		user, err := application.CompletePasswordReset(ctx, invocation.Invocation{}, CompletePasswordResetCommand{
 			Token: accountTokenTestRawToken, Password: "correct horse battery staple", Source: "192.0.2.34",
@@ -504,6 +557,7 @@ type accountTokenStoreFake struct {
 	byHashErr              error
 	consumeVerificationErr error
 	consumeReset           func(string, string, time.Time, *model.AuditEvent) (*store.PasswordResetResult, error)
+	consumeResetInput      func(*store.PasswordResetCompletion)
 	emailChange            *store.UserEmailChange
 	privilegedVerification *store.PrivilegedEmailVerification
 }
@@ -550,6 +604,9 @@ func (s *accountTokenStoreFake) ConsumePasswordReset(
 	_ context.Context,
 	input *store.PasswordResetCompletion,
 ) (*store.PasswordResetResult, error) {
+	if s.consumeResetInput != nil {
+		s.consumeResetInput(input)
+	}
 	if s.consumeReset == nil {
 		return nil, store.NewErrNotFound("user_token", "")
 	}
@@ -617,6 +674,10 @@ type accountTokenHasherFake struct {
 
 func (f accountTokenHasherFake) Hash(context.Context, string) (string, error) { return f.hash, f.err }
 
+func (accountTokenHasherFake) ReuseCheck(string) store.PasswordReuseCheck {
+	return store.PasswordReuseCheck{}
+}
+
 type accountTokenEffectsFake struct {
 	called func(model.UserID, []model.SessionID, []string)
 }
@@ -671,6 +732,10 @@ func (a accountTokenConstructorArgs) build() (*accountTokenService, error) {
 }
 
 type countingAccountTokenHasher struct{ calls *int }
+
+func (countingAccountTokenHasher) ReuseCheck(string) store.PasswordReuseCheck {
+	return store.PasswordReuseCheck{}
+}
 
 func (h countingAccountTokenHasher) Hash(context.Context, string) (string, error) {
 	*h.calls++

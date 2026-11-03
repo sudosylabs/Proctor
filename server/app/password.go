@@ -28,6 +28,7 @@ import (
 	"golang.org/x/crypto/argon2"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	"github.com/sudosylabs/proctor/server/store"
 )
 
 var ErrPasswordMismatch = errors.New("password does not match")
@@ -57,6 +58,7 @@ type passwordHasher struct {
 
 	minimumLength int
 	maximumLength int
+	historyCount  int
 	parameters    passwordParameters
 	dummyHash     string
 	work          chan struct{}
@@ -67,10 +69,14 @@ func newPasswordHasher(deps passwordHasherDependencies) (*passwordHasher, error)
 	if settings.MaximumConcurrentOperations <= 0 {
 		return nil, errors.New("maximum concurrent password operations must be positive")
 	}
+	if settings.HistoryCount < 0 || settings.HistoryCount > store.MaximumPasswordHistory {
+		return nil, errors.New("password history count is out of range")
+	}
 	hasher := &passwordHasher{
 		deps:          deps,
 		minimumLength: settings.MinimumLength,
 		maximumLength: settings.MaximumLength,
+		historyCount:  settings.HistoryCount,
 		work:          make(chan struct{}, settings.MaximumConcurrentOperations),
 		parameters: passwordParameters{
 			memoryKiB:   uint32(settings.ArgonMemoryKiB),

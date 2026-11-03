@@ -164,6 +164,7 @@ func Default() Config {
 				ArgonParallelism:            2,
 				ArgonSaltBytes:              16,
 				ArgonKeyBytes:               32,
+				HistoryCount:                5,
 			},
 			Sessions: Sessions{
 				AccessTTL:              Duration{Duration: 15 * time.Minute},
