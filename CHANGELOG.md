@@ -147,10 +147,15 @@ module when a change is not server-only. No module has been released yet.
 - Build: the root `make check` verifies transactional-mail template freshness,
   and `make -C server integration-postgres` runs every PostgreSQL integration
   test in its packages instead of a fixed list.
+- Server: `migrate status` and the read-only inspection commands open
+  PostgreSQL with `default_transaction_read_only`, so the database itself
+  refuses any write.
+- Docs: the documentation toolchain lockfile and overrides are refreshed,
+  clearing every critical npm advisory. Two high advisories with no compatible
+  fix are documented in `docs/site/README.md`.
 
 ### Added
 
-- Server: Exam Managers can manually suspend an active Attempt.
 - Server: failed password checks against one account, counted across all
   sources and both its username and email address, delay further logins for
   that account progressively
@@ -160,8 +165,6 @@ module when a change is not server-only. No module has been released yet.
 - Server: Exam Managers can manually suspend an active Attempt before the
   Sitting's scheduled end. A kick after the candidate's lease lapsed records
   that Connection Loss instead and fails with `exam.attempt.connection_lost`.
-- Server: local login attempts are also bounded per account across all
-  sources (`Authentication.LoginRateLimit.MaximumIdentityAttempts`).
 - Server: revoked and expired Sessions and superseded Session credentials are
   deleted after `Authentication.Sessions.RetiredRetention` (default 30 days)
   by an hourly Job.
@@ -176,6 +179,42 @@ module when a change is not server-only. No module has been released yet.
   procedure is in the maintenance guide.
 - Server: `Server.TrustedProxies` names the reverse proxies whose forwarded
   client address and request ID are accepted.
+- Server: `proctor config show` (`--json`) prints the effective configuration,
+  file plus environment overrides, with every secret redacted, and names the
+  environment variables that replaced a file value.
+- Server: `proctor cluster status` (`--json`) lists serving-node leases,
+  cluster discovery rows (expired ones included) and the schema version.
+- Server: `proctor jobs list` (`--type`, `--state`, `--limit`, `--json`) and
+  `proctor jobs show <id>` inspect durable Jobs and their attempts without
+  printing payloads.
+- Server: `proctor migrate down --steps N --confirm` reverts the newest
+  migrations while no serving lease is live. On the pre-release baseline it
+  leaves an empty schema.
+- Server: Go runtime profiles can be served under `/debug/pprof/` on the
+  metrics listener with `Metrics.ProfilingEnabled`. They need the metrics
+  bearer token, even on loopback, never include the command line, and are
+  never served on the public listener.
+- Server: `Database.SlowOperationThreshold` logs a warning, with only the
+  operation name and duration, for each store operation that reaches it.
+- Server: opt-in OpenTelemetry tracing (`Tracing.*`) exports spans over
+  OTLP/HTTP for HTTP routes (named by route template), store operations and
+  Job executions. Trace context is continued only from trusted proxies. Log
+  lines carry `request_id`, and `trace_id` and `span_id` when tracing is on.
+- Build: `make e2e` drives Chromium through first-run setup, login and
+  sign-out, MFA enrollment and challenge, a mailed password reset and a mailed
+  Invitation against one real `proctor serve` node with disposable PostgreSQL
+  and Mailpit. CI runs it after the hermetic gate, and releases wait for it.
+- Build: `make container-scan` scans the runtime image with a pinned Trivy and
+  fails on critical or fixable high vulnerabilities. CI scans on relevant pull
+  requests and weekly, and releases scan each pushed platform before signing.
+- CI: CodeQL analyzes Go and TypeScript, pull requests that add high-severity
+  dependency advisories fail, and the webapp's production npm dependencies are
+  audited.
+- CI: an opt-in GitHub Pages deployment for the documentation, gated on
+  `DOCS_PUBLISH_ENABLED` and `DOCS_SITE_URL`.
+- Project: GOVERNANCE.md, MAINTAINERS.md and CODEOWNERS describe the
+  single-maintainer decision, maintainer and release process.
+- Docs: operator guidance for backup, restore, upgrade and rollback.
 - VFS: `FileSystem.CheckRoot` checks that the backend root (the local root
   directory or the S3 bucket) is reachable without listing it. Every
   `FileSystem` implementation must add it (**breaking**).
