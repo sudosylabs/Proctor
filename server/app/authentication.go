@@ -521,9 +521,13 @@ func (s *authenticationService) proveLocalSubject(
 	}
 	// Prepare any hash upgrade before consuming a one-time second factor.
 	// The guarded credential write still follows successful MFA below.
-	rehashed, err := s.prepareLocalRehash(ctx, credential, command.Password)
-	if err != nil {
-		return nil, err
+	var rehashed string
+	if s.deps.Hasher.NeedsRehash(credential.PasswordHash) {
+		var hashErr error
+		rehashed, hashErr = s.deps.Hasher.Hash(ctx, command.Password)
+		if hashErr != nil {
+			return nil, passwordWorkError(hashErr, "authentication.internal")
+		}
 	}
 	now := s.deps.Now()
 	authenticationStrength, mfaCompletedAt, err := s.deps.MFA.verifyLogin(
@@ -563,19 +567,6 @@ func (s *authenticationService) admitLocalLogin(ctx context.Context, command Log
 		return invalidCredentialsAppError()
 	}
 	return nil
-}
-
-// prepareLocalRehash computes an upgraded password hash when the stored hash needs one.
-func (s *authenticationService) prepareLocalRehash(ctx context.Context, credential *model.PasswordCredential, password string) (string, error) {
-	var rehashed string
-	if s.deps.Hasher.NeedsRehash(credential.PasswordHash) {
-		var hashErr error
-		rehashed, hashErr = s.deps.Hasher.Hash(ctx, password)
-		if hashErr != nil {
-			return "", passwordWorkError(hashErr, "authentication.internal")
-		}
-	}
-	return rehashed, nil
 }
 
 // applyLocalRehash stores a prepared password hash upgrade guarded by the verified credential revision.
