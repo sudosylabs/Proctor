@@ -93,106 +93,7 @@ func (s SQLDesktopCompatibilityPolicyStore) Replace(
 				ctx context.Context,
 				tx *sqlxTxWrapper,
 			) (desktopCompatibilityPolicyReplacementOutcome, error) {
-				if err := lockSystemAdministratorAuthenticationPaths(ctx, tx); err != nil {
-					return desktopCompatibilityPolicyReplacementOutcome{}, err
-				}
-				current, err := getDesktopCompatibilityPolicy(ctx, tx, "FOR UPDATE")
-				if err != nil {
-					return desktopCompatibilityPolicyReplacementOutcome{}, err
-				}
-				// Read wall time after serialization; transaction-start time can
-				// precede a binding revocation committed while this edit waited.
-				var databaseNow time.Time
-				if err := tx.Get(ctx, &databaseNow, `SELECT clock_timestamp()`); err != nil {
-					return desktopCompatibilityPolicyReplacementOutcome{}, fmt.Errorf(
-						"read desktop compatibility policy mutation time: %w",
-						err,
-					)
-				}
-				administrator, err := isActiveSystemAdministrator(
-					ctx,
-					tx,
-					input.ActorID.String(),
-					databaseNow,
-				)
-				if err != nil {
-					return desktopCompatibilityPolicyReplacementOutcome{}, err
-				}
-				if !administrator {
-					return desktopCompatibilityPolicyReplacementOutcome{}, store.NewErrConflict(
-						"desktop_compatibility_policy",
-						"actor_not_system_administrator",
-						nil,
-					)
-				}
-				if current.Revision != input.ExpectedRevision {
-					return desktopCompatibilityPolicyReplacementOutcome{},
-						&store.ErrDesktopCompatibilityPolicyRevisionConflict{CurrentRevision: current.Revision}
-				}
-				candidate := current.Clone()
-				// The recorded change never precedes a policy lifecycle stamped
-				// by a leading node clock; PostgreSQL time decided authority.
-				at := transitionInstant(databaseNow, current.CreatedAt, current.UpdatedAt)
-				if err := candidate.Replace(input.ExpectedRevision, input.Settings, at); err != nil {
-					return desktopCompatibilityPolicyReplacementOutcome{}, store.NewErrInvalidInput(
-						"desktop_compatibility_policy",
-						"replacement",
-						nil,
-					).Wrap(err)
-				}
-				changed := candidate.Revision != current.Revision
-				if changed {
-					encodedBuildIDs, encodeErr := json.Marshal(candidate.RevokedDesktopBuildIDs)
-					if encodeErr != nil {
-						return desktopCompatibilityPolicyReplacementOutcome{}, store.NewErrInvalidInput(
-							"desktop_compatibility_policy",
-							"revoked_build_ids",
-							nil,
-						).Wrap(encodeErr)
-					}
-					result, updateErr := tx.Exec(ctx, `
-						UPDATE desktop_compatibility_policies
-						   SET revision=?, minimum_desktop_release=?, revoked_desktop_build_ids=?::jsonb,
-						       administrator_message=?, availability=?, retry_at=?, updated_at=?
-						 WHERE singleton=1 AND revision=?`,
-						candidate.Revision,
-						candidate.MinimumDesktopRelease,
-						encodedBuildIDs,
-						candidate.AdministratorMessage,
-						candidate.Availability,
-						candidate.RetryAt.Ptr(),
-						candidate.UpdatedAt,
-						current.Revision,
-					)
-					if updateErr != nil {
-						return desktopCompatibilityPolicyReplacementOutcome{}, fmt.Errorf(
-							"replace desktop compatibility policy: %w",
-							translateError(
-								"desktop_compatibility_policy",
-								candidate.InstitutionID.String(),
-								updateErr,
-							),
-						)
-					}
-					if err := requireDesktopCompatibilityPolicyRevisionAffected(result); err != nil {
-						return desktopCompatibilityPolicyReplacementOutcome{}, err
-					}
-				}
-				outcome := desktopCompatibilityPolicyReplacementOutcome{
-					Policy:  candidate,
-					Changed: changed,
-				}
-				if err := completeDesktopCompatibilityPolicyAudit(
-					ctx,
-					tx,
-					input,
-					outcome,
-					false,
-					"",
-				); err != nil {
-					return desktopCompatibilityPolicyReplacementOutcome{}, err
-				}
-				return outcome, nil
+				return replaceDesktopCompatibilityPolicy(ctx, tx, input)
 			},
 			encode: func(outcome desktopCompatibilityPolicyReplacementOutcome) ([]byte, error) {
 				if outcome.Policy == nil {
@@ -228,6 +129,127 @@ func (s SQLDesktopCompatibilityPolicyStore) Replace(
 		Changed:  mutation.Value.Changed,
 		Replayed: mutation.Replayed,
 	}, nil
+}
+
+// replaceDesktopCompatibilityPolicy locks the policy, requires an active
+// System Administrator and the expected revision, applies the replacement at
+// PostgreSQL time, and completes the audit.
+func replaceDesktopCompatibilityPolicy(
+	ctx context.Context,
+	tx *sqlxTxWrapper,
+	input *store.DesktopCompatibilityPolicyReplacement,
+) (desktopCompatibilityPolicyReplacementOutcome, error) {
+	if err := lockSystemAdministratorAuthenticationPaths(ctx, tx); err != nil {
+		return desktopCompatibilityPolicyReplacementOutcome{}, err
+	}
+	current, err := getDesktopCompatibilityPolicy(ctx, tx, "FOR UPDATE")
+	if err != nil {
+		return desktopCompatibilityPolicyReplacementOutcome{}, err
+	}
+	// Read wall time after serialization; transaction-start time can
+	// precede a binding revocation committed while this edit waited.
+	var databaseNow time.Time
+	if err = tx.Get(ctx, &databaseNow, `SELECT clock_timestamp()`); err != nil {
+		return desktopCompatibilityPolicyReplacementOutcome{}, fmt.Errorf(
+			"read desktop compatibility policy mutation time: %w",
+			err,
+		)
+	}
+	administrator, err := isActiveSystemAdministrator(
+		ctx,
+		tx,
+		input.ActorID.String(),
+		databaseNow,
+	)
+	if err != nil {
+		return desktopCompatibilityPolicyReplacementOutcome{}, err
+	}
+	if !administrator {
+		return desktopCompatibilityPolicyReplacementOutcome{}, store.NewErrConflict(
+			"desktop_compatibility_policy",
+			"actor_not_system_administrator",
+			nil,
+		)
+	}
+	if current.Revision != input.ExpectedRevision {
+		return desktopCompatibilityPolicyReplacementOutcome{},
+			&store.ErrDesktopCompatibilityPolicyRevisionConflict{CurrentRevision: current.Revision}
+	}
+	candidate := current.Clone()
+	// The recorded change never precedes a policy lifecycle stamped
+	// by a leading node clock; PostgreSQL time decided authority.
+	at := transitionInstant(databaseNow, current.CreatedAt, current.UpdatedAt)
+	if err = candidate.Replace(input.ExpectedRevision, input.Settings, at); err != nil {
+		return desktopCompatibilityPolicyReplacementOutcome{}, store.NewErrInvalidInput(
+			"desktop_compatibility_policy",
+			"replacement",
+			nil,
+		).Wrap(err)
+	}
+	changed := candidate.Revision != current.Revision
+	if changed {
+		if err = updateDesktopCompatibilityPolicy(ctx, tx, candidate, current.Revision); err != nil {
+			return desktopCompatibilityPolicyReplacementOutcome{}, err
+		}
+	}
+	outcome := desktopCompatibilityPolicyReplacementOutcome{
+		Policy:  candidate,
+		Changed: changed,
+	}
+	if err = completeDesktopCompatibilityPolicyAudit(
+		ctx,
+		tx,
+		input,
+		outcome,
+		false,
+		"",
+	); err != nil {
+		return desktopCompatibilityPolicyReplacementOutcome{}, err
+	}
+	return outcome, nil
+}
+
+// updateDesktopCompatibilityPolicy writes the replaced policy over the row at
+// its previous revision.
+func updateDesktopCompatibilityPolicy(
+	ctx context.Context,
+	tx *sqlxTxWrapper,
+	candidate *model.DesktopCompatibilityPolicy,
+	previousRevision int64,
+) error {
+	encodedBuildIDs, encodeErr := json.Marshal(candidate.RevokedDesktopBuildIDs)
+	if encodeErr != nil {
+		return store.NewErrInvalidInput(
+			"desktop_compatibility_policy",
+			"revoked_build_ids",
+			nil,
+		).Wrap(encodeErr)
+	}
+	result, updateErr := tx.Exec(ctx, `
+		UPDATE desktop_compatibility_policies
+		   SET revision=?, minimum_desktop_release=?, revoked_desktop_build_ids=?::jsonb,
+		       administrator_message=?, availability=?, retry_at=?, updated_at=?
+		 WHERE singleton=1 AND revision=?`,
+		candidate.Revision,
+		candidate.MinimumDesktopRelease,
+		encodedBuildIDs,
+		candidate.AdministratorMessage,
+		candidate.Availability,
+		candidate.RetryAt.Ptr(),
+		candidate.UpdatedAt,
+		previousRevision,
+	)
+	if updateErr != nil {
+		return fmt.Errorf(
+			"replace desktop compatibility policy: %w",
+			translateError(
+				"desktop_compatibility_policy",
+				candidate.InstitutionID.String(),
+				updateErr,
+			),
+		)
+	}
+	return requireDesktopCompatibilityPolicyRevisionAffected(result)
 }
 
 func requireDesktopCompatibilityPolicyRevisionAffected(result sql.Result) error {
