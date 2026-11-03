@@ -127,6 +127,9 @@ func (s SQLExternalIdentityStore) ListByUser(ctx context.Context, userID model.U
 	return identities, nil
 }
 
+// ResolveOrProvision resolves the linked external identity for a provider
+// subject, or provisions a new User for it when the provider admits automatic
+// provisioning.
 func (s SQLExternalIdentityStore) ResolveOrProvision(
 	ctx context.Context,
 	request *store.ExternalIdentityResolutionRequest,
@@ -147,99 +150,122 @@ func (s SQLExternalIdentityStore) ResolveOrProvision(
 	}
 	lastSeenAt := model.TimeUTC(identity.LastSeenAt.Time)
 	return runSQLTransaction(ctx, s.GetMaster().Begin, "external identity resolution", func(ctx context.Context, tx *sqlxTxWrapper) (*store.ExternalIdentityResolution, error) {
-		policy, err := getAccessPolicy(ctx, tx, "FOR SHARE")
-		if err != nil {
-			return nil, err
-		}
-		admission, allowed := policy.ProviderAdmissions[provider]
-		if !allowed {
-			return nil, store.ErrAuthenticationMethodDisabled
-		}
-		if err := lockExternalIdentitySubject(ctx, tx, provider, identity.Subject); err != nil {
-			return nil, err
-		}
-
-		resolvedIdentity, resolvedUser, err := resolveExternalIdentity(
-			ctx,
-			tx,
-			provider,
-			identity.Subject,
-			lastSeenAt,
-		)
-		if err == nil {
-			return &store.ExternalIdentityResolution{
-				Identity: resolvedIdentity,
-				User:     resolvedUser,
-			}, nil
-		}
-		if !store.IsNotFound(err) {
-			return nil, err
-		}
-		switch admission {
-		case model.ProviderAdmissionAutoProvision:
-			if !capability.AutoProvision {
-				return nil, store.ErrAuthenticationMethodDisabled
-			}
-		case model.ProviderAdmissionInvitationRequired:
-			return nil, store.NewErrNotFound("external_identity", provider)
-		case model.ProviderAdmissionLinkedOnly:
-			return nil, store.NewErrNotFound("external_identity", provider)
-		default:
-			return nil, store.ErrAuthenticationMethodDisabled
-		}
-		if request.User == nil || request.Settings == nil || request.AuditEvent == nil ||
-			!request.AuditEvent.ID.IsZero() || request.DefaultProfilePictureJob == nil {
-			return nil, store.NewErrInvalidInput("external_identity", "provisioning", nil)
-		}
-		at := lastSeenAt
-		if at.IsZero() {
-			at = model.NowUTC()
-		}
-		userCandidate := *request.User
-		if err := userCandidate.Validate(); err != nil {
-			return nil, err
-		}
-		if err := validateUserDefaultProfilePictureJob(&userCandidate, request.DefaultProfilePictureJob); err != nil {
-			return nil, err
-		}
-		settingsCandidate := request.Settings.Clone()
-		if err := validateInitialUserSettingsDocument(&userCandidate, settingsCandidate); err != nil {
-			return nil, err
-		}
-		identityCandidate := *identity
-		identityCandidate.Provider = provider
-		identityCandidate.UserID = userCandidate.ID
-		identityCandidate.PrepareCreate(model.NewExternalIdentityID(), at)
-		if err := identityCandidate.Validate(); err != nil {
-			return nil, err
-		}
-		if err := insertUser(ctx, tx, &userCandidate); err != nil {
-			return nil, err
-		}
-		if err := insertUserSettingsDocument(ctx, tx, settingsCandidate); err != nil {
-			return nil, err
-		}
-		if err := insertExternalIdentity(ctx, tx, &identityCandidate); err != nil {
-			return nil, err
-		}
-		if _, err := insertQueuedJob(ctx, tx, request.DefaultProfilePictureJob, false); err != nil {
-			return nil, fmt.Errorf("enqueue external user default profile picture generation: %w", translateError("job", request.DefaultProfilePictureJob.ID.String(), err))
-		}
-		auditCandidate := request.AuditEvent.Clone()
-		auditCandidate.ActorID = userCandidate.ID
-		auditCandidate.Resource = model.Resource{
-			Type: model.ResourceUser,
-			ID:   userCandidate.ID.String(),
-		}
-		if _, err := insertAuditEvent(ctx, tx, auditCandidate); err != nil {
-			return nil, err
-		}
-		return &store.ExternalIdentityResolution{
-			Identity:    &identityCandidate,
-			User:        &userCandidate,
-			Provisioned: true,
-		}, nil
+		return resolveOrProvisionExternalIdentity(ctx, tx, request, provider, capability, lastSeenAt)
 	})
+}
+
+// resolveOrProvisionExternalIdentity resolves a linked external identity or provisions a new User inside the resolution transaction.
+func resolveOrProvisionExternalIdentity(ctx context.Context, tx *sqlxTxWrapper, request *store.ExternalIdentityResolutionRequest,
+	provider string, capability store.AccessProviderCapability, lastSeenAt time.Time,
+) (*store.ExternalIdentityResolution, error) {
+	identity := request.Identity
+	policy, err := getAccessPolicy(ctx, tx, "FOR SHARE")
+	if err != nil {
+		return nil, err
+	}
+	admission, allowed := policy.ProviderAdmissions[provider]
+	if !allowed {
+		return nil, store.ErrAuthenticationMethodDisabled
+	}
+	if err = lockExternalIdentitySubject(ctx, tx, provider, identity.Subject); err != nil {
+		return nil, err
+	}
+
+	resolvedIdentity, resolvedUser, err := resolveExternalIdentity(
+		ctx,
+		tx,
+		provider,
+		identity.Subject,
+		lastSeenAt,
+	)
+	if err == nil {
+		return &store.ExternalIdentityResolution{
+			Identity: resolvedIdentity,
+			User:     resolvedUser,
+		}, nil
+	}
+	if !store.IsNotFound(err) {
+		return nil, err
+	}
+	if err := requireExternalIdentityAutoProvision(admission, capability, provider); err != nil {
+		return nil, err
+	}
+	return provisionExternalIdentity(ctx, tx, request, provider, lastSeenAt)
+}
+
+// requireExternalIdentityAutoProvision rejects provisioning an unlinked identity unless the provider admits automatic provisioning.
+func requireExternalIdentityAutoProvision(admission model.ProviderAdmissionMode, capability store.AccessProviderCapability, provider string) error {
+	switch admission {
+	case model.ProviderAdmissionAutoProvision:
+		if !capability.AutoProvision {
+			return store.ErrAuthenticationMethodDisabled
+		}
+	case model.ProviderAdmissionInvitationRequired:
+		return store.NewErrNotFound("external_identity", provider)
+	case model.ProviderAdmissionLinkedOnly:
+		return store.NewErrNotFound("external_identity", provider)
+	default:
+		return store.ErrAuthenticationMethodDisabled
+	}
+	return nil
+}
+
+// provisionExternalIdentity inserts the prepared User, settings, external identity, profile picture Job and audit event.
+func provisionExternalIdentity(ctx context.Context, tx *sqlxTxWrapper, request *store.ExternalIdentityResolutionRequest,
+	provider string, lastSeenAt time.Time,
+) (*store.ExternalIdentityResolution, error) {
+	if request.User == nil || request.Settings == nil || request.AuditEvent == nil ||
+		!request.AuditEvent.ID.IsZero() || request.DefaultProfilePictureJob == nil {
+		return nil, store.NewErrInvalidInput("external_identity", "provisioning", nil)
+	}
+	at := lastSeenAt
+	if at.IsZero() {
+		at = model.NowUTC()
+	}
+	userCandidate := *request.User
+	if err := userCandidate.Validate(); err != nil {
+		return nil, err
+	}
+	if err := validateUserDefaultProfilePictureJob(&userCandidate, request.DefaultProfilePictureJob); err != nil {
+		return nil, err
+	}
+	settingsCandidate := request.Settings.Clone()
+	if err := validateInitialUserSettingsDocument(&userCandidate, settingsCandidate); err != nil {
+		return nil, err
+	}
+	identityCandidate := *request.Identity
+	identityCandidate.Provider = provider
+	identityCandidate.UserID = userCandidate.ID
+	identityCandidate.PrepareCreate(model.NewExternalIdentityID(), at)
+	if err := identityCandidate.Validate(); err != nil {
+		return nil, err
+	}
+	if err := insertUser(ctx, tx, &userCandidate); err != nil {
+		return nil, err
+	}
+	if err := insertUserSettingsDocument(ctx, tx, settingsCandidate); err != nil {
+		return nil, err
+	}
+	if err := insertExternalIdentity(ctx, tx, &identityCandidate); err != nil {
+		return nil, err
+	}
+	if _, err := insertQueuedJob(ctx, tx, request.DefaultProfilePictureJob, false); err != nil {
+		return nil, fmt.Errorf("enqueue external user default profile picture generation: %w", translateError("job", request.DefaultProfilePictureJob.ID.String(), err))
+	}
+	auditCandidate := request.AuditEvent.Clone()
+	auditCandidate.ActorID = userCandidate.ID
+	auditCandidate.Resource = model.Resource{
+		Type: model.ResourceUser,
+		ID:   userCandidate.ID.String(),
+	}
+	if _, err := insertAuditEvent(ctx, tx, auditCandidate); err != nil {
+		return nil, err
+	}
+	return &store.ExternalIdentityResolution{
+		Identity:    &identityCandidate,
+		User:        &userCandidate,
+		Provisioned: true,
+	}, nil
 }
 
 func lockExternalIdentitySubject(ctx context.Context, tx *sqlxTxWrapper, provider, subject string) error {
