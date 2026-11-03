@@ -113,7 +113,7 @@ func (s *publicRegistrationService) RegisterLocalUser(ctx context.Context, invoc
 	if err != nil {
 		return apperror.New("authentication.registration.invalid").Wrap(err)
 	}
-	if err := checkNewPassword(command.Password, passwordIdentity{Username: user.Username, Email: user.Email,
+	if err = checkNewPassword(command.Password, passwordIdentity{Username: user.Username, Email: user.Email,
 		FirstName: user.FirstName, LastName: user.LastName}); err != nil {
 		return err
 	}

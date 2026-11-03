@@ -337,7 +337,7 @@ func (s *accountTokenService) CompletePasswordReset(
 	}
 	// Hash only for a live token's account. The hashing permit is shared with
 	// login, so guessed tokens must not be able to consume it.
-	if err := checkNewPassword(command.Password, passwordIdentityOf(user)); err != nil {
+	if err = checkNewPassword(command.Password, passwordIdentityOf(user)); err != nil {
 		return nil, err
 	}
 	passwordHash, err := s.deps.Hasher.Hash(ctx, command.Password)

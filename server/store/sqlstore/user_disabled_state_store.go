@@ -357,7 +357,7 @@ func setUserDisabled(
 			translateError("user", id, err),
 		)
 	}
-	if err := requireUserRevisionAffected(ctx, tx, result, id); err != nil {
+	if err = requireUserRevisionAffected(ctx, tx, result, id); err != nil {
 		return nil, err
 	}
 	updated, err := getUserByID(ctx, tx, id)

@@ -137,13 +137,13 @@ func (h retentionExpiryHandler) expiryRecordBatch(ctx context.Context, e job.Exe
 		needsChange := !record.ScheduledAt.Valid && record.Blocker == model.RetentionExpiryEligible ||
 			record.ScheduledAt.Valid && (record.Blocker != model.RetentionExpiryEligible || !record.ExpiresAfter.Time.After(model.TimeUTC(h.now())))
 		if needsChange {
-			auditID, err := h.audit.BeginRetentionExpiry(ctx, institution, record.Kind, record.ID)
-			if err != nil {
-				return job.RetryableFailure("retention.unavailable", err)
+			auditID, beginErr := h.audit.BeginRetentionExpiry(ctx, institution, record.Kind, record.ID)
+			if beginErr != nil {
+				return job.RetryableFailure("retention.unavailable", beginErr)
 			}
-			result, err := h.records.ReconcileExpiry(ctx, &store.RetentionExpiryReconciliation{Kind: record.Kind, RecordID: record.ID, AuditEventID: auditID, AuditAt: h.now()})
-			if err != nil {
-				return job.RetryableFailure("retention.unavailable", errors.Join(err, h.audit.FailRetention(ctx, auditID)))
+			result, reconcileErr := h.records.ReconcileExpiry(ctx, &store.RetentionExpiryReconciliation{Kind: record.Kind, RecordID: record.ID, AuditEventID: auditID, AuditAt: h.now()})
+			if reconcileErr != nil {
+				return job.RetryableFailure("retention.unavailable", errors.Join(reconcileErr, h.audit.FailRetention(ctx, auditID)))
 			}
 			if result == nil || result.Scheduled && result.Expired {
 				return job.PermanentFailure("job.invariant_failed", errors.New("invalid retention expiry outcome"))

@@ -50,7 +50,7 @@ func (s SQLUserTokenStore) ConsumeEmailChangeUndo(ctx context.Context, input *st
 			return nil, err
 		}
 		var user userRow
-		if err := tx.Get(ctx, &user, `SELECT id, created_at, updated_at, archived_at, revision, username, email,
+		if err = tx.Get(ctx, &user, `SELECT id, created_at, updated_at, archived_at, revision, username, email,
 		       email_verified, display_name, first_name, last_name, locale,
 		       timezone, last_login_at, last_activity_at, disabled_at
 		       , default_profile_picture_seed, default_profile_picture_file_id,
@@ -71,21 +71,21 @@ func (s SQLUserTokenStore) ConsumeEmailChangeUndo(ctx context.Context, input *st
 		if err != nil {
 			return nil, err
 		}
-		if _, err := tx.Exec(ctx, `UPDATE users SET email=?, email_verified=true, mail_eligibility_revision=?, updated_at=GREATEST(updated_at, ?), revision=revision+1
+		if _, err = tx.Exec(ctx, `UPDATE users SET email=?, email_verified=true, mail_eligibility_revision=?, updated_at=GREATEST(updated_at, ?), revision=revision+1
 			WHERE id=? AND archived_at IS NULL AND disabled_at IS NULL`, token.Target, mailEligibilityRevision, at, token.UserID); err != nil {
 			return nil, translateError("user", token.UserID, err)
 		}
 		var superseded []string
-		if err := tx.Select(ctx, &superseded, `SELECT id FROM user_tokens WHERE user_id=? AND purpose IN ('email_verification', 'password_reset') AND archived_at IS NULL AND consumed_at IS NULL FOR UPDATE`, token.UserID); err != nil {
+		if err = tx.Select(ctx, &superseded, `SELECT id FROM user_tokens WHERE user_id=? AND purpose IN ('email_verification', 'password_reset') AND archived_at IS NULL AND consumed_at IS NULL FOR UPDATE`, token.UserID); err != nil {
 			return nil, fmt.Errorf("lock superseded account tokens: %w", err)
 		}
-		if _, err := tx.Exec(ctx, `UPDATE user_tokens SET updated_at=GREATEST(updated_at, ?), archived_at=GREATEST(updated_at, ?) WHERE user_id=? AND purpose IN ('email_verification', 'password_reset') AND archived_at IS NULL AND consumed_at IS NULL`, at, at, token.UserID); err != nil {
+		if _, err = tx.Exec(ctx, `UPDATE user_tokens SET updated_at=GREATEST(updated_at, ?), archived_at=GREATEST(updated_at, ?) WHERE user_id=? AND purpose IN ('email_verification', 'password_reset') AND archived_at IS NULL AND consumed_at IS NULL`, at, at, token.UserID); err != nil {
 			return nil, fmt.Errorf("invalidate superseded account tokens: %w", err)
 		}
-		if err := suppressSupersededTokenMail(ctx, tx, superseded, at); err != nil {
+		if err = suppressSupersededTokenMail(ctx, tx, superseded, at); err != nil {
 			return nil, err
 		}
-		if err := consumeUserTokens(ctx, tx, token.UserID, model.UserTokenEmailChangeUndo, at); err != nil {
+		if err = consumeUserTokens(ctx, tx, token.UserID, model.UserTokenEmailChangeUndo, at); err != nil {
 			return nil, err
 		}
 		rows, hashes, err := revokeAllUserSessionsAt(ctx, tx, token.UserID, at, input.RevocationReason)
@@ -96,7 +96,7 @@ func (s SQLUserTokenStore) ConsumeEmailChangeUndo(ctx context.Context, input *st
 		if err != nil {
 			return nil, err
 		}
-		if _, err := insertAuditEventAt(ctx, tx, event, at); err != nil {
+		if _, err = insertAuditEventAt(ctx, tx, event, at); err != nil {
 			return nil, fmt.Errorf("audit email change undo: %w", err)
 		}
 		restored, err := getUserByID(ctx, tx, token.UserID)

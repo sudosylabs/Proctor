@@ -42,7 +42,7 @@ func (s *invitationService) acceptStudentClassByClaimHash(ctx context.Context, i
 	if timezone == "" {
 		timezone = invitation.Suggestions.Timezone
 	}
-	if err := checkNewPassword(command.Password, passwordIdentity{Username: command.Username, Email: invitation.TargetEmail,
+	if err = checkNewPassword(command.Password, passwordIdentity{Username: command.Username, Email: invitation.TargetEmail,
 		DisplayName: command.DisplayName, FirstName: command.FirstName, LastName: command.LastName}); err != nil {
 		return nil, err
 	}
@@ -120,7 +120,7 @@ func (s *invitationService) acceptTeacherAcademicUnitByClaimHash(ctx context.Con
 	if timezone == "" {
 		timezone = invitation.Suggestions.Timezone
 	}
-	if err := checkNewPassword(command.Password, passwordIdentity{Username: command.Username, Email: invitation.TargetEmail,
+	if err = checkNewPassword(command.Password, passwordIdentity{Username: command.Username, Email: invitation.TargetEmail,
 		DisplayName: command.DisplayName, FirstName: command.FirstName, LastName: command.LastName}); err != nil {
 		return nil, err
 	}

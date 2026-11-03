@@ -117,7 +117,7 @@ func (s *authenticationMethodService) EnrollPassword(ctx context.Context, invoca
 	if err != nil {
 		return authenticationMethodStoreErrors.Translate(err)
 	}
-	if err := checkNewPassword(password, passwordIdentityOf(user)); err != nil {
+	if err = checkNewPassword(password, passwordIdentityOf(user)); err != nil {
 		return err
 	}
 	hash, err := s.deps.Hasher.Hash(ctx, password)
@@ -148,7 +148,7 @@ func (s *authenticationMethodService) ChangePassword(ctx context.Context, invoca
 	if err != nil {
 		return authenticationMethodStoreErrors.Translate(err)
 	}
-	if err := checkNewPassword(command.Password, passwordIdentityOf(user)); err != nil {
+	if err = checkNewPassword(command.Password, passwordIdentityOf(user)); err != nil {
 		return err
 	}
 	hash, err := s.deps.Hasher.Hash(ctx, command.Password)

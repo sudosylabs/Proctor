@@ -42,7 +42,7 @@ func newMigrateDownCommand(plan migrateDownPlanExecutor, down migrateDownExecuto
 				return err
 			}
 			output := command.OutOrStdout()
-			if err := writeRollbackPlan(output, planned, text); err != nil {
+			if err = writeRollbackPlan(output, planned, text); err != nil {
 				return err
 			}
 			if len(planned.LiveServingNodes) > 0 {

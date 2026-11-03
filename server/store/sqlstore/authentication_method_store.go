@@ -274,7 +274,7 @@ func (s SQLPasswordCredentialStore) Change(ctx context.Context, input *store.Pas
 		if err != nil {
 			return nil, err
 		}
-		if err := refusePasswordReuse(ctx, tx, input.UserID, input.Reuse); err != nil {
+		if err = refusePasswordReuse(ctx, tx, input.UserID, input.Reuse); err != nil {
 			return nil, err
 		}
 		databaseNow, err := jobDatabaseNow(ctx, tx)
@@ -282,7 +282,7 @@ func (s SQLPasswordCredentialStore) Change(ctx context.Context, input *store.Pas
 			return nil, err
 		}
 		at := transitionInstant(databaseNow, credential.UpdatedAt, credential.PasswordChangedAt)
-		if err := retainSupersededPassword(ctx, tx, input.UserID, credential.PasswordHash, credential.PasswordChangedAt, at, input.Reuse.Limit); err != nil {
+		if err = retainSupersededPassword(ctx, tx, input.UserID, credential.PasswordHash, credential.PasswordChangedAt, at, input.Reuse.Limit); err != nil {
 			return nil, err
 		}
 		occurrence, delivery, job, err := recoveryMailAt(input.Occurrence, input.Delivery, input.Job, at)

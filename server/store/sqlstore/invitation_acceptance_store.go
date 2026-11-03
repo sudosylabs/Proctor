@@ -312,16 +312,16 @@ func resolveInvitationUser(ctx context.Context, tx *sqlxTxWrapper, invitation *m
 			user.Revision++
 		}
 		var hasPassword bool
-		if err := tx.Get(ctx, &hasPassword, `SELECT EXISTS(SELECT 1 FROM password_credentials WHERE user_id=? AND archived_at IS NULL)`, user.ID.String()); err != nil {
+		if err = tx.Get(ctx, &hasPassword, `SELECT EXISTS(SELECT 1 FROM password_credentials WHERE user_id=? AND archived_at IS NULL)`, user.ID.String()); err != nil {
 			return nil, fmt.Errorf("find invited user password: %w", err)
 		}
 		if !hasPassword {
 			credential := *input.PasswordCredential
 			credential.UserID = user.ID
-			if err := credential.Validate(); err != nil {
+			if err = credential.Validate(); err != nil {
 				return nil, store.NewErrInvalidInput("invitation", "password_credential", err)
 			}
-			if err := insertPasswordCredential(ctx, tx, &credential); err != nil {
+			if err = insertPasswordCredential(ctx, tx, &credential); err != nil {
 				return nil, err
 			}
 		}
@@ -421,7 +421,7 @@ func ensureInvitationClassMember(ctx context.Context, tx *sqlxTxWrapper, invitat
 	candidate.AcademicPeriodID = invitation.AcademicPeriodID
 	candidate.StartsAt = effectiveStart
 	candidate.EndsAt = invitation.IntendedEndsAt
-	if err := candidate.Validate(); err != nil {
+	if err = candidate.Validate(); err != nil {
 		return nil, store.NewErrInvalidInput("invitation", "class_member", err)
 	}
 	audienceRevisions, err := advanceClassMailAudienceRevisions(ctx, tx, candidate.ClassID)
@@ -438,17 +438,17 @@ func ensureInvitationClassMember(ctx context.Context, tx *sqlxTxWrapper, invitat
 }
 
 func invitationAcceptedRelationships(ctx context.Context, tx *sqlxTxWrapper, invitation *model.Invitation, userID model.UserID) (*model.Affiliation, *model.ClassMember, error) {
-	var affiliationRow affiliationRow
-	if err := tx.Get(ctx, &affiliationRow, `SELECT id,created_at,updated_at,archived_at,revision,user_id,kind,start_at,end_at FROM affiliations
+	var storedAffiliation affiliationRow
+	if err := tx.Get(ctx, &storedAffiliation, `SELECT id,created_at,updated_at,archived_at,revision,user_id,kind,start_at,end_at FROM affiliations
 		WHERE id=? AND user_id=?`, invitation.AcceptedAffiliationID.String(), userID.String()); err != nil {
 		return nil, nil, translateError("affiliation", userID.String(), err)
 	}
-	affiliation, err := affiliationRow.model()
+	affiliation, err := storedAffiliation.model()
 	if err != nil {
 		return nil, nil, err
 	}
 	var memberRow classMemberRow
-	if err := tx.Get(ctx, &memberRow, `SELECT id,created_at,updated_at,archived_at,revision,class_id,academic_period_id,user_id,start_at,end_at FROM class_members
+	if err = tx.Get(ctx, &memberRow, `SELECT id,created_at,updated_at,archived_at,revision,class_id,academic_period_id,user_id,start_at,end_at FROM class_members
 		WHERE id=? AND user_id=? AND class_id=? AND academic_period_id=?`,
 		invitation.AcceptedClassMemberID.String(), userID.String(), invitation.ClassID.String(), invitation.AcademicPeriodID.String()); err != nil {
 		return nil, nil, translateError("class_member", userID.String(), err)
@@ -574,11 +574,11 @@ func replayTeacherAcademicUnitInvitation(ctx context.Context, tx *sqlxTxWrapper,
 	if err != nil {
 		return nil, err
 	}
-	var affiliationRow affiliationRow
-	if err = tx.Get(ctx, &affiliationRow, `SELECT id,created_at,updated_at,archived_at,revision,user_id,kind,start_at,end_at FROM affiliations WHERE id=? AND user_id=?`, invitation.AcceptedAffiliationID.String(), user.ID.String()); err != nil {
+	var storedAffiliation affiliationRow
+	if err = tx.Get(ctx, &storedAffiliation, `SELECT id,created_at,updated_at,archived_at,revision,user_id,kind,start_at,end_at FROM affiliations WHERE id=? AND user_id=?`, invitation.AcceptedAffiliationID.String(), user.ID.String()); err != nil {
 		return nil, translateError("affiliation", invitation.AcceptedAffiliationID.String(), err)
 	}
-	affiliation, err := affiliationRow.model()
+	affiliation, err := storedAffiliation.model()
 	if err != nil {
 		return nil, err
 	}

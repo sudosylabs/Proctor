@@ -176,10 +176,10 @@ func TestPasswordCredentialStore(t *testing.T, ss store.Store) {
 			attempt := saveAuthenticationMethodAuditAttempt(t, ctx, ss, user.ID.String(), "change_password")
 			at := model.NowUTC()
 			occurrence, delivery, job := userTokenMailFixture(t, user.ID, model.NewMailOccurrenceID(), model.MailOccurrenceSecurityNotice, model.MailTemplateIdentityPasswordChanged, model.JobTypeMailDeliver, at, at.Add(24*time.Hour))
-			_, err := ss.PasswordCredential().Change(ctx, &store.PasswordCredentialChange{UserID: user.ID, KeepSessionID: kept,
+			_, changeErr := ss.PasswordCredential().Change(ctx, &store.PasswordCredentialChange{UserID: user.ID, KeepSessionID: kept,
 				PasswordHash: hash, Reuse: exactPasswordReuse(hash, limit), RevocationReason: model.SessionRevocationPasswordChanged,
 				Occurrence: occurrence, Delivery: delivery, Job: job, AuditEventID: attempt.ID, AuditAt: at})
-			return err
+			return changeErr
 		}
 		for _, hash := range []string{"$argon2id$history-1", "$argon2id$history-2", "$argon2id$history-3"} {
 			require.NoError(t, change(hash, 3), "change to %s", hash)
@@ -212,10 +212,10 @@ func TestPasswordCredentialStore(t *testing.T, ss store.Store) {
 		require.NoError(t, err)
 		enroll := func(hash string) error {
 			attempt := saveAuthenticationMethodAuditAttempt(t, ctx, ss, user.ID.String(), "enroll_password")
-			_, err := ss.PasswordCredential().Enroll(ctx, &store.PasswordCredentialEnrollment{
+			_, enrollErr := ss.PasswordCredential().Enroll(ctx, &store.PasswordCredentialEnrollment{
 				Credential: &model.PasswordCredential{UserID: user.ID, PasswordHash: hash}, Reuse: exactPasswordReuse(hash, 5),
 				Capabilities: capabilities, AuditEventID: attempt.ID, AuditAt: model.NowUTC()})
-			return err
+			return enrollErr
 		}
 		require.ErrorIs(t, enroll("$argon2id$removed"), store.ErrPasswordReused)
 		_, err = ss.PasswordCredential().GetByUser(ctx, user.ID)

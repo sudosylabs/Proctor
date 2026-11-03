@@ -55,7 +55,7 @@ func PlanMigrateDown(ctx context.Context, configPath string, steps int) (_ Migra
 	if err != nil {
 		return MigrationRollbackPlan{}, err
 	}
-	if err := requireRevertible(applied, steps); err != nil {
+	if err = requireRevertible(applied, steps); err != nil {
 		return MigrationRollbackPlan{}, err
 	}
 	plan := MigrationRollbackPlan{DatabaseVersion: applied[0].Version, LiveServingNodes: []string{}}

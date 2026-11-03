@@ -108,9 +108,9 @@ func (m *Module) Close(ctx context.Context) error {
 		return nil
 	}
 	m.closeOnce.Do(func() {
-		ctx, cancel := context.WithTimeout(ctx, m.settings.ShutdownTimeout.Duration)
+		shutdownCtx, cancel := context.WithTimeout(ctx, m.settings.ShutdownTimeout.Duration)
 		defer cancel()
-		if err := m.provider.Shutdown(ctx); err != nil {
+		if err := m.provider.Shutdown(shutdownCtx); err != nil {
 			m.closeErr = fmt.Errorf("shut down tracer provider: %w", err)
 		}
 	})

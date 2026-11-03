@@ -706,7 +706,7 @@ func (s SQLUserTokenStore) ConsumePasswordReset(
 		if err != nil {
 			return nil, invalidPersistedState("user_token", "user_id", err)
 		}
-		if err := refusePasswordReuse(ctx, tx, resetUser, input.Reuse); err != nil {
+		if err = refusePasswordReuse(ctx, tx, resetUser, input.Reuse); err != nil {
 			return nil, err
 		}
 		var sessionFloor sql.NullTime
@@ -721,7 +721,7 @@ func (s SQLUserTokenStore) ConsumePasswordReset(
 		if err != nil {
 			return nil, err
 		}
-		if err := retainSupersededPassword(ctx, tx, resetUser, credential.PasswordHash, credential.PasswordChangedAt, at, input.Reuse.Limit); err != nil {
+		if err = retainSupersededPassword(ctx, tx, resetUser, credential.PasswordHash, credential.PasswordChangedAt, at, input.Reuse.Limit); err != nil {
 			return nil, err
 		}
 		credential.Revision++
