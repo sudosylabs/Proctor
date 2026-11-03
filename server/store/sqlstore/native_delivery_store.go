@@ -82,29 +82,7 @@ func (s *SQLExamAttemptStore) lockNativeDelivery(ctx context.Context, tx *sqlxTx
 func (s *SQLExamAttemptStore) nativeDeliveryOwner(ctx context.Context, tx *sqlxTxWrapper, access store.NativeDeliveryAccess, persist bool) (nativeDeliveryOwner, error) {
 	var owner nativeDeliveryOwner
 	a := access.Access
-	if !a.AttemptID.IsValid() || !a.CandidateUserID.IsValid() || !a.SessionID.IsValid() || !a.DesktopRegistrationID.IsValid() || !model.IsValidDPoPKeyThumbprint(a.DPoPKeyThumbprint) || !model.IsValidAgreementID(access.StreamID) || access.ParticipationID != "" && !access.ParticipationID.IsValid() || access.Generation < 0 {
-		return owner, store.NewErrInvalidInput("native_delivery", "access", nil)
-	}
-	var attemptID string
-	if err := tx.Get(ctx, &attemptID, `SELECT sit.id FROM exam_sittings sit JOIN exam_attempts a ON a.exam_sitting_id=sit.id WHERE a.id=? AND a.candidate_user_id=? FOR UPDATE OF sit`, a.AttemptID.String(), a.CandidateUserID.String()); err != nil {
-		return owner, translateError("native_delivery", access.StreamID, err)
-	}
-	if err := tx.Get(ctx, &attemptID, `SELECT id FROM exam_attempts WHERE id=? FOR UPDATE`, a.AttemptID.String()); err != nil {
-		return owner, err
-	}
-	var sessionID string
-	if err := tx.Get(ctx, &sessionID, `SELECT se.id FROM sessions se JOIN users u ON u.id=se.user_id JOIN desktop_registrations dr ON dr.id=se.desktop_registration_id AND dr.user_id=u.id WHERE se.id=? AND se.user_id=? AND se.desktop_registration_id=? AND se.dpop_key_thumbprint=? AND dr.key_thumbprint=? AND dr.revoked_at IS NULL AND se.archived_at IS NULL AND se.revoked_at IS NULL AND se.expires_at>clock_timestamp() AND se.idle_expires_at>clock_timestamp() AND u.archived_at IS NULL AND u.disabled_at IS NULL FOR SHARE OF se,u,dr`, a.SessionID.String(), a.CandidateUserID.String(), a.DesktopRegistrationID.String(), a.DPoPKeyThumbprint, a.DPoPKeyThumbprint); err != nil {
-		return owner, translateError("native_delivery", access.StreamID, err)
-	}
-	var retired bool
-	if err := tx.Get(ctx, &retired, `SELECT security_retired_at IS NOT NULL FROM exam_attempt_delivery_budgets WHERE exam_attempt_id=?`, a.AttemptID.String()); err != nil {
-		return owner, err
-	}
-	if retired {
-		return owner, model.ErrDeliveryExpired
-	}
-	var ignored int64
-	if err := tx.Get(ctx, &ignored, `SELECT control_metadata_bytes FROM exam_attempt_delivery_budgets WHERE exam_attempt_id=? FOR UPDATE`, a.AttemptID.String()); err != nil {
+	if err := lockNativeDeliveryAccess(ctx, tx, access); err != nil {
 		return owner, err
 	}
 	err := tx.Get(ctx, &owner, `SELECT o.participation_id,o.binding_canonical,o.allocated_through_sequence,o.terminal_missing_through_sequence,o.summary_only,o.stop_reason,b.native_stop_reason AS attempt_stop_reason,b.native_summary_only AS attempt_summary_only,o.closure_canonical,o.declaration_revision,o.summary_canonical,o.summary_received_at,o.summary_final FROM exam_attempt_security_owners o JOIN exam_attempt_delivery_budgets b ON b.exam_attempt_id=o.exam_attempt_id JOIN exam_attempt_participations p ON p.id=o.participation_id WHERE o.exam_attempt_id=? AND o.delivery_stream_id=? AND o.registration_id=? AND o.key_thumbprint=? FOR UPDATE OF o,p`, a.AttemptID.String(), access.StreamID, a.DesktopRegistrationID.String(), a.DPoPKeyThumbprint)
@@ -120,7 +98,7 @@ func (s *SQLExamAttemptStore) nativeDeliveryOwner(ctx context.Context, tx *sqlxT
 	}
 	access.ParticipationID = binding.Security.ParticipationID
 	access.Generation = binding.Security.Generation
-	if err := tx.Get(ctx, &owner.Now, `SELECT clock_timestamp()`); err != nil {
+	if err = tx.Get(ctx, &owner.Now, `SELECT clock_timestamp()`); err != nil {
 		return owner, err
 	}
 	owner.Now = owner.Now.UTC().Truncate(time.Millisecond)
@@ -130,34 +108,7 @@ func (s *SQLExamAttemptStore) nativeDeliveryOwner(ctx context.Context, tx *sqlxT
 		}
 	}
 	if owner.Closure.ClosedAt == nil {
-		// Expiry is authoritative even when its asynchronous lifecycle worker has
-		// not run. An ended owner's first boundary must never move to read time.
-		var p struct {
-			State     string         `db:"state"`
-			EndReason sql.NullString `db:"end_reason"`
-			EndedAt   sql.NullTime   `db:"ended_at"`
-			Lease     time.Time      `db:"lease_expires_at"`
-		}
-		if err := tx.Get(ctx, &p, `SELECT state,end_reason,ended_at,lease_expires_at FROM exam_attempt_participations WHERE id=?`, access.ParticipationID.String()); err != nil {
-			return owner, err
-		}
-		if p.EndedAt.Valid || !owner.Now.Before(p.Lease) {
-			at := p.Lease
-			reason := model.DeliveryClosedParticipation
-			if p.EndedAt.Valid && p.EndedAt.Time.Before(at) {
-				at = p.EndedAt.Time
-				reason = nativeParticipationCloseReason(model.AttemptParticipationEndReason(p.EndReason.String))
-			}
-			if persist {
-				if err := closeNativeDelivery(ctx, tx, access.ParticipationID, reason, at); err != nil {
-					return owner, err
-				}
-			}
-			owner.Closure, err = owner.Closure.Close(true, reason, owner.Allocated, at.UTC().Truncate(time.Millisecond), nil)
-			if err != nil {
-				return owner, err
-			}
-		} else if _, err := s.lockCandidateGuard(ctx, tx, a); err != nil {
+		if err = s.closeEndedNativeDelivery(ctx, tx, &owner, access, persist); err != nil {
 			return owner, err
 		}
 	}
@@ -179,6 +130,72 @@ func (s *SQLExamAttemptStore) nativeDeliveryOwner(ctx context.Context, tx *sqlxT
 		}
 	}
 	return owner, nil
+}
+
+// lockNativeDeliveryAccess validates the access and locks the Sitting,
+// Attempt, Session and delivery budget, refusing a retired Attempt.
+func lockNativeDeliveryAccess(ctx context.Context, tx *sqlxTxWrapper, access store.NativeDeliveryAccess) error {
+	a := access.Access
+	if !a.AttemptID.IsValid() || !a.CandidateUserID.IsValid() || !a.SessionID.IsValid() || !a.DesktopRegistrationID.IsValid() || !model.IsValidDPoPKeyThumbprint(a.DPoPKeyThumbprint) || !model.IsValidAgreementID(access.StreamID) || access.ParticipationID != "" && !access.ParticipationID.IsValid() || access.Generation < 0 {
+		return store.NewErrInvalidInput("native_delivery", "access", nil)
+	}
+	var attemptID string
+	if err := tx.Get(ctx, &attemptID, `SELECT sit.id FROM exam_sittings sit JOIN exam_attempts a ON a.exam_sitting_id=sit.id WHERE a.id=? AND a.candidate_user_id=? FOR UPDATE OF sit`, a.AttemptID.String(), a.CandidateUserID.String()); err != nil {
+		return translateError("native_delivery", access.StreamID, err)
+	}
+	if err := tx.Get(ctx, &attemptID, `SELECT id FROM exam_attempts WHERE id=? FOR UPDATE`, a.AttemptID.String()); err != nil {
+		return err
+	}
+	var sessionID string
+	if err := tx.Get(ctx, &sessionID, `SELECT se.id FROM sessions se JOIN users u ON u.id=se.user_id JOIN desktop_registrations dr ON dr.id=se.desktop_registration_id AND dr.user_id=u.id WHERE se.id=? AND se.user_id=? AND se.desktop_registration_id=? AND se.dpop_key_thumbprint=? AND dr.key_thumbprint=? AND dr.revoked_at IS NULL AND se.archived_at IS NULL AND se.revoked_at IS NULL AND se.expires_at>clock_timestamp() AND se.idle_expires_at>clock_timestamp() AND u.archived_at IS NULL AND u.disabled_at IS NULL FOR SHARE OF se,u,dr`, a.SessionID.String(), a.CandidateUserID.String(), a.DesktopRegistrationID.String(), a.DPoPKeyThumbprint, a.DPoPKeyThumbprint); err != nil {
+		return translateError("native_delivery", access.StreamID, err)
+	}
+	var retired bool
+	if err := tx.Get(ctx, &retired, `SELECT security_retired_at IS NOT NULL FROM exam_attempt_delivery_budgets WHERE exam_attempt_id=?`, a.AttemptID.String()); err != nil {
+		return err
+	}
+	if retired {
+		return model.ErrDeliveryExpired
+	}
+	var ignored int64
+	if err := tx.Get(ctx, &ignored, `SELECT control_metadata_bytes FROM exam_attempt_delivery_budgets WHERE exam_attempt_id=? FOR UPDATE`, a.AttemptID.String()); err != nil {
+		return err
+	}
+	return nil
+}
+
+// closeEndedNativeDelivery closes an open owner whose Participation ended or
+// whose lease expired, or otherwise locks the Candidate guard.
+func (s *SQLExamAttemptStore) closeEndedNativeDelivery(ctx context.Context, tx *sqlxTxWrapper, owner *nativeDeliveryOwner, access store.NativeDeliveryAccess, persist bool) error {
+	// Expiry is authoritative even when its asynchronous lifecycle worker has
+	// not run. An ended owner's first boundary must never move to read time.
+	var p struct {
+		State     string         `db:"state"`
+		EndReason sql.NullString `db:"end_reason"`
+		EndedAt   sql.NullTime   `db:"ended_at"`
+		Lease     time.Time      `db:"lease_expires_at"`
+	}
+	if err := tx.Get(ctx, &p, `SELECT state,end_reason,ended_at,lease_expires_at FROM exam_attempt_participations WHERE id=?`, access.ParticipationID.String()); err != nil {
+		return err
+	}
+	if p.EndedAt.Valid || !owner.Now.Before(p.Lease) {
+		at := p.Lease
+		reason := model.DeliveryClosedParticipation
+		if p.EndedAt.Valid && p.EndedAt.Time.Before(at) {
+			at = p.EndedAt.Time
+			reason = nativeParticipationCloseReason(model.AttemptParticipationEndReason(p.EndReason.String))
+		}
+		if persist {
+			if err := closeNativeDelivery(ctx, tx, access.ParticipationID, reason, at); err != nil {
+				return err
+			}
+		}
+		closure, err := owner.Closure.Close(true, reason, owner.Allocated, at.UTC().Truncate(time.Millisecond), nil)
+		owner.Closure = closure
+		return err
+	}
+	_, err := s.lockCandidateGuard(ctx, tx, access.Access)
+	return err
 }
 
 func nativeParticipationCloseReason(reason model.AttemptParticipationEndReason) model.DeliveryCloseReason {
@@ -430,169 +447,15 @@ func (s *SQLExamAttemptStore) declareNativeDelivery(ctx context.Context, access 
 	} else {
 		declarationID = record.Final.DeclarationID
 	}
+	request := nativeDeclarationRequest{access: access, auditID: auditID, auditAt: auditAt, declarationID: declarationID, record: record}
 	result, err := runIdempotentMutation(ctx, s.SQLStore, "declare native delivery", idempotentMutation[*nativeDeclarationOutcome]{command: command, auditEventID: auditID,
 		execute: func(ctx context.Context, tx *sqlxTxWrapper) (*nativeDeclarationOutcome, error) {
-			owner, err := s.lockNativeDelivery(ctx, tx, access)
-			if err != nil {
-				return nil, err
-			}
-			if owner.Closure.UploadExpiresAt != nil && !owner.Now.Before(*owner.Closure.UploadExpiresAt) {
-				return nil, model.ErrDeliveryExpired
-			}
-			prior, err := nativeDeclarationReplay(ctx, tx, owner, declarationID, record.RequestDigest)
-			if err != nil {
-				return nil, err
-			}
-			if prior != nil {
-				if prior.Kind != record.Kind {
-					return nil, nativeDeliveryConflict()
-				}
-				status, err := nativeDeliveryStatus(ctx, tx, owner, access.StreamID)
-				if err != nil {
-					return nil, err
-				}
-				if err := completeNativeDeliveryAudit(ctx, tx, auditID, auditAt, access.StreamID, true); err != nil {
-					return nil, err
-				}
-				return &nativeDeclarationOutcome{Receipt: prior.Receipt, Status: status}, nil
-			}
-			received, gaps, err := nativeDeliveryRanges(ctx, tx, owner)
-			if err != nil {
-				return nil, err
-			}
-			progress, err := model.ResolveDeliveryProgress(owner.Allocated, received, gaps, owner.TerminalThrough)
-			if err != nil {
-				return nil, invalidPersistedState("delivery", "progress", err)
-			}
-			newAllocated := owner.Allocated
-			if record.Gaps != nil {
-				if err := model.ValidateDeliveryGapPlacement(true, progress, owner.Allocated, owner.DeclarationRevision, owner.Closure, owner.SummaryOnly || owner.AttemptSummaryOnly, *record.Gaps, received, gaps, owner.Now); err != nil {
-					return nil, err
-				}
-				newAllocated = max(newAllocated, record.Gaps.AllocatedThroughSequence)
-			} else {
-				closure, delta, err := owner.Closure.DeclareFinal(true, owner.DeclarationRevision, owner.Allocated, owner.SummaryOnly || owner.AttemptSummaryOnly, *record.Final, owner.Now)
-				if err != nil {
-					return nil, err
-				}
-				owner.Closure = closure
-				newAllocated += delta
-			}
-			var budget struct {
-				Metadata  int64 `db:"control_metadata_bytes"`
-				Positions int64 `db:"native_allocated_positions"`
-				Intervals int64 `db:"explicit_missing_intervals"`
-			}
-			if err := tx.Get(ctx, &budget, `SELECT control_metadata_bytes,native_allocated_positions,explicit_missing_intervals FROM exam_attempt_delivery_budgets WHERE exam_attempt_id=?`, access.Access.AttemptID.String()); err != nil {
-				return nil, err
-			}
-			delta := newAllocated - owner.Allocated
-
-			refusal := ""
-			if delta > model.NativeParticipationPositionLimit-owner.Allocated || delta > model.NativeAttemptPositionLimit-budget.Positions {
-				if err := latchNativeDelivery(ctx, tx, access.Access.AttemptID, owner.ParticipationID, model.DeliveryStopPositions, delta > model.NativeAttemptPositionLimit-budget.Positions); err != nil {
-					return nil, err
-				}
-				refusal = "sequence_limit"
-			} else if record.Gaps != nil && int64(len(record.Gaps.Ranges)) > model.DeliveryMissingIntervalLimit-budget.Intervals {
-				if err := latchDeliveryMetadata(ctx, tx, access.Access.AttemptID); err != nil {
-					return nil, err
-				}
-				refusal = "detail_budget_exhausted"
-			}
-			if refusal != "" {
-				if err := completeNativeDeliveryAudit(ctx, tx, auditID, auditAt, access.StreamID, false); err != nil {
-					return nil, err
-				}
-				return &nativeDeclarationOutcome{Refusal: refusal}, nil
-			}
-			owner.Allocated = newAllocated
-			owner.DeclarationRevision++
-			if record.Gaps != nil {
-				// A declaration may join adjacent earlier ranges. Resolve the new
-				// settled watermark after its durable insertion below.
-				budget.Intervals += int64(len(record.Gaps.Ranges))
-			}
-			record.Receipt = model.DeliveryGapReceipt{DeclarationID: declarationID, RequestDigest: record.RequestDigest, DeclarationRevision: owner.DeclarationRevision}
-			prospectiveGaps := gaps
-			if record.Gaps != nil {
-				prospectiveGaps = mergeNativeDeliveryRanges(append(slices.Clone(gaps), record.Gaps.Ranges...))
-			}
-			prospective, err := model.ResolveDeliveryProgress(owner.Allocated, received, prospectiveGaps, owner.TerminalThrough)
-			if err != nil {
-				return nil, err
-			}
-			record.Receipt.SettledThroughSequence = prospective.SettledThrough
-
-			encoded, err := canonicalPreflightValue(record)
-			if err != nil {
-				return nil, err
-			}
-			if record.Gaps != nil {
-				next, err := model.ReserveDeliveryMetadata(budget.Metadata, int64(len(encoded)))
-				if err != nil {
-					var capacity *model.DeliveryMetadataCapacity
-					if !errors.As(err, &capacity) {
-						return nil, err
-					}
-					if err := latchDeliveryMetadata(ctx, tx, access.Access.AttemptID); err != nil {
-						return nil, err
-					}
-					if err := completeNativeDeliveryAudit(ctx, tx, auditID, auditAt, access.StreamID, false); err != nil {
-						return nil, err
-					}
-					return &nativeDeclarationOutcome{Capacity: capacity}, nil
-				}
-				budget.Metadata = next
-			}
-			if _, err := tx.Exec(ctx, `INSERT INTO exam_native_delivery_declarations(participation_id,declaration_id,kind,canonical) VALUES(?,?,?,?)`, owner.ParticipationID, declarationID, record.Kind, encoded); err != nil {
-				return nil, err
-			}
-			status, err := nativeDeliveryStatus(ctx, tx, owner, access.StreamID)
-			if err != nil {
-				return nil, err
-			}
-			closure, err := canonicalPreflightValue(owner.Closure)
-			if err != nil {
-				return nil, err
-			}
-			if _, err := tx.Exec(ctx, `UPDATE exam_attempt_security_owners SET allocated_through_sequence=?,declaration_revision=?,closure_canonical=? WHERE participation_id=?`, owner.Allocated, owner.DeclarationRevision, closure, owner.ParticipationID); err != nil {
-				return nil, err
-			}
-			if _, err := tx.Exec(ctx, `UPDATE exam_attempt_delivery_budgets SET control_metadata_bytes=?,native_allocated_positions=native_allocated_positions+?,explicit_missing_intervals=? WHERE exam_attempt_id=?`, budget.Metadata, delta, budget.Intervals, access.Access.AttemptID.String()); err != nil {
-				return nil, err
-			}
-			if err := completeNativeDeliveryAudit(ctx, tx, auditID, auditAt, access.StreamID, false); err != nil {
-				return nil, err
-			}
-			return &nativeDeclarationOutcome{Receipt: record.Receipt, Status: status}, nil
+			return s.executeNativeDeclaration(ctx, tx, request)
 		},
 		encode: func(value *nativeDeclarationOutcome) ([]byte, error) { return encodeOutcome(value) },
-		decode: func(raw []byte) (*nativeDeclarationOutcome, error) {
-			var result nativeDeclarationOutcome
-			if err := decodeOutcome(raw, &result); err != nil {
-				return nil, err
-			}
-			if err := validateDeliveryDeclarationOutcome(result.Refusal, result.Receipt, result.Capacity); err != nil {
-				return nil, err
-			}
-			return &result, nil
-		},
+		decode: decodeNativeDeclarationOutcome,
 		hydrateReplay: func(ctx context.Context, tx *sqlxTxWrapper, value *nativeDeclarationOutcome) (*nativeDeclarationOutcome, error) {
-			owner, err := s.lockNativeDelivery(ctx, tx, access)
-			if err != nil {
-				return nil, err
-			}
-			if owner.Closure.UploadExpiresAt != nil && !owner.Now.Before(*owner.Closure.UploadExpiresAt) {
-				return nil, model.ErrDeliveryExpired
-			}
-			if value.Refusal == "" && value.Capacity == nil && (value.Receipt.DeclarationID != declarationID || value.Receipt.RequestDigest != record.RequestDigest || value.Receipt.SettledThroughSequence > owner.Allocated || value.Receipt.DeclarationRevision > owner.DeclarationRevision) {
-				return nil, invalidPersistedState("delivery_declaration", "receipt", model.ErrDeliveryInvalid)
-			}
-			if value.Capacity == nil {
-				value.Status, err = nativeDeliveryStatus(ctx, tx, owner, access.StreamID)
-			}
-			return value, err
+			return s.hydrateNativeDeclaration(ctx, tx, request, value)
 		},
 		completeReplay: func(ctx context.Context, tx *sqlxTxWrapper, value *nativeDeclarationOutcome, original string) error {
 			return completeNativeDeliveryAudit(ctx, tx, auditID, auditAt, access.StreamID, true)
@@ -602,6 +465,218 @@ func (s *SQLExamAttemptStore) declareNativeDelivery(ctx context.Context, access 
 		return nil, err
 	}
 	return result.Value, nil
+}
+
+// nativeDeclarationRequest is one native delivery declaration with the access
+// and audit event it runs under.
+type nativeDeclarationRequest struct {
+	access        store.NativeDeliveryAccess
+	auditID       model.AuditEventID
+	auditAt       time.Time
+	declarationID string
+	record        deliveryDeclarationRecord
+}
+
+// nativeDeclarationBudget is the Attempt budget a native declaration charges.
+type nativeDeclarationBudget struct {
+	Metadata  int64 `db:"control_metadata_bytes"`
+	Positions int64 `db:"native_allocated_positions"`
+	Intervals int64 `db:"explicit_missing_intervals"`
+}
+
+// decodeNativeDeclarationOutcome decodes and validates a persisted native
+// declaration outcome.
+func decodeNativeDeclarationOutcome(raw []byte) (*nativeDeclarationOutcome, error) {
+	var result nativeDeclarationOutcome
+	if err := decodeOutcome(raw, &result); err != nil {
+		return nil, err
+	}
+	if err := validateDeliveryDeclarationOutcome(result.Refusal, result.Receipt, result.Capacity); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+// hydrateNativeDeclaration checks a replayed declaration outcome against the
+// locked owner and attaches the stream's current status.
+func (s *SQLExamAttemptStore) hydrateNativeDeclaration(ctx context.Context, tx *sqlxTxWrapper, request nativeDeclarationRequest, value *nativeDeclarationOutcome) (*nativeDeclarationOutcome, error) {
+	owner, err := s.lockNativeDelivery(ctx, tx, request.access)
+	if err != nil {
+		return nil, err
+	}
+	if owner.Closure.UploadExpiresAt != nil && !owner.Now.Before(*owner.Closure.UploadExpiresAt) {
+		return nil, model.ErrDeliveryExpired
+	}
+	if value.Refusal == "" && value.Capacity == nil && (value.Receipt.DeclarationID != request.declarationID || value.Receipt.RequestDigest != request.record.RequestDigest || value.Receipt.SettledThroughSequence > owner.Allocated || value.Receipt.DeclarationRevision > owner.DeclarationRevision) {
+		return nil, invalidPersistedState("delivery_declaration", "receipt", model.ErrDeliveryInvalid)
+	}
+	if value.Capacity == nil {
+		value.Status, err = nativeDeliveryStatus(ctx, tx, owner, request.access.StreamID)
+	}
+	return value, err
+}
+
+// executeNativeDeclaration performs a first native declaration inside the
+// idempotent mutation's transaction.
+func (s *SQLExamAttemptStore) executeNativeDeclaration(ctx context.Context, tx *sqlxTxWrapper, request nativeDeclarationRequest) (*nativeDeclarationOutcome, error) {
+	access, record := request.access, request.record
+	owner, err := s.lockNativeDelivery(ctx, tx, access)
+	if err != nil {
+		return nil, err
+	}
+	if owner.Closure.UploadExpiresAt != nil && !owner.Now.Before(*owner.Closure.UploadExpiresAt) {
+		return nil, model.ErrDeliveryExpired
+	}
+	prior, err := nativeDeclarationReplay(ctx, tx, owner, request.declarationID, record.RequestDigest)
+	if err != nil {
+		return nil, err
+	}
+	if prior != nil {
+		if prior.Kind != record.Kind {
+			return nil, nativeDeliveryConflict()
+		}
+		status, statusErr := nativeDeliveryStatus(ctx, tx, owner, access.StreamID)
+		if statusErr != nil {
+			return nil, statusErr
+		}
+		if err = completeNativeDeliveryAudit(ctx, tx, request.auditID, request.auditAt, access.StreamID, true); err != nil {
+			return nil, err
+		}
+		return &nativeDeclarationOutcome{Receipt: prior.Receipt, Status: status}, nil
+	}
+	received, gaps, err := nativeDeliveryRanges(ctx, tx, owner)
+	if err != nil {
+		return nil, err
+	}
+	progress, err := model.ResolveDeliveryProgress(owner.Allocated, received, gaps, owner.TerminalThrough)
+	if err != nil {
+		return nil, invalidPersistedState("delivery", "progress", err)
+	}
+	newAllocated, err := placeNativeDeclaration(&owner, record, progress, received, gaps)
+	if err != nil {
+		return nil, err
+	}
+	var budget nativeDeclarationBudget
+	if err = tx.Get(ctx, &budget, `SELECT control_metadata_bytes,native_allocated_positions,explicit_missing_intervals FROM exam_attempt_delivery_budgets WHERE exam_attempt_id=?`, access.Access.AttemptID.String()); err != nil {
+		return nil, err
+	}
+	delta := newAllocated - owner.Allocated
+
+	refusal, err := latchNativeDeclarationBudget(ctx, tx, access, owner, record, budget, delta)
+	if err != nil {
+		return nil, err
+	}
+	if refusal != "" {
+		if err = completeNativeDeliveryAudit(ctx, tx, request.auditID, request.auditAt, access.StreamID, false); err != nil {
+			return nil, err
+		}
+		return &nativeDeclarationOutcome{Refusal: refusal}, nil
+	}
+	return storeNativeDeclaration(ctx, tx, request, owner, budget, received, gaps, newAllocated, delta)
+}
+
+// placeNativeDeclaration validates a gap declaration's placement or applies a
+// final declaration to the owner's closure, returning the new allocation.
+func placeNativeDeclaration(owner *nativeDeliveryOwner, record deliveryDeclarationRecord, progress model.DeliveryProgress, received, gaps []model.SequenceRange) (int64, error) {
+	newAllocated := owner.Allocated
+	if record.Gaps != nil {
+		if err := model.ValidateDeliveryGapPlacement(true, progress, owner.Allocated, owner.DeclarationRevision, owner.Closure, owner.SummaryOnly || owner.AttemptSummaryOnly, *record.Gaps, received, gaps, owner.Now); err != nil {
+			return 0, err
+		}
+		newAllocated = max(newAllocated, record.Gaps.AllocatedThroughSequence)
+	} else {
+		closure, delta, err := owner.Closure.DeclareFinal(true, owner.DeclarationRevision, owner.Allocated, owner.SummaryOnly || owner.AttemptSummaryOnly, *record.Final, owner.Now)
+		if err != nil {
+			return 0, err
+		}
+		owner.Closure = closure
+		newAllocated += delta
+	}
+	return newAllocated, nil
+}
+
+// latchNativeDeclarationBudget latches the position or interval budget a
+// declaration would exceed and returns its refusal code.
+func latchNativeDeclarationBudget(ctx context.Context, tx *sqlxTxWrapper, access store.NativeDeliveryAccess, owner nativeDeliveryOwner, record deliveryDeclarationRecord, budget nativeDeclarationBudget, delta int64) (string, error) {
+	refusal := ""
+	if delta > model.NativeParticipationPositionLimit-owner.Allocated || delta > model.NativeAttemptPositionLimit-budget.Positions {
+		if err := latchNativeDelivery(ctx, tx, access.Access.AttemptID, owner.ParticipationID, model.DeliveryStopPositions, delta > model.NativeAttemptPositionLimit-budget.Positions); err != nil {
+			return "", err
+		}
+		refusal = "sequence_limit"
+	} else if record.Gaps != nil && int64(len(record.Gaps.Ranges)) > model.DeliveryMissingIntervalLimit-budget.Intervals {
+		if err := latchDeliveryMetadata(ctx, tx, access.Access.AttemptID); err != nil {
+			return "", err
+		}
+		refusal = "detail_budget_exhausted"
+	}
+	return refusal, nil
+}
+
+// storeNativeDeclaration records an admitted declaration, reserving its
+// metadata, and writes the owner and budget allocation it declares.
+func storeNativeDeclaration(ctx context.Context, tx *sqlxTxWrapper, request nativeDeclarationRequest, owner nativeDeliveryOwner, budget nativeDeclarationBudget, received, gaps []model.SequenceRange, newAllocated, delta int64) (*nativeDeclarationOutcome, error) {
+	access, record := request.access, request.record
+	owner.Allocated = newAllocated
+	owner.DeclarationRevision++
+	if record.Gaps != nil {
+		// A declaration may join adjacent earlier ranges. Resolve the new
+		// settled watermark after its durable insertion below.
+		budget.Intervals += int64(len(record.Gaps.Ranges))
+	}
+	record.Receipt = model.DeliveryGapReceipt{DeclarationID: request.declarationID, RequestDigest: record.RequestDigest, DeclarationRevision: owner.DeclarationRevision}
+	prospectiveGaps := gaps
+	if record.Gaps != nil {
+		prospectiveGaps = mergeNativeDeliveryRanges(append(slices.Clone(gaps), record.Gaps.Ranges...))
+	}
+	prospective, err := model.ResolveDeliveryProgress(owner.Allocated, received, prospectiveGaps, owner.TerminalThrough)
+	if err != nil {
+		return nil, err
+	}
+	record.Receipt.SettledThroughSequence = prospective.SettledThrough
+
+	encoded, err := canonicalPreflightValue(record)
+	if err != nil {
+		return nil, err
+	}
+	if record.Gaps != nil {
+		next, reservationErr := model.ReserveDeliveryMetadata(budget.Metadata, int64(len(encoded)))
+		if reservationErr != nil {
+			var capacity *model.DeliveryMetadataCapacity
+			if !errors.As(reservationErr, &capacity) {
+				return nil, reservationErr
+			}
+			if err = latchDeliveryMetadata(ctx, tx, access.Access.AttemptID); err != nil {
+				return nil, err
+			}
+			if err = completeNativeDeliveryAudit(ctx, tx, request.auditID, request.auditAt, access.StreamID, false); err != nil {
+				return nil, err
+			}
+			return &nativeDeclarationOutcome{Capacity: capacity}, nil
+		}
+		budget.Metadata = next
+	}
+	if _, err = tx.Exec(ctx, `INSERT INTO exam_native_delivery_declarations(participation_id,declaration_id,kind,canonical) VALUES(?,?,?,?)`, owner.ParticipationID, request.declarationID, record.Kind, encoded); err != nil {
+		return nil, err
+	}
+	status, err := nativeDeliveryStatus(ctx, tx, owner, access.StreamID)
+	if err != nil {
+		return nil, err
+	}
+	closure, err := canonicalPreflightValue(owner.Closure)
+	if err != nil {
+		return nil, err
+	}
+	if _, err = tx.Exec(ctx, `UPDATE exam_attempt_security_owners SET allocated_through_sequence=?,declaration_revision=?,closure_canonical=? WHERE participation_id=?`, owner.Allocated, owner.DeclarationRevision, closure, owner.ParticipationID); err != nil {
+		return nil, err
+	}
+	if _, err = tx.Exec(ctx, `UPDATE exam_attempt_delivery_budgets SET control_metadata_bytes=?,native_allocated_positions=native_allocated_positions+?,explicit_missing_intervals=? WHERE exam_attempt_id=?`, budget.Metadata, delta, budget.Intervals, access.Access.AttemptID.String()); err != nil {
+		return nil, err
+	}
+	if err = completeNativeDeliveryAudit(ctx, tx, request.auditID, request.auditAt, access.StreamID, false); err != nil {
+		return nil, err
+	}
+	return &nativeDeclarationOutcome{Receipt: record.Receipt, Status: status}, nil
 }
 
 func latchDeliveryMetadata(ctx context.Context, tx *sqlxTxWrapper, attemptID model.ExamAttemptID) error {
