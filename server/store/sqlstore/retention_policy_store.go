@@ -126,78 +126,7 @@ func (s SQLRetentionPolicyStore) Replace(
 				ctx context.Context,
 				tx *sqlxTxWrapper,
 			) (retentionPolicyReplacementOutcome, error) {
-				current, databaseNow, err := lockRetentionAuthority(ctx, tx, input.RetentionMutation, model.ActionRetentionPolicyManage)
-				if err != nil {
-					return retentionPolicyReplacementOutcome{}, err
-				}
-				if current.Revision != input.ExpectedRevision {
-					return retentionPolicyReplacementOutcome{},
-						&store.ErrRetentionPolicyRevisionConflict{CurrentRevision: current.Revision}
-				}
-				candidate := current.Clone()
-				// Bootstrap can carry a host clock slightly ahead of PostgreSQL.
-				// Keep metadata monotonic without extending authorization validity.
-				mutationAt := model.TimeUTC(databaseNow)
-				if mutationAt.Before(current.UpdatedAt) {
-					mutationAt = current.UpdatedAt
-				}
-				if err := candidate.Replace(input.ExpectedRevision, input.Settings, mutationAt); err != nil {
-					return retentionPolicyReplacementOutcome{}, store.NewErrInvalidInput(
-						"retention_policy",
-						"replacement",
-						nil,
-					).Wrap(err)
-				}
-				changed := candidate.Revision != current.Revision
-				if changed {
-					result, updateErr := tx.Exec(ctx, `
-                        UPDATE retention_policies
-                           SET revision=?, submission_retention_days=?, integrity_retention_days=?,browser_activity_retention_days=?,security_operational_retention_days=?,
-                               audit_retention_days=?, export_retention_days=?, deletion_grace_days=?, candidate_notices=?, updated_at=?
-                         WHERE institution_id=? AND revision=?`,
-						candidate.Revision, candidate.SubmissionRetentionDays, candidate.IntegrityRetentionDays, candidate.BrowserActivityRetentionDays, candidate.SecurityOperationalRetentionDays,
-						candidate.AuditRetentionDays, candidate.ExportRetentionDays, candidate.DeletionGraceDays,
-						candidate.CandidateNotices, candidate.UpdatedAt, current.InstitutionID.String(), current.Revision,
-					)
-					if updateErr != nil {
-						return retentionPolicyReplacementOutcome{}, fmt.Errorf(
-							"replace retention policy: %w",
-							translateError(
-								"retention_policy",
-								candidate.InstitutionID.String(),
-								updateErr,
-							),
-						)
-					}
-					if err := requireRetentionPolicyRevisionAffected(result); err != nil {
-						return retentionPolicyReplacementOutcome{}, err
-					}
-					// A new configuration revision cannot inherit deletion approval.
-					if _, err := tx.Exec(ctx, `UPDATE retention_controls SET state='paused',revision=revision+1,
-						changed_by_user_id=?,updated_at=GREATEST(updated_at,?) WHERE institution_id=? AND state='enabled'`,
-						input.Principal.UserID.String(), mutationAt, current.InstitutionID.String()); err != nil {
-						return retentionPolicyReplacementOutcome{}, err
-					}
-					if err := cancelInstitutionRetirements(ctx, tx, current.InstitutionID, mutationAt, "policy_changed"); err != nil {
-						return retentionPolicyReplacementOutcome{}, err
-					}
-					candidate.AutomaticDeletionEnabled = false
-				}
-				outcome := retentionPolicyReplacementOutcome{
-					Policy:  candidate,
-					Changed: changed,
-				}
-				if err := completeRetentionPolicyAudit(
-					ctx,
-					tx,
-					input,
-					outcome,
-					false,
-					"",
-				); err != nil {
-					return retentionPolicyReplacementOutcome{}, err
-				}
-				return outcome, nil
+				return replaceRetentionPolicy(ctx, tx, input)
 			},
 			encode: func(outcome retentionPolicyReplacementOutcome) ([]byte, error) {
 				if outcome.Policy == nil {
@@ -237,6 +166,103 @@ func (s SQLRetentionPolicyStore) Replace(
 		Changed:  mutation.Value.Changed,
 		Replayed: mutation.Replayed,
 	}, nil
+}
+
+// replaceRetentionPolicy locks retention authority, requires the expected
+// revision, applies the replacement, and completes the audit.
+func replaceRetentionPolicy(
+	ctx context.Context,
+	tx *sqlxTxWrapper,
+	input *store.RetentionPolicyReplacement,
+) (retentionPolicyReplacementOutcome, error) {
+	current, databaseNow, err := lockRetentionAuthority(ctx, tx, input.RetentionMutation, model.ActionRetentionPolicyManage)
+	if err != nil {
+		return retentionPolicyReplacementOutcome{}, err
+	}
+	if current.Revision != input.ExpectedRevision {
+		return retentionPolicyReplacementOutcome{},
+			&store.ErrRetentionPolicyRevisionConflict{CurrentRevision: current.Revision}
+	}
+	candidate := current.Clone()
+	// Bootstrap can carry a host clock slightly ahead of PostgreSQL.
+	// Keep metadata monotonic without extending authorization validity.
+	mutationAt := model.TimeUTC(databaseNow)
+	if mutationAt.Before(current.UpdatedAt) {
+		mutationAt = current.UpdatedAt
+	}
+	if err = candidate.Replace(input.ExpectedRevision, input.Settings, mutationAt); err != nil {
+		return retentionPolicyReplacementOutcome{}, store.NewErrInvalidInput(
+			"retention_policy",
+			"replacement",
+			nil,
+		).Wrap(err)
+	}
+	changed := candidate.Revision != current.Revision
+	if changed {
+		if err = recordRetentionPolicyChange(ctx, tx, input, current, candidate, mutationAt); err != nil {
+			return retentionPolicyReplacementOutcome{}, err
+		}
+		candidate.AutomaticDeletionEnabled = false
+	}
+	outcome := retentionPolicyReplacementOutcome{
+		Policy:  candidate,
+		Changed: changed,
+	}
+	if err = completeRetentionPolicyAudit(
+		ctx,
+		tx,
+		input,
+		outcome,
+		false,
+		"",
+	); err != nil {
+		return retentionPolicyReplacementOutcome{}, err
+	}
+	return outcome, nil
+}
+
+// recordRetentionPolicyChange writes the new policy revision, pauses enabled
+// automatic deletion, and cancels pending retirements, since a new
+// configuration revision cannot inherit deletion approval.
+func recordRetentionPolicyChange(
+	ctx context.Context,
+	tx *sqlxTxWrapper,
+	input *store.RetentionPolicyReplacement,
+	current, candidate *model.RetentionPolicy,
+	mutationAt time.Time,
+) error {
+	result, updateErr := tx.Exec(ctx, `
+                        UPDATE retention_policies
+                           SET revision=?, submission_retention_days=?, integrity_retention_days=?,browser_activity_retention_days=?,security_operational_retention_days=?,
+                               audit_retention_days=?, export_retention_days=?, deletion_grace_days=?, candidate_notices=?, updated_at=?
+                         WHERE institution_id=? AND revision=?`,
+		candidate.Revision, candidate.SubmissionRetentionDays, candidate.IntegrityRetentionDays, candidate.BrowserActivityRetentionDays, candidate.SecurityOperationalRetentionDays,
+		candidate.AuditRetentionDays, candidate.ExportRetentionDays, candidate.DeletionGraceDays,
+		candidate.CandidateNotices, candidate.UpdatedAt, current.InstitutionID.String(), current.Revision,
+	)
+	if updateErr != nil {
+		return fmt.Errorf(
+			"replace retention policy: %w",
+			translateError(
+				"retention_policy",
+				candidate.InstitutionID.String(),
+				updateErr,
+			),
+		)
+	}
+	if err := requireRetentionPolicyRevisionAffected(result); err != nil {
+		return err
+	}
+	// A new configuration revision cannot inherit deletion approval.
+	if _, err := tx.Exec(ctx, `UPDATE retention_controls SET state='paused',revision=revision+1,
+		changed_by_user_id=?,updated_at=GREATEST(updated_at,?) WHERE institution_id=? AND state='enabled'`,
+		input.Principal.UserID.String(), mutationAt, current.InstitutionID.String()); err != nil {
+		return err
+	}
+	if err := cancelInstitutionRetirements(ctx, tx, current.InstitutionID, mutationAt, "policy_changed"); err != nil {
+		return err
+	}
+	return nil
 }
 
 func requireRetentionPolicyRevisionAffected(result sql.Result) error {
