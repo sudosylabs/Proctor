@@ -737,6 +737,8 @@ func updateExpiredInvitation(ctx context.Context, tx *sqlxTxWrapper, invitation 
 	return nil
 }
 
+// ResolveOnboardingInvitationNoOp reports whether issuing the candidate would
+// change nothing, returning the equivalent pending Invitation when one exists.
 func (s SQLInvitationStore) ResolveOnboardingInvitationNoOp(ctx context.Context, candidate *model.Invitation) (*model.Invitation, bool, error) {
 	if candidate == nil || candidate.Validate() != nil {
 		return nil, false, store.NewErrInvalidInput("invitation", "onboarding_no_op", nil)
@@ -757,6 +759,8 @@ func (s SQLInvitationStore) ResolveOnboardingInvitationNoOp(ctx context.Context,
 	return result.Invitation, result.NoOp, nil
 }
 
+// IssueStudentClass creates a pending student Class Invitation and queues
+// its delivery.
 func (s SQLInvitationStore) IssueStudentClass(ctx context.Context, input *store.StudentClassInvitationIssue) (*model.Invitation, error) {
 	if err := validateStudentClassInvitationIssue(input); err != nil {
 		return nil, err
@@ -771,6 +775,8 @@ func (s SQLInvitationStore) IssueStudentClass(ctx context.Context, input *store.
 	})
 }
 
+// IssueStudentClassIdempotently performs IssueStudentClass under command
+// idempotency, replaying the recorded outcome of an earlier identical command.
 func (s SQLInvitationStore) IssueStudentClassIdempotently(ctx context.Context, input *store.StudentClassInvitationIssue, command *store.CommandIdempotency) (*store.InvitationCommandResult, error) {
 	if err := validateStudentClassInvitationIssueIdempotently(input, command); err != nil || command == nil {
 		return nil, store.NewErrInvalidInput("invitation", "idempotent_student_issue", err)
@@ -865,6 +871,8 @@ func issueStudentClassInvitation(ctx context.Context, tx *sqlxTxWrapper, input *
 	return invitation, nil
 }
 
+// IssueTeacherAcademicUnit creates a pending teacher Academic Unit Invitation
+// and queues its delivery.
 func (s SQLInvitationStore) IssueTeacherAcademicUnit(ctx context.Context, input *store.TeacherAcademicUnitInvitationIssue) (*model.Invitation, error) {
 	if err := validateTeacherAcademicUnitInvitationIssue(input); err != nil {
 		return nil, err
@@ -879,6 +887,9 @@ func (s SQLInvitationStore) IssueTeacherAcademicUnit(ctx context.Context, input 
 	})
 }
 
+// IssueTeacherAcademicUnitIdempotently performs IssueTeacherAcademicUnit under
+// command idempotency, replaying the recorded outcome of an earlier identical
+// command.
 func (s SQLInvitationStore) IssueTeacherAcademicUnitIdempotently(ctx context.Context, input *store.TeacherAcademicUnitInvitationIssue, command *store.CommandIdempotency) (*store.InvitationCommandResult, error) {
 	if err := validateTeacherAcademicUnitInvitationIssueIdempotently(input, command); err != nil || command == nil {
 		return nil, store.NewErrInvalidInput("invitation", "idempotent_teacher_issue", err)
@@ -977,6 +988,8 @@ func issueTeacherAcademicUnitInvitation(ctx context.Context, tx *sqlxTxWrapper, 
 	return invitation, nil
 }
 
+// IssueScopedRole creates a pending Academic Unit or Institution Role
+// Invitation and queues its delivery.
 func (s SQLInvitationStore) IssueScopedRole(ctx context.Context, input *store.ScopedRoleInvitationIssue) (*model.Invitation, error) {
 	if err := validateScopedRoleInvitationIssue(input); err != nil {
 		return nil, err
@@ -991,6 +1004,8 @@ func (s SQLInvitationStore) IssueScopedRole(ctx context.Context, input *store.Sc
 	})
 }
 
+// IssueScopedRoleIdempotently performs IssueScopedRole under command
+// idempotency, replaying the recorded outcome of an earlier identical command.
 func (s SQLInvitationStore) IssueScopedRoleIdempotently(ctx context.Context, input *store.ScopedRoleInvitationIssue, command *store.CommandIdempotency) (*store.InvitationCommandResult, error) {
 	if err := validateScopedRoleInvitationIssueIdempotently(input, command); err != nil || command == nil {
 		return nil, store.NewErrInvalidInput("invitation", "idempotent_role_issue", err)

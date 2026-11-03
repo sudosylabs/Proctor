@@ -21,6 +21,9 @@ import (
 	"github.com/sudosylabs/proctor/server/store"
 )
 
+// AcceptScopedRole consumes the pending Academic Unit or Institution Role
+// Invitation named by the claim hash for an existing User, granting its Role
+// Binding, or replays an accepted one.
 func (s SQLInvitationStore) AcceptScopedRole(ctx context.Context, input *store.ScopedRoleInvitationAcceptance) (*store.ScopedRoleInvitationAcceptanceResult, error) {
 	if err := validateScopedRoleInvitationAcceptance(input); err != nil {
 		return nil, err

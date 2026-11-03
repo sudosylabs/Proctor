@@ -20,6 +20,7 @@ import (
 	"github.com/sudosylabs/proctor/server/store"
 )
 
+// Get returns the Invitation with the given ID.
 func (s SQLInvitationStore) Get(ctx context.Context, id model.InvitationID) (*model.Invitation, error) {
 	if !id.IsValid() {
 		return nil, store.NewErrInvalidInput("invitation", "id", nil)
@@ -31,6 +32,7 @@ func (s SQLInvitationStore) Get(ctx context.Context, id model.InvitationID) (*mo
 	return row.model()
 }
 
+// GetByClaimHash returns the Invitation whose current claim hash matches.
 func (s SQLInvitationStore) GetByClaimHash(ctx context.Context, claimHash string) (*model.Invitation, error) {
 	if !model.IsValidTokenHash(claimHash) {
 		return nil, store.NewErrInvalidInput("invitation", "claim_hash", nil)
@@ -42,6 +44,8 @@ func (s SQLInvitationStore) GetByClaimHash(ctx context.Context, claimHash string
 	return row.model()
 }
 
+// List returns one page of Invitations within the visibility scope that
+// match the filters, each with its latest delivery summary.
 func (s SQLInvitationStore) List(ctx context.Context, options store.InvitationListOptions) (*store.InvitationPage, error) {
 	if err := validateInvitationListOptions(options); err != nil {
 		return nil, err
@@ -65,6 +69,8 @@ func (s SQLInvitationStore) List(ctx context.Context, options store.InvitationLi
 	return &store.InvitationPage{Items: items, More: more}, nil
 }
 
+// GetForAdministration returns one Invitation with its latest delivery
+// summary, or not found when it lies outside the visibility scope.
 func (s SQLInvitationStore) GetForAdministration(ctx context.Context, id model.InvitationID, visibility store.InvitationVisibilityScope) (*store.InvitationAdministrationRecord, error) {
 	if !id.IsValid() {
 		return nil, store.NewErrInvalidInput("invitation", "id", nil)
@@ -203,6 +209,8 @@ func invitationDeliverySummary(delivery *model.MailDelivery) *store.InvitationDe
 		Deadline: delivery.Deadline, AcceptedAt: delivery.AcceptedAt, PublicFailureCode: delivery.PublicFailureCode}
 }
 
+// Resend rotates a pending Invitation's claim and queues a fresh delivery,
+// suppressing the mail that carried the previous claim.
 func (s SQLInvitationStore) Resend(ctx context.Context, input *store.InvitationResend) (*store.InvitationAdministrationRecord, error) {
 	if err := validateInvitationResend(input); err != nil {
 		return nil, err
@@ -216,6 +224,8 @@ func (s SQLInvitationStore) Resend(ctx context.Context, input *store.InvitationR
 	})
 }
 
+// ResendIdempotently performs Resend under command idempotency, replaying
+// the recorded outcome of an earlier identical command.
 func (s SQLInvitationStore) ResendIdempotently(ctx context.Context, input *store.InvitationResend, command *store.CommandIdempotency) (*store.InvitationAdministrationCommandResult, error) {
 	if err := validateInvitationResend(input); err != nil || command == nil {
 		return nil, store.NewErrInvalidInput("invitation", "idempotent_resend", err)
@@ -286,6 +296,8 @@ func resendInvitation(ctx context.Context, tx *sqlxTxWrapper, input *store.Invit
 	return &store.InvitationAdministrationRecord{Invitation: current, Delivery: invitationDeliverySummary(delivery)}, nil
 }
 
+// Revoke ends a pending Invitation and suppresses its outstanding
+// credential mail.
 func (s SQLInvitationStore) Revoke(ctx context.Context, input *store.InvitationRevocation) (*store.InvitationAdministrationRecord, error) {
 	if input == nil || !input.ID.IsValid() || input.ExpectedRevision < 1 || !input.ActorUserID.IsValid() ||
 		!input.AuditEventID.IsValid() || input.AuditAt.IsZero() {
@@ -296,6 +308,8 @@ func (s SQLInvitationStore) Revoke(ctx context.Context, input *store.InvitationR
 	})
 }
 
+// RevokeIdempotently performs Revoke under command idempotency, replaying
+// the recorded outcome of an earlier identical command.
 func (s SQLInvitationStore) RevokeIdempotently(ctx context.Context, input *store.InvitationRevocation, command *store.CommandIdempotency) (*store.InvitationAdministrationCommandResult, error) {
 	if input == nil || !input.ID.IsValid() || input.ExpectedRevision < 1 || !input.ActorUserID.IsValid() ||
 		!input.AuditEventID.IsValid() || input.AuditAt.IsZero() || command == nil {
@@ -418,6 +432,8 @@ func hydrateInvitationAdministrationOutcome(ctx context.Context, tx *sqlxTxWrapp
 	return result, nil
 }
 
+// Replace supersedes a pending Invitation with a changed one, issuing the
+// replacement and its delivery in the same transaction.
 func (s SQLInvitationStore) Replace(ctx context.Context, input *store.InvitationReplacement) (*store.InvitationAdministrationRecord, error) {
 	if err := validateInvitationReplacement(input); err != nil {
 		return nil, err
@@ -688,6 +704,8 @@ func requireInvitationManagementAuthority(ctx context.Context, tx *sqlxTxWrapper
 	return nil
 }
 
+// Maintain expires up to limit elapsed pending Invitations and purges up to
+// limit terminal ones past retention, reporting whether more work remains.
 func (s SQLInvitationStore) Maintain(ctx context.Context, limit int) (*store.InvitationMaintenanceResult, error) {
 	if limit < 1 || limit > 500 {
 		return nil, store.NewErrInvalidInput("invitation", "maintenance_limit", nil)
