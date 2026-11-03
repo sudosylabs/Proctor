@@ -290,73 +290,22 @@ func (s SQLUserStore) GetByEmail(ctx context.Context, email string) (*model.User
 	}), email)
 }
 
+// List returns a page of unarchived Users ordered by username and ID,
+// restricted to the input visibility and search term.
 func (s SQLUserStore) List(
 	ctx context.Context,
 	options store.UserListOptions,
 ) ([]*model.User, error) {
-	if options.Limit < 1 || options.Limit > 201 ||
-		(options.ID != "" && !options.ID.IsValid()) ||
-		(options.AfterUsername == "") != (options.AfterID == "") ||
-		(options.AfterID != "" && !options.AfterID.IsValid()) ||
-		len(options.Visibility.ClassIDs)+len(options.Visibility.AcademicUnitRootIDs)+
-			len(options.Visibility.ClassMemberAcademicUnitRootIDs) > 256 ||
-		!validVisibilityIDs(options.Visibility.ClassIDs) ||
-		!validVisibilityIDs(options.Visibility.AcademicUnitRootIDs) ||
-		!validVisibilityIDs(options.Visibility.ClassMemberAcademicUnitRootIDs) {
+	if !validUserListOptions(options) {
 		return nil, store.NewErrInvalidInput("user", "list_options", nil)
 	}
 	query := s.usersQuery.Where(sq.Eq{"users.archived_at": nil})
 	if options.ID != "" {
 		query = query.Where(sq.Eq{"users.id": options.ID})
 	}
-	if !options.Visibility.InstitutionWide {
-		if len(options.Visibility.ClassIDs) == 0 && len(options.Visibility.AcademicUnitRootIDs) == 0 &&
-			len(options.Visibility.ClassMemberAcademicUnitRootIDs) == 0 && !options.Visibility.ClassMemberInstitutionWide {
-			query = query.Where("FALSE")
-		} else {
-			if options.Visibility.ActiveAt.IsZero() {
-				return nil, store.NewErrInvalidInput("user", "visibility_active_at", nil)
-			}
-			activeAt := model.TimeUTC(options.Visibility.ActiveAt)
-			query = query.Prefix(`WITH RECURSIVE user_allowed_units AS (
-				SELECT id FROM academic_units WHERE id = ANY(?) AND archived_at IS NULL
-				UNION ALL SELECT child.id FROM academic_units child
-				JOIN user_allowed_units parent ON child.parent_id = parent.id
-				WHERE child.archived_at IS NULL
-			), class_member_allowed_units AS (
-				SELECT id FROM academic_units WHERE id = ANY(?) AND archived_at IS NULL
-				UNION ALL SELECT child.id FROM academic_units child
-				JOIN class_member_allowed_units parent ON child.parent_id = parent.id
-				WHERE child.archived_at IS NULL
-			)`, pq.Array(idStrings(options.Visibility.AcademicUnitRootIDs)), pq.Array(idStrings(options.Visibility.ClassMemberAcademicUnitRootIDs))).Where(`(
-			EXISTS (
-				SELECT 1 FROM academic_unit_members aum
-				WHERE aum.user_id = users.id AND aum.archived_at IS NULL
-				AND aum.start_at <= ? AND (aum.end_at IS NULL OR aum.end_at > ?)
-				AND aum.academic_unit_id IN (SELECT id FROM user_allowed_units)
-			) OR EXISTS (
-				SELECT 1 FROM class_members cm
-				JOIN classes c ON c.id = cm.class_id AND c.archived_at IS NULL
-				JOIN programme_levels pl ON pl.id = c.programme_level_id AND pl.archived_at IS NULL
-				JOIN programmes p ON p.id = pl.programme_id AND p.archived_at IS NULL
-				WHERE cm.user_id = users.id AND cm.archived_at IS NULL
-				AND cm.start_at <= ? AND (cm.end_at IS NULL OR cm.end_at > ?)
-				AND (p.academic_unit_id IN (SELECT id FROM user_allowed_units)
-					OR cm.class_id = ANY(?) OR ?
-					OR p.academic_unit_id IN (SELECT id FROM class_member_allowed_units))
-			) OR EXISTS (
-				SELECT 1 FROM role_bindings rb
-				JOIN roles r ON r.id = rb.role_id AND r.archived_at IS NULL
-				LEFT JOIN classes c ON rb.scope_type = 'class' AND c.id = rb.scope_id AND c.archived_at IS NULL
-				LEFT JOIN programme_levels pl ON pl.id = c.programme_level_id AND pl.archived_at IS NULL
-				LEFT JOIN programmes p ON p.id = pl.programme_id AND p.archived_at IS NULL
-				WHERE rb.user_id = users.id AND rb.archived_at IS NULL
-				AND rb.start_at <= ? AND (rb.end_at IS NULL OR rb.end_at > ?)
-				AND ((rb.scope_type = 'academic_unit' AND rb.scope_id IN (SELECT id FROM user_allowed_units))
-					OR (rb.scope_type = 'class' AND p.academic_unit_id IN (SELECT id FROM user_allowed_units)))
-			))`, activeAt, activeAt, activeAt, activeAt, pq.Array(idStrings(options.Visibility.ClassIDs)),
-				options.Visibility.ClassMemberInstitutionWide, activeAt, activeAt)
-		}
+	query, err := filterUserListVisibility(query, options.Visibility)
+	if err != nil {
+		return nil, err
 	}
 	if !options.IncludeDisabled || !options.Visibility.InstitutionWide {
 		query = query.Where(sq.Eq{"users.disabled_at": nil})
@@ -364,22 +313,7 @@ func (s SQLUserStore) List(
 	if options.MissingDefaultProfilePicture {
 		query = query.Where(sq.Eq{"users.default_profile_picture_file_id": nil})
 	}
-	term := strings.TrimSpace(options.Query)
-	if term != "" {
-		pattern := directorySearchPattern(term)
-		if options.Visibility.InstitutionWide {
-			query = query.Where(`(
-				users.username ILIKE ? ESCAPE '!' OR users.email ILIKE ? ESCAPE '!' OR
-				users.display_name ILIKE ? ESCAPE '!' OR users.first_name ILIKE ? ESCAPE '!' OR
-				users.last_name ILIKE ? ESCAPE '!'
-			)`, pattern, pattern, pattern, pattern, pattern)
-		} else {
-			query = query.Where(`(
-				users.username ILIKE ? ESCAPE '!' OR users.display_name ILIKE ? ESCAPE '!' OR
-				users.first_name ILIKE ? ESCAPE '!' OR users.last_name ILIKE ? ESCAPE '!'
-			)`, pattern, pattern, pattern, pattern)
-		}
-	}
+	query = filterUserListSearch(query, options)
 	if options.AfterUsername != "" {
 		query = query.Where(
 			"(users.username > ? OR (users.username = ? AND users.id > ?))",
@@ -404,6 +338,97 @@ func (s SQLUserStore) List(
 	return users, nil
 }
 
+// validUserListOptions reports whether the list page size, cursor and visibility bounds are acceptable.
+func validUserListOptions(options store.UserListOptions) bool {
+	return !(options.Limit < 1 || options.Limit > 201 ||
+		(options.ID != "" && !options.ID.IsValid()) ||
+		(options.AfterUsername == "") != (options.AfterID == "") ||
+		(options.AfterID != "" && !options.AfterID.IsValid()) ||
+		len(options.Visibility.ClassIDs)+len(options.Visibility.AcademicUnitRootIDs)+
+			len(options.Visibility.ClassMemberAcademicUnitRootIDs) > 256 ||
+		!validVisibilityIDs(options.Visibility.ClassIDs) ||
+		!validVisibilityIDs(options.Visibility.AcademicUnitRootIDs) ||
+		!validVisibilityIDs(options.Visibility.ClassMemberAcademicUnitRootIDs))
+}
+
+// filterUserListVisibility restricts a User listing to the Users visible through a scoped visibility.
+func filterUserListVisibility(query sq.SelectBuilder, visibility store.UserVisibilityScope) (sq.SelectBuilder, error) {
+	if visibility.InstitutionWide {
+		return query, nil
+	}
+	if len(visibility.ClassIDs) == 0 && len(visibility.AcademicUnitRootIDs) == 0 &&
+		len(visibility.ClassMemberAcademicUnitRootIDs) == 0 && !visibility.ClassMemberInstitutionWide {
+		query = query.Where("FALSE")
+	} else {
+		if visibility.ActiveAt.IsZero() {
+			return query, store.NewErrInvalidInput("user", "visibility_active_at", nil)
+		}
+		activeAt := model.TimeUTC(visibility.ActiveAt)
+		query = query.Prefix(`WITH RECURSIVE user_allowed_units AS (
+			SELECT id FROM academic_units WHERE id = ANY(?) AND archived_at IS NULL
+			UNION ALL SELECT child.id FROM academic_units child
+			JOIN user_allowed_units parent ON child.parent_id = parent.id
+			WHERE child.archived_at IS NULL
+		), class_member_allowed_units AS (
+			SELECT id FROM academic_units WHERE id = ANY(?) AND archived_at IS NULL
+			UNION ALL SELECT child.id FROM academic_units child
+			JOIN class_member_allowed_units parent ON child.parent_id = parent.id
+			WHERE child.archived_at IS NULL
+		)`, pq.Array(idStrings(visibility.AcademicUnitRootIDs)), pq.Array(idStrings(visibility.ClassMemberAcademicUnitRootIDs))).Where(`(
+		EXISTS (
+			SELECT 1 FROM academic_unit_members aum
+			WHERE aum.user_id = users.id AND aum.archived_at IS NULL
+			AND aum.start_at <= ? AND (aum.end_at IS NULL OR aum.end_at > ?)
+			AND aum.academic_unit_id IN (SELECT id FROM user_allowed_units)
+		) OR EXISTS (
+			SELECT 1 FROM class_members cm
+			JOIN classes c ON c.id = cm.class_id AND c.archived_at IS NULL
+			JOIN programme_levels pl ON pl.id = c.programme_level_id AND pl.archived_at IS NULL
+			JOIN programmes p ON p.id = pl.programme_id AND p.archived_at IS NULL
+			WHERE cm.user_id = users.id AND cm.archived_at IS NULL
+			AND cm.start_at <= ? AND (cm.end_at IS NULL OR cm.end_at > ?)
+			AND (p.academic_unit_id IN (SELECT id FROM user_allowed_units)
+				OR cm.class_id = ANY(?) OR ?
+				OR p.academic_unit_id IN (SELECT id FROM class_member_allowed_units))
+		) OR EXISTS (
+			SELECT 1 FROM role_bindings rb
+			JOIN roles r ON r.id = rb.role_id AND r.archived_at IS NULL
+			LEFT JOIN classes c ON rb.scope_type = 'class' AND c.id = rb.scope_id AND c.archived_at IS NULL
+			LEFT JOIN programme_levels pl ON pl.id = c.programme_level_id AND pl.archived_at IS NULL
+			LEFT JOIN programmes p ON p.id = pl.programme_id AND p.archived_at IS NULL
+			WHERE rb.user_id = users.id AND rb.archived_at IS NULL
+			AND rb.start_at <= ? AND (rb.end_at IS NULL OR rb.end_at > ?)
+			AND ((rb.scope_type = 'academic_unit' AND rb.scope_id IN (SELECT id FROM user_allowed_units))
+				OR (rb.scope_type = 'class' AND p.academic_unit_id IN (SELECT id FROM user_allowed_units)))
+		))`, activeAt, activeAt, activeAt, activeAt, pq.Array(idStrings(visibility.ClassIDs)),
+			visibility.ClassMemberInstitutionWide, activeAt, activeAt)
+	}
+	return query, nil
+}
+
+// filterUserListSearch restricts a User listing to the trimmed search term, matching email only institution-wide.
+func filterUserListSearch(query sq.SelectBuilder, options store.UserListOptions) sq.SelectBuilder {
+	term := strings.TrimSpace(options.Query)
+	if term != "" {
+		pattern := directorySearchPattern(term)
+		if options.Visibility.InstitutionWide {
+			query = query.Where(`(
+				users.username ILIKE ? ESCAPE '!' OR users.email ILIKE ? ESCAPE '!' OR
+				users.display_name ILIKE ? ESCAPE '!' OR users.first_name ILIKE ? ESCAPE '!' OR
+				users.last_name ILIKE ? ESCAPE '!'
+			)`, pattern, pattern, pattern, pattern, pattern)
+		} else {
+			query = query.Where(`(
+				users.username ILIKE ? ESCAPE '!' OR users.display_name ILIKE ? ESCAPE '!' OR
+				users.first_name ILIKE ? ESCAPE '!' OR users.last_name ILIKE ? ESCAPE '!'
+			)`, pattern, pattern, pattern, pattern)
+		}
+	}
+	return query
+}
+
+// GetCurrentContext returns the active User's identity, available product
+// areas, at most scopeLimit-1 management scopes and any unresolved Attempt.
 func (s SQLUserStore) GetCurrentContext(ctx context.Context, userID model.UserID, scopeLimit int) (*store.CurrentUserContext, error) {
 	if !userID.IsValid() || scopeLimit < 1 || scopeLimit > 51 {
 		return nil, store.NewErrInvalidInput("user", "current_context", nil)
@@ -423,6 +448,21 @@ func (s SQLUserStore) GetCurrentContext(ctx context.Context, userID model.UserID
 		string(model.ActionProgrammeLevelManage), string(model.ActionClassView), string(model.ActionClassManage),
 		string(model.ActionClassMembersView), string(model.ActionClassMembersManage), string(model.ActionAcademicProgressionManage),
 	})
+	result, err := s.currentUserProductAreas(ctx, userID, examManagementActions, administrationActions)
+	if err != nil {
+		return nil, err
+	}
+	if err = s.loadCurrentUserManagementScopes(ctx, result, userID, scopeLimit, examManagementActions, administrationActions); err != nil {
+		return nil, err
+	}
+	if err = s.loadCurrentUserUnresolvedAttempt(ctx, result, userID); err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+// currentUserProductAreas reads the current User's identity and the product areas their access opens.
+func (s SQLUserStore) currentUserProductAreas(ctx context.Context, userID model.UserID, examManagementActions, administrationActions any) (*store.CurrentUserContext, error) {
 	var row struct {
 		UserID             string `db:"user_id"`
 		Username           string `db:"username"`
@@ -491,14 +531,20 @@ func (s SQLUserStore) GetCurrentContext(ctx context.Context, userID model.UserID
 	if row.HasStudentActivity {
 		result.AvailableProductAreas = append(result.AvailableProductAreas, store.CurrentUserProductAreaStudentActivity)
 	}
+	return result, nil
+}
 
+// loadCurrentUserManagementScopes adds the bounded list of institution and Academic Unit scopes the User can navigate to manage.
+func (s SQLUserStore) loadCurrentUserManagementScopes(ctx context.Context, result *store.CurrentUserContext, userID model.UserID, scopeLimit int,
+	examManagementActions, administrationActions any,
+) error {
 	type scopeRow struct {
 		ScopeType   string `db:"scope_type"`
 		ScopeID     string `db:"scope_id"`
 		DisplayName string `db:"display_name"`
 	}
 	rows := []scopeRow{}
-	if err = s.GetMaster().Select(ctx, &rows, `WITH RECURSIVE active_bindings AS (
+	if err := s.GetMaster().Select(ctx, &rows, `WITH RECURSIVE active_bindings AS (
 		SELECT binding.scope_type,binding.scope_id,role.name,role.permissions
 		FROM role_bindings binding JOIN roles role ON role.id=binding.role_id
 		WHERE binding.user_id=? AND binding.archived_at IS NULL AND role.archived_at IS NULL
@@ -535,7 +581,7 @@ func (s SQLUserStore) GetCurrentContext(ctx context.Context, userID model.UserID
 	SELECT scope_type,scope_id,display_name FROM scopes ORDER BY scope_type,display_name,scope_id LIMIT ?`,
 		userID.String(), userID.String(), userID.String(), administrationActions,
 		model.SystemAdministratorRoleName, string(model.ActionExamManageOverride), examManagementActions, scopeLimit); err != nil {
-		return nil, fmt.Errorf("list current User management scopes: %w", err)
+		return fmt.Errorf("list current User management scopes: %w", err)
 	}
 	result.ManagementScopesHasMore = len(rows) == scopeLimit
 	if result.ManagementScopesHasMore {
@@ -545,37 +591,41 @@ func (s SQLUserStore) GetCurrentContext(ctx context.Context, userID model.UserID
 	for _, scope := range rows {
 		scopeType := model.RoleScopeType(scope.ScopeType)
 		if !scopeType.IsValid() || !model.IsValidOpaqueID(scope.ScopeID) || scope.DisplayName == "" {
-			return nil, invalidPersistedState("user", "current_context_scope", errors.New("invalid management scope"))
+			return invalidPersistedState("user", "current_context_scope", errors.New("invalid management scope"))
 		}
 		result.ManagementScopes = append(result.ManagementScopes, store.CurrentUserManagementScope{
 			ScopeType: scopeType, ScopeID: scope.ScopeID, DisplayName: scope.DisplayName,
 		})
 	}
+	return nil
+}
 
+// loadCurrentUserUnresolvedAttempt adds the User's most recently updated unresolved Attempt, when one exists.
+func (s SQLUserStore) loadCurrentUserUnresolvedAttempt(ctx context.Context, result *store.CurrentUserContext, userID model.UserID) error {
 	var attempt struct {
 		AttemptID string `db:"attempt_id"`
 		SittingID string `db:"sitting_id"`
 		State     string `db:"state"`
 	}
-	err = s.GetMaster().Get(ctx, &attempt, `SELECT id AS attempt_id,exam_sitting_id AS sitting_id,state FROM exam_attempts
+	err := s.GetMaster().Get(ctx, &attempt, `SELECT id AS attempt_id,exam_sitting_id AS sitting_id,state FROM exam_attempts
 		WHERE candidate_user_id=? AND state IN ('ready','active','suspended') ORDER BY updated_at DESC,id DESC LIMIT 1`, userID.String())
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return nil, fmt.Errorf("resolve current User unresolved Attempt: %w", err)
+		return fmt.Errorf("resolve current User unresolved Attempt: %w", err)
 	}
 	if err == nil {
 		selector := &store.CurrentUserAttemptSelector{State: model.ExamAttemptState(attempt.State)}
 		if selector.AttemptID, err = model.ParseExamAttemptID(attempt.AttemptID); err != nil {
-			return nil, invalidPersistedState("exam_attempt", "id", err)
+			return invalidPersistedState("exam_attempt", "id", err)
 		}
 		if selector.SittingID, err = model.ParseExamSittingID(attempt.SittingID); err != nil {
-			return nil, invalidPersistedState("exam_attempt", "exam_sitting_id", err)
+			return invalidPersistedState("exam_attempt", "exam_sitting_id", err)
 		}
 		if !selector.State.IsUnresolved() {
-			return nil, invalidPersistedState("exam_attempt", "state", errors.New("invalid unresolved Attempt state"))
+			return invalidPersistedState("exam_attempt", "state", errors.New("invalid unresolved Attempt state"))
 		}
 		result.UnresolvedAttempt = selector
 	}
-	return result, nil
+	return nil
 }
 
 // idStrings converts typed identifiers to the text form bound as SQL array
@@ -628,7 +678,21 @@ func (s SQLUserStore) MatchVisibility(ctx context.Context, userID model.UserID, 
 		ScopeType model.RoleScopeType `db:"scope_type"`
 		ScopeID   string              `db:"scope_id"`
 	}
-	err := s.GetMaster().Get(ctx, &match, `
+	err := s.GetMaster().Get(ctx, &match, userVisibilityMatchQuery, userID, model.TimeUTC(visibility.ActiveAt),
+		pq.Array(idStrings(visibility.AcademicUnitRootIDs)), pq.Array(idStrings(visibility.ClassMemberAcademicUnitRootIDs)),
+		pq.Array(idStrings(visibility.ClassIDs)), visibility.ClassMemberInstitutionWide)
+	if errors.Is(err, sql.ErrNoRows) {
+		return store.UserVisibilityMatch{}, nil
+	}
+	if err != nil {
+		return store.UserVisibilityMatch{}, fmt.Errorf("match user visibility: %w", err)
+	}
+	return store.UserVisibilityMatch{ScopeType: match.ScopeType, ScopeID: match.ScopeID}, nil
+}
+
+// userVisibilityMatchQuery selects the highest-priority scope through which an
+// active User is visible at the bound instant.
+const userVisibilityMatchQuery = `
 		WITH RECURSIVE input AS (
 			SELECT ?::varchar AS user_id, ?::timestamptz AS active_at
 		), user_allowed_units(root_id, id) AS (
@@ -716,17 +780,7 @@ func (s SQLUserStore) MatchVisibility(ctx context.Context, userID model.UserID, 
 		FROM matches CROSS JOIN input i
 		JOIN users u ON u.id = i.user_id AND u.archived_at IS NULL AND u.disabled_at IS NULL
 		ORDER BY matches.priority, matches.scope_id
-		LIMIT 1`, userID, model.TimeUTC(visibility.ActiveAt),
-		pq.Array(idStrings(visibility.AcademicUnitRootIDs)), pq.Array(idStrings(visibility.ClassMemberAcademicUnitRootIDs)),
-		pq.Array(idStrings(visibility.ClassIDs)), visibility.ClassMemberInstitutionWide)
-	if errors.Is(err, sql.ErrNoRows) {
-		return store.UserVisibilityMatch{}, nil
-	}
-	if err != nil {
-		return store.UserVisibilityMatch{}, fmt.Errorf("match user visibility: %w", err)
-	}
-	return store.UserVisibilityMatch{ScopeType: match.ScopeType, ScopeID: match.ScopeID}, nil
-}
+		LIMIT 1`
 
 func (s SQLUserStore) get(
 	ctx context.Context,
@@ -862,169 +916,12 @@ func (s SQLUserStore) SetDisabled(
 	ctx context.Context,
 	input *store.UserDisabledStateChange,
 ) (*store.UserDisabledStateResult, error) {
-	if input == nil || !input.ID.IsValid() || input.ExpectedRevision <= 0 ||
-		input.ChangedAt.IsZero() || !input.AuditEventID.IsValid() || input.AuditAt.IsZero() ||
-		!validAccessDeploymentCapabilities(input.Capabilities) {
-		return nil, store.NewErrInvalidInput("user", "disabled_state_change", nil)
-	}
-	revocationReason := model.SessionRevocationReason(model.SanitizeUnicode(string(input.RevocationReason)))
-	if input.Disabled && !revocationReason.IsValid() {
-		return nil, store.NewErrInvalidInput("session", "revocation_reason", nil)
-	}
-	templateKey := model.MailTemplateIdentityAccountEnabled
-	if input.Disabled {
-		templateKey = model.MailTemplateIdentityAccountDisabled
-	}
-	mailUnprepared := input.Occurrence == nil && input.Delivery == nil && input.DeliveryJob == nil
-	if mailUnprepared && input.Command == nil {
-		return nil, store.NewErrInvalidInput("user", "disabled_state_notice", nil)
-	}
-	payloadKeyID := ""
-	if !mailUnprepared {
-		var err error
-		payloadKeyID, err = validateSecurityNoticeMail(model.UserID(input.ID), input.Occurrence, input.Delivery, input.DeliveryJob, templateKey, input.ChangedAt)
-		if err != nil {
-			return nil, err
-		}
+	plan, err := planUserDisabledStateChange(input)
+	if err != nil {
+		return nil, err
 	}
 	execute := func(ctx context.Context, tx *sqlxTxWrapper) (*userDisabledMutationResult, error) {
-		if payloadKeyID != "" {
-			if err := requireMailPayloadPrimary(ctx, tx, payloadKeyID); err != nil {
-				return nil, err
-			}
-		}
-		// Security-sensitive account disablement takes the installation-wide
-		// authentication-path fence before any User row. User eligibility changes
-		// then follow the shared User -> mail-eligibility singleton order.
-		if input.Disabled {
-			if err := lockSystemAdministratorAuthenticationPaths(ctx, tx); err != nil {
-				return nil, err
-			}
-			// Match every authentication and Session mutation: after the
-			// installation-wide path fence, serialize this User's Sessions before
-			// taking the User row. Reversing these two locks can deadlock with a
-			// concurrent Desktop code exchange that already owns the Session fence.
-			if err := lockUserSessions(ctx, tx, input.ID.String()); err != nil {
-				return nil, err
-			}
-		}
-		var lockedUserID string
-		if err := tx.Get(ctx, &lockedUserID, `SELECT id FROM users WHERE id=? AND archived_at IS NULL FOR UPDATE`, input.ID); err != nil {
-			return nil, translateError("user", input.ID.String(), err)
-		}
-		currentUser, err := getUserByID(ctx, tx, input.ID.String())
-		if err != nil {
-			return nil, err
-		}
-		if currentUser.DisabledAt.Valid == input.Disabled {
-			if input.Command == nil {
-				return nil, store.NewErrConflict("user", "disabled_state", nil)
-			}
-			if err = completeAdministrativeNoOpAudit(ctx, tx, input.AuditEventID, input.AuditAt, "user_id", currentUser.ID.String()); err != nil {
-				return nil, err
-			}
-			return &userDisabledMutationResult{Value: &store.UserDisabledStateResult{User: currentUser, RevokedSessions: []*model.Session{}, RevokedTokenHashes: []string{}}, NoOp: true}, nil
-		}
-		if mailUnprepared {
-			return nil, store.NewErrInvalidInput("user", "disabled_state_notice", nil)
-		}
-		// Serialize disabling with login and refresh rotation before changing the
-		// user row. A login that commits first is included in the revocation; one
-		// that follows observes the disabled account.
-		if input.Disabled {
-			policy, err := getAccessPolicy(ctx, tx, "FOR SHARE")
-			if err != nil {
-				return nil, err
-			}
-			at := model.TimeUTC(input.ChangedAt)
-			administrator, err := isActiveSystemAdministrator(ctx, tx, input.ID.String(), at)
-			if err != nil {
-				return nil, err
-			}
-			if administrator {
-				remaining, pathErr := hasUsableSystemAdministratorAuthenticationPath(
-					ctx, tx, policy.Settings(), input.Capabilities, at,
-					systemAdministratorAuthenticationPathScope{ExcludedUserID: input.ID.String()},
-				)
-				if pathErr != nil {
-					return nil, pathErr
-				}
-				if !remaining {
-					return nil, store.NewErrConflict("user", "users_last_system_admin", nil)
-				}
-			}
-		}
-		var disabledAt time.Time
-		if input.Disabled {
-			disabledAt = input.ChangedAt
-		}
-		mailEligibilityRevision, err := advanceUserMailEligibilityRevision(ctx, tx)
-		if err != nil {
-			return nil, err
-		}
-		row, err := setUserDisabled(
-			ctx,
-			tx,
-			input.ID.String(),
-			input.ExpectedRevision,
-			disabledAt,
-			input.ChangedAt,
-			mailEligibilityRevision,
-		)
-		if err != nil {
-			return nil, err
-		}
-
-		user, err := row.model()
-		if err != nil {
-			return nil, err
-		}
-		result := &store.UserDisabledStateResult{
-			User:               user,
-			RevokedSessions:    []*model.Session{},
-			RevokedTokenHashes: []string{},
-		}
-		if input.Disabled {
-			sessionRows, hashes, err := revokeAllUserSessions(
-				ctx,
-				tx,
-				input.ID.String(),
-				input.ChangedAt,
-				revocationReason,
-			)
-			if err != nil {
-				return nil, err
-			}
-			result.RevokedSessions, err = revokedSessionModels(
-				sessionRows,
-				input.ChangedAt,
-				revocationReason,
-			)
-			if err != nil {
-				return nil, err
-			}
-			result.RevokedTokenHashes = hashes
-		}
-		if err := insertSecurityNoticeMail(ctx, tx, input.Occurrence, input.Delivery, input.DeliveryJob, payloadKeyID); err != nil {
-			return nil, err
-		}
-
-		encoded, appErr := model.EncodeAuditData(result.User.Auditable())
-		if appErr != nil {
-			return nil, appErr
-		}
-		if _, err := completeAuditEvent(
-			ctx,
-			tx,
-			input.AuditEventID,
-			model.AuditStatusSuccess,
-			"",
-			encoded,
-			input.AuditAt,
-		); err != nil {
-			return nil, fmt.Errorf("complete user disabled state audit: %w", err)
-		}
-		return &userDisabledMutationResult{Value: result}, nil
+		return changeUserDisabledState(ctx, tx, input, plan)
 	}
 	if input.Command == nil {
 		result, err := runSQLTransaction(ctx, s.GetMaster().Begin, "audited user disabled state change", execute)
@@ -1034,6 +931,53 @@ func (s SQLUserStore) SetDisabled(
 		input.NoOp = result.NoOp
 		return result.Value, nil
 	}
+	return s.setDisabledIdempotently(ctx, input, execute)
+}
+
+// userDisabledStatePlan carries what SetDisabled derives from its input before the transaction.
+type userDisabledStatePlan struct {
+	revocationReason model.SessionRevocationReason
+	mailUnprepared   bool
+	payloadKeyID     string
+}
+
+// planUserDisabledStateChange validates a disabled-state change and its prepared Notice mail.
+func planUserDisabledStateChange(input *store.UserDisabledStateChange) (userDisabledStatePlan, error) {
+	if input == nil || !input.ID.IsValid() || input.ExpectedRevision <= 0 ||
+		input.ChangedAt.IsZero() || !input.AuditEventID.IsValid() || input.AuditAt.IsZero() ||
+		!validAccessDeploymentCapabilities(input.Capabilities) {
+		return userDisabledStatePlan{}, store.NewErrInvalidInput("user", "disabled_state_change", nil)
+	}
+	plan := userDisabledStatePlan{
+		revocationReason: model.SessionRevocationReason(model.SanitizeUnicode(string(input.RevocationReason))),
+	}
+	if input.Disabled && !plan.revocationReason.IsValid() {
+		return userDisabledStatePlan{}, store.NewErrInvalidInput("session", "revocation_reason", nil)
+	}
+	templateKey := model.MailTemplateIdentityAccountEnabled
+	if input.Disabled {
+		templateKey = model.MailTemplateIdentityAccountDisabled
+	}
+	plan.mailUnprepared = input.Occurrence == nil && input.Delivery == nil && input.DeliveryJob == nil
+	if plan.mailUnprepared && input.Command == nil {
+		return userDisabledStatePlan{}, store.NewErrInvalidInput("user", "disabled_state_notice", nil)
+	}
+	if !plan.mailUnprepared {
+		var err error
+		plan.payloadKeyID, err = validateSecurityNoticeMail(input.ID, input.Occurrence, input.Delivery, input.DeliveryJob, templateKey, input.ChangedAt)
+		if err != nil {
+			return userDisabledStatePlan{}, err
+		}
+	}
+	return plan, nil
+}
+
+// setDisabledIdempotently runs the disabled-state change under its command idempotency key.
+func (s SQLUserStore) setDisabledIdempotently(
+	ctx context.Context,
+	input *store.UserDisabledStateChange,
+	execute func(context.Context, *sqlxTxWrapper) (*userDisabledMutationResult, error),
+) (*store.UserDisabledStateResult, error) {
 	result, err := runIdempotentMutation(ctx, s.SQLStore, "idempotent user disabled state change", idempotentMutation[*userDisabledMutationResult]{
 		command: input.Command, auditEventID: input.AuditEventID, execute: execute,
 		encode: encodeUserDisabledMutationOutcome, decode: decodeUserDisabledMutationOutcome,
@@ -1057,6 +1001,184 @@ func (s SQLUserStore) SetDisabled(
 	}
 	input.Replayed, input.NoOp = result.Replayed, result.Value.NoOp
 	return result.Value.Value, nil
+}
+
+// changeUserDisabledState applies the disabled-state change inside its transaction.
+func changeUserDisabledState(ctx context.Context, tx *sqlxTxWrapper, input *store.UserDisabledStateChange, plan userDisabledStatePlan) (*userDisabledMutationResult, error) {
+	if err := lockUserDisabledStatePaths(ctx, tx, input, plan.payloadKeyID); err != nil {
+		return nil, err
+	}
+	currentUser, err := getUserByID(ctx, tx, input.ID.String())
+	if err != nil {
+		return nil, err
+	}
+	if currentUser.DisabledAt.Valid == input.Disabled {
+		if input.Command == nil {
+			return nil, store.NewErrConflict("user", "disabled_state", nil)
+		}
+		if err = completeAdministrativeNoOpAudit(ctx, tx, input.AuditEventID, input.AuditAt, "user_id", currentUser.ID.String()); err != nil {
+			return nil, err
+		}
+		return &userDisabledMutationResult{Value: &store.UserDisabledStateResult{User: currentUser, RevokedSessions: []*model.Session{}, RevokedTokenHashes: []string{}}, NoOp: true}, nil
+	}
+	if plan.mailUnprepared {
+		return nil, store.NewErrInvalidInput("user", "disabled_state_notice", nil)
+	}
+	// Serialize disabling with login and refresh rotation before changing the
+	// user row. A login that commits first is included in the revocation; one
+	// that follows observes the disabled account.
+	if input.Disabled {
+		if err = requireRemainingSystemAdministrator(ctx, tx, input); err != nil {
+			return nil, err
+		}
+	}
+	user, err := persistUserDisabledState(ctx, tx, input)
+	if err != nil {
+		return nil, err
+	}
+	result := &store.UserDisabledStateResult{
+		User:               user,
+		RevokedSessions:    []*model.Session{},
+		RevokedTokenHashes: []string{},
+	}
+	if input.Disabled {
+		if err = revokeDisabledUserSessions(ctx, tx, input, plan.revocationReason, result); err != nil {
+			return nil, err
+		}
+	}
+	if err = insertSecurityNoticeMail(ctx, tx, input.Occurrence, input.Delivery, input.DeliveryJob, plan.payloadKeyID); err != nil {
+		return nil, err
+	}
+	if err = completeUserDisabledStateAudit(ctx, tx, input, result.User); err != nil {
+		return nil, err
+	}
+	return &userDisabledMutationResult{Value: result}, nil
+}
+
+// lockUserDisabledStatePaths checks the mail key and takes the authentication-path, Session and User locks in order.
+func lockUserDisabledStatePaths(ctx context.Context, tx *sqlxTxWrapper, input *store.UserDisabledStateChange, payloadKeyID string) error {
+	if payloadKeyID != "" {
+		if err := requireMailPayloadPrimary(ctx, tx, payloadKeyID); err != nil {
+			return err
+		}
+	}
+	// Security-sensitive account disablement takes the installation-wide
+	// authentication-path fence before any User row. User eligibility changes
+	// then follow the shared User -> mail-eligibility singleton order.
+	if input.Disabled {
+		if err := lockSystemAdministratorAuthenticationPaths(ctx, tx); err != nil {
+			return err
+		}
+		// Match every authentication and Session mutation: after the
+		// installation-wide path fence, serialize this User's Sessions before
+		// taking the User row. Reversing these two locks can deadlock with a
+		// concurrent Desktop code exchange that already owns the Session fence.
+		if err := lockUserSessions(ctx, tx, input.ID.String()); err != nil {
+			return err
+		}
+	}
+	var lockedUserID string
+	if err := tx.Get(ctx, &lockedUserID, `SELECT id FROM users WHERE id=? AND archived_at IS NULL FOR UPDATE`, input.ID); err != nil {
+		return translateError("user", input.ID.String(), err)
+	}
+	return nil
+}
+
+// requireRemainingSystemAdministrator refuses to disable the last System Administrator with a usable authentication path.
+func requireRemainingSystemAdministrator(ctx context.Context, tx *sqlxTxWrapper, input *store.UserDisabledStateChange) error {
+	policy, err := getAccessPolicy(ctx, tx, "FOR SHARE")
+	if err != nil {
+		return err
+	}
+	at := model.TimeUTC(input.ChangedAt)
+	administrator, err := isActiveSystemAdministrator(ctx, tx, input.ID.String(), at)
+	if err != nil {
+		return err
+	}
+	if administrator {
+		remaining, pathErr := hasUsableSystemAdministratorAuthenticationPath(
+			ctx, tx, policy.Settings(), input.Capabilities, at,
+			systemAdministratorAuthenticationPathScope{ExcludedUserID: input.ID.String()},
+		)
+		if pathErr != nil {
+			return pathErr
+		}
+		if !remaining {
+			return store.NewErrConflict("user", "users_last_system_admin", nil)
+		}
+	}
+	return nil
+}
+
+// persistUserDisabledState advances the mail eligibility revision and writes the User's new disabled state.
+func persistUserDisabledState(ctx context.Context, tx *sqlxTxWrapper, input *store.UserDisabledStateChange) (*model.User, error) {
+	var disabledAt time.Time
+	if input.Disabled {
+		disabledAt = input.ChangedAt
+	}
+	mailEligibilityRevision, err := advanceUserMailEligibilityRevision(ctx, tx)
+	if err != nil {
+		return nil, err
+	}
+	row, err := setUserDisabled(
+		ctx,
+		tx,
+		input.ID.String(),
+		input.ExpectedRevision,
+		disabledAt,
+		input.ChangedAt,
+		mailEligibilityRevision,
+	)
+	if err != nil {
+		return nil, err
+	}
+	return row.model()
+}
+
+// revokeDisabledUserSessions revokes every Session of a disabled User and records them on result.
+func revokeDisabledUserSessions(ctx context.Context, tx *sqlxTxWrapper, input *store.UserDisabledStateChange,
+	revocationReason model.SessionRevocationReason, result *store.UserDisabledStateResult,
+) error {
+	sessionRows, hashes, err := revokeAllUserSessions(
+		ctx,
+		tx,
+		input.ID.String(),
+		input.ChangedAt,
+		revocationReason,
+	)
+	if err != nil {
+		return err
+	}
+	result.RevokedSessions, err = revokedSessionModels(
+		sessionRows,
+		input.ChangedAt,
+		revocationReason,
+	)
+	if err != nil {
+		return err
+	}
+	result.RevokedTokenHashes = hashes
+	return nil
+}
+
+// completeUserDisabledStateAudit completes the attempted audit event with the changed User.
+func completeUserDisabledStateAudit(ctx context.Context, tx *sqlxTxWrapper, input *store.UserDisabledStateChange, user *model.User) error {
+	encoded, appErr := model.EncodeAuditData(user.Auditable())
+	if appErr != nil {
+		return appErr
+	}
+	if _, err := completeAuditEvent(
+		ctx,
+		tx,
+		input.AuditEventID,
+		model.AuditStatusSuccess,
+		"",
+		encoded,
+		input.AuditAt,
+	); err != nil {
+		return fmt.Errorf("complete user disabled state audit: %w", err)
+	}
+	return nil
 }
 
 type userDisabledMutationResult struct {
