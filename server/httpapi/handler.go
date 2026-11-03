@@ -68,22 +68,7 @@ func requireAuthentication(
 	case AuthPublic:
 		return next
 	case AuthRefreshCredentialRequired:
-		return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-			credential, appErr := requestRefreshCredential(request)
-			if appErr != nil {
-				writeRouteApplicationError(writer, request, logger, errorPolicy, appErr)
-				return
-			}
-			if credential.source == credentialSourceCookie {
-				if appErr := cookies.verifyCSRF(request); appErr != nil {
-					writeRouteApplicationError(writer, request, logger, errorPolicy, appErr)
-					return
-				}
-			}
-			ctx := context.WithValue(request.Context(), credentialContextKey{}, credential)
-			ctx = context.WithValue(ctx, credentialSourceContextKey{}, credential.source)
-			next.ServeHTTP(writer, request.WithContext(ctx))
-		})
+		return requireRefreshCredential(next, logger, cookies, errorPolicy)
 	case AuthMFARecoverySessionRequired, AuthRecentMFARecoverySessionRequired, AuthPrincipalRequired,
 		AuthSessionRequired,
 		AuthStrongSessionRequired,
@@ -102,32 +87,7 @@ func requireAuthentication(
 					return
 				}
 			}
-			var principal *model.Principal
-			var authErr error
-			if credential.source == credentialSourceDPoP {
-				dpop, ok := application.(dpopAuthenticator)
-				if !ok {
-					authErr = applicationError("authentication.dpop.unavailable")
-				} else {
-					proof, proofErr := requestDPoPProof(request)
-					if proofErr != nil {
-						authErr = proofErr
-					} else {
-						principal, authErr = dpop.AuthenticateDPoP(request.Context(), credential.token, proof, request.Method, request.URL.EscapedPath())
-					}
-				}
-			} else if requirement == AuthPrincipalRequired &&
-				credential.source == credentialSourceBearer {
-				principal, authErr = application.AuthenticateBearer(
-					request.Context(),
-					credential.token,
-				)
-			} else {
-				principal, authErr = application.AuthenticateAccess(
-					request.Context(),
-					credential.token,
-				)
-			}
+			principal, authErr := authenticateAccessCredential(request, requirement, application, credential)
 			if authErr != nil {
 				if credential.source == credentialSourceCookie {
 					cookies.clear(writer)
@@ -162,6 +122,69 @@ func requireAuthentication(
 			WriteProblem(writer, internalProblem(request))
 		})
 	}
+}
+
+// requireRefreshCredential admits a request carrying a refresh credential,
+// verifying CSRF when the credential arrived in a cookie.
+func requireRefreshCredential(
+	next http.Handler,
+	logger Logger,
+	cookies browserCookies,
+	errorPolicy routeErrorPolicy,
+) http.Handler {
+	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		credential, appErr := requestRefreshCredential(request)
+		if appErr != nil {
+			writeRouteApplicationError(writer, request, logger, errorPolicy, appErr)
+			return
+		}
+		if credential.source == credentialSourceCookie {
+			if appErr := cookies.verifyCSRF(request); appErr != nil {
+				writeRouteApplicationError(writer, request, logger, errorPolicy, appErr)
+				return
+			}
+		}
+		ctx := context.WithValue(request.Context(), credentialContextKey{}, credential)
+		ctx = context.WithValue(ctx, credentialSourceContextKey{}, credential.source)
+		next.ServeHTTP(writer, request.WithContext(ctx))
+	})
+}
+
+// authenticateAccessCredential resolves the principal for an access
+// credential through DPoP, bearer, or access-token authentication by source.
+func authenticateAccessCredential(
+	request *http.Request,
+	requirement AuthRequirement,
+	application Authenticator,
+	credential requestCredential,
+) (*model.Principal, error) {
+	var principal *model.Principal
+	var authErr error
+	if credential.source == credentialSourceDPoP {
+		dpop, ok := application.(dpopAuthenticator)
+		if !ok {
+			authErr = applicationError("authentication.dpop.unavailable")
+		} else {
+			proof, proofErr := requestDPoPProof(request)
+			if proofErr != nil {
+				authErr = proofErr
+			} else {
+				principal, authErr = dpop.AuthenticateDPoP(request.Context(), credential.token, proof, request.Method, request.URL.EscapedPath())
+			}
+		}
+	} else if requirement == AuthPrincipalRequired &&
+		credential.source == credentialSourceBearer {
+		principal, authErr = application.AuthenticateBearer(
+			request.Context(),
+			credential.token,
+		)
+	} else {
+		principal, authErr = application.AuthenticateAccess(
+			request.Context(),
+			credential.token,
+		)
+	}
+	return principal, authErr
 }
 
 func requestDPoPProof(request *http.Request) (string, error) {
