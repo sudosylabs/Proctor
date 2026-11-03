@@ -188,31 +188,9 @@ func suspendExamAttemptByManager(ctx context.Context, tx *sqlxTxWrapper,
 	if err != nil {
 		return zero, err
 	}
-	var participationRow manualSuspensionParticipationRow
-	err = tx.Get(ctx, &participationRow, `SELECT `+manualSuspensionParticipationColumns+`
-		FROM exam_attempt_participations WHERE exam_attempt_id=? AND state='active' FOR UPDATE`, input.AttemptID.String())
-	if errors.Is(err, sql.ErrNoRows) {
-		return zero, store.NewErrConflict("exam_attempt", "exam_attempt_state", nil)
-	}
-	if err != nil {
-		return zero, fmt.Errorf("lock kicked Attempt Participation: %w", err)
-	}
-	participation, err := participationRow.domain(input.AttemptID)
+	participation, connection, err := lockKickedParticipation(ctx, tx, input.AttemptID)
 	if err != nil {
 		return zero, err
-	}
-	var connection *model.AttemptConnection
-	var connectionRow attemptConnectionRow
-	err = tx.Get(ctx, &connectionRow, `SELECT id,exam_attempt_id,participation_id,session_id,state,opened_at,closed_at,close_reason
-		FROM exam_attempt_connections WHERE exam_attempt_id=? AND participation_id=? AND state='open' FOR UPDATE`,
-		input.AttemptID.String(), participation.ID.String())
-	switch {
-	case err == nil:
-		if connection, err = connectionRow.model(); err != nil {
-			return zero, err
-		}
-	case !errors.Is(err, sql.ErrNoRows):
-		return zero, fmt.Errorf("lock kicked Attempt Connection: %w", err)
 	}
 	var at time.Time
 	if err = tx.Get(ctx, &at, `SELECT statement_timestamp()`); err != nil {
@@ -272,6 +250,39 @@ func suspendExamAttemptByManager(ctx context.Context, tx *sqlxTxWrapper,
 		return zero, err
 	}
 	return outcome, nil
+}
+
+// lockKickedParticipation locks the Attempt's active Participation, then its
+// open Connection when it has one.
+func lockKickedParticipation(ctx context.Context, tx *sqlxTxWrapper, attemptID model.ExamAttemptID,
+) (*model.AttemptParticipation, *model.AttemptConnection, error) {
+	var participationRow manualSuspensionParticipationRow
+	err := tx.Get(ctx, &participationRow, `SELECT `+manualSuspensionParticipationColumns+`
+		FROM exam_attempt_participations WHERE exam_attempt_id=? AND state='active' FOR UPDATE`, attemptID.String())
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil, store.NewErrConflict("exam_attempt", "exam_attempt_state", nil)
+	}
+	if err != nil {
+		return nil, nil, fmt.Errorf("lock kicked Attempt Participation: %w", err)
+	}
+	participation, err := participationRow.domain(attemptID)
+	if err != nil {
+		return nil, nil, err
+	}
+	var connection *model.AttemptConnection
+	var connectionRow attemptConnectionRow
+	err = tx.Get(ctx, &connectionRow, `SELECT id,exam_attempt_id,participation_id,session_id,state,opened_at,closed_at,close_reason
+		FROM exam_attempt_connections WHERE exam_attempt_id=? AND participation_id=? AND state='open' FOR UPDATE`,
+		attemptID.String(), participation.ID.String())
+	switch {
+	case err == nil:
+		if connection, err = connectionRow.model(); err != nil {
+			return nil, nil, err
+		}
+	case !errors.Is(err, sql.ErrNoRows):
+		return nil, nil, fmt.Errorf("lock kicked Attempt Connection: %w", err)
+	}
+	return participation, connection, nil
 }
 
 func completeExamAttemptManualSuspensionAudit(ctx context.Context, tx *sqlxTxWrapper, value examAttemptManualSuspensionOutcome,
