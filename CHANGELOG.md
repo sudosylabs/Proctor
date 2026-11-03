@@ -183,6 +183,18 @@ module when a change is not server-only. No module has been released yet.
   procedure is in the maintenance guide.
 - Server: `Server.TrustedProxies` names the reverse proxies whose forwarded
   client address and request ID are accepted.
+- Server: new passwords are refused when they are a simple pattern, appear on
+  a bundled common-password list, or contain the account's username, email
+  local part or name, following NIST SP 800-63B. Each refusal has its own error
+  code and webapp message.
+- Server: `POST /api/v1/authentication-methods/password/change` changes the
+  password on a strong recent Session and signs out the user's other Sessions.
+- Server: reset, change and enrollment refuse a user's recent passwords
+  (`Authentication.Password.HistoryCount`, default 5, 0 disables).
+- Server: when an account's email changes, the previous address receives a
+  single-use undo link (`Authentication.AccountRecovery.EmailChangeUndoTTL`,
+  default 72h). Using it at `/account/undo-email-change` restores the address,
+  signs out every Session and is audited.
 - Server: `proctor config show` (`--json`) prints the effective configuration,
   file plus environment overrides, with every secret redacted, and names the
   environment variables that replaced a file value.
