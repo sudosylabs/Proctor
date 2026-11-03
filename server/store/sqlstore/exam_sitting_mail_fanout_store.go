@@ -32,7 +32,6 @@ func insertExamSittingMailFanout(ctx context.Context, tx *sqlxTxWrapper, input *
 		return err
 	}
 	occurrence := *input.Occurrence
-	occurrence.CreatedAt = databaseNow
 	job := *input.ExpansionJob
 	job.CreatedAt, job.UpdatedAt, job.AvailableAt = databaseNow, databaseNow, databaseNow
 	deadline := databaseNow.Add(input.DeliveryLifetime)
