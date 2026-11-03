@@ -83,11 +83,48 @@ func validateNativeBatchSources(ctx context.Context, tx *sqlxTxWrapper, owner na
 		return err
 	}
 	var historyRaw [][]byte
-	if err := tx.Select(ctx, &historyRaw, `SELECT reset_canonical FROM exam_native_source_resets WHERE participation_id=?`, owner.ParticipationID); err != nil {
+	if err = tx.Select(ctx, &historyRaw, `SELECT reset_canonical FROM exam_native_source_resets WHERE participation_id=?`, owner.ParticipationID); err != nil {
 		return err
 	}
-	history := make([]model.NativeSourceReset, 0, len(historyRaw))
+	history, lifetimes, err := nativeSourceLifetimes(owner, snapshot, historyRaw)
+	if err != nil {
+		return err
+	}
 	pendingResets := []nativeResetRecord{}
+	for _, record := range records {
+		if err = model.ValidateNativeRecordBinding(record, resolved, agreement, lifetimes); err != nil {
+			return err
+		}
+		if record.Reset == nil {
+			continue
+		}
+		edge := *record.Reset
+		pending, previous, admitErr := admitNativeBatchReset(ctx, tx, owner, snapshot, records, edge, history, lifetimes)
+		if admitErr != nil {
+			return admitErr
+		}
+		if pending == nil {
+			continue
+		}
+		pendingResets = append(pendingResets, *pending)
+		final := edge.PreviousFinalSequence
+		lifetimes[previous].FinalSequence = &final
+		lifetimes = append(lifetimes, model.NativeSourceLifetime{SourceID: edge.SourceID, InstanceID: edge.NewSourceInstanceID})
+		history = append(history, edge)
+	}
+	if len(pendingResets) > 0 {
+		if err = storeNativeBatchResets(ctx, tx, owner, pendingResets); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// nativeSourceLifetimes decodes the retained reset history and derives every
+// known source lifetime with the final sequence of each retired predecessor.
+func nativeSourceLifetimes(owner nativeDeliveryOwner, snapshot nativeCoverageSnapshot, historyRaw [][]byte) ([]model.NativeSourceReset, []model.NativeSourceLifetime, error) {
+	history := make([]model.NativeSourceReset, 0, len(historyRaw))
 	lifetimes := []model.NativeSourceLifetime{}
 	for _, head := range snapshot.Sources {
 		lifetimes = append(lifetimes, model.NativeSourceLifetime{SourceID: head.SourceID, InstanceID: head.SourceInstanceID})
@@ -97,7 +134,7 @@ func validateNativeBatchSources(ctx context.Context, tx *sqlxTxWrapper, owner na
 	for _, raw := range historyRaw {
 		record, err := decodeNativeResetRecord(raw, model.AttemptParticipationID(owner.ParticipationID), "")
 		if err != nil {
-			return err
+			return nil, nil, err
 		}
 		history = append(history, record.Reset)
 		for _, instance := range []string{record.Reset.PreviousSourceInstanceID, record.Reset.NewSourceInstanceID} {
@@ -116,124 +153,124 @@ func validateNativeBatchSources(ctx context.Context, tx *sqlxTxWrapper, owner na
 			}
 		}
 	}
-	for _, record := range records {
-		if err := model.ValidateNativeRecordBinding(record, resolved, agreement, lifetimes); err != nil {
-			return err
-		}
-		if record.Reset == nil {
-			continue
-		}
-		edge := *record.Reset
-		canonical, err := edge.Canonical()
-		if err != nil {
-			return err
-		}
-		digest := model.SHA256Fingerprint(canonical)
-		known := false
-		for _, prior := range history {
-			if prior.ResetID == edge.ResetID {
-				raw, err := prior.Canonical()
-				if err != nil {
-					return err
-				}
-				if model.SHA256Fingerprint(raw) != digest {
-					return nativeAppendConflict("batch_conflict")
-				}
-				known = true
-				break
-			}
-		}
-		if known {
-			continue
-		}
-		// Live edges must have been accepted by the control owner. Historical edges
-		// establish evidence continuity only; they never update live heads or gates.
-		if owner.Closure.ClosedAt == nil {
-			return nativeAppendConflict("batch_conflict")
-		}
-		previous := -1
-		restarts := 0
-		for i, l := range lifetimes {
-			if l.SourceID == edge.SourceID && l.InstanceID == edge.NewSourceInstanceID {
-				return nativeAppendConflict("batch_conflict")
-			}
-			if l.SourceID == edge.SourceID && l.InstanceID == edge.PreviousSourceInstanceID && l.FinalSequence == nil {
-				previous = i
-			}
-		}
-		for _, prior := range history {
-			if prior.SourceID == edge.SourceID && prior.Reason == "restart" {
-				restarts++
-			}
-		}
-		if previous < 0 || edge.Reason == "restart" && restarts >= 1 {
-			return nativeAppendConflict("batch_conflict")
-		}
-		watermark := int64(0)
-		for _, head := range snapshot.Sources {
-			if head.SourceID == edge.SourceID && head.SourceInstanceID == edge.PreviousSourceInstanceID {
-				watermark = head.Sequence
-			}
-		}
-		var retained int64
-		if err := tx.Get(ctx, &retained, `SELECT COALESCE(MAX((r->>'last_sequence')::bigint),0) FROM exam_native_delivery_records d CROSS JOIN LATERAL jsonb_array_elements(convert_from(d.metadata_canonical,'UTF8')::jsonb->'source_ranges') r WHERE d.participation_id=? AND r->>'source_id'=? AND r->>'source_instance_id'=?`, owner.ParticipationID, string(edge.SourceID), edge.PreviousSourceInstanceID); err != nil {
-			return err
-		}
-		if edge.PreviousFinalSequence < max(watermark, retained) {
-			return nativeAppendConflict("batch_conflict")
-		}
-		for _, other := range records {
-			if other.Reset == nil {
-				row, err := encodeNativeRecord(other, 1, 0)
-				if err != nil {
-					return err
-				}
-				var m nativeRecordMetadata
-				if json.Unmarshal(row.Metadata, &m) != nil {
-					return invalidPersistedState("native_delivery", "record", model.ErrNativeDeliveryInvalid)
-				}
-				for _, r := range m.SourceRanges {
-					if r.SourceID == edge.SourceID && r.SourceInstanceID == edge.PreviousSourceInstanceID && r.LastSequence > edge.PreviousFinalSequence {
-						return nativeAppendConflict("batch_conflict")
-					}
-				}
-			}
-		}
-		pendingResets = append(pendingResets, nativeResetRecord{ParticipationID: model.AttemptParticipationID(owner.ParticipationID), Reset: edge, Digest: digest})
-		final := edge.PreviousFinalSequence
-		lifetimes[previous].FinalSequence = &final
-		lifetimes = append(lifetimes, model.NativeSourceLifetime{SourceID: edge.SourceID, InstanceID: edge.NewSourceInstanceID})
-		history = append(history, edge)
+	return history, lifetimes, nil
+}
+
+// admitNativeBatchReset checks one reset record in a batch, returning nil for
+// a reset already retained or the pending record and its predecessor lifetime
+// index for a new historical reset.
+func admitNativeBatchReset(ctx context.Context, tx *sqlxTxWrapper, owner nativeDeliveryOwner, snapshot nativeCoverageSnapshot, records []model.NativeRecord, edge model.NativeSourceReset, history []model.NativeSourceReset, lifetimes []model.NativeSourceLifetime) (*nativeResetRecord, int, error) {
+	canonical, err := edge.Canonical()
+	if err != nil {
+		return nil, 0, err
 	}
-	if len(pendingResets) > 0 {
-		var used int64
-		if err := tx.Get(ctx, &used, `SELECT b.control_metadata_bytes FROM exam_attempt_delivery_budgets b JOIN exam_attempt_security_owners o ON o.exam_attempt_id=b.exam_attempt_id WHERE o.participation_id=?`, owner.ParticipationID); err != nil {
-			return err
+	digest := model.SHA256Fingerprint(canonical)
+	for _, prior := range history {
+		if prior.ResetID == edge.ResetID {
+			raw, priorErr := prior.Canonical()
+			if priorErr != nil {
+				return nil, 0, priorErr
+			}
+			if model.SHA256Fingerprint(raw) != digest {
+				return nil, 0, nativeAppendConflict("batch_conflict")
+			}
+			return nil, 0, nil
 		}
-		encoded := make([][]byte, len(pendingResets))
-		required := int64(0)
-		for i, record := range pendingResets {
-			raw, err := encodeNativeResetRecord(record)
+	}
+	// Live edges must have been accepted by the control owner. Historical edges
+	// establish evidence continuity only; they never update live heads or gates.
+	if owner.Closure.ClosedAt == nil {
+		return nil, 0, nativeAppendConflict("batch_conflict")
+	}
+	previous := -1
+	restarts := 0
+	for i, l := range lifetimes {
+		if l.SourceID == edge.SourceID && l.InstanceID == edge.NewSourceInstanceID {
+			return nil, 0, nativeAppendConflict("batch_conflict")
+		}
+		if l.SourceID == edge.SourceID && l.InstanceID == edge.PreviousSourceInstanceID && l.FinalSequence == nil {
+			previous = i
+		}
+	}
+	for _, prior := range history {
+		if prior.SourceID == edge.SourceID && prior.Reason == "restart" {
+			restarts++
+		}
+	}
+	if previous < 0 || edge.Reason == "restart" && restarts >= 1 {
+		return nil, 0, nativeAppendConflict("batch_conflict")
+	}
+	watermark := int64(0)
+	for _, head := range snapshot.Sources {
+		if head.SourceID == edge.SourceID && head.SourceInstanceID == edge.PreviousSourceInstanceID {
+			watermark = head.Sequence
+		}
+	}
+	var retained int64
+	if err = tx.Get(ctx, &retained, `SELECT COALESCE(MAX((r->>'last_sequence')::bigint),0) FROM exam_native_delivery_records d CROSS JOIN LATERAL jsonb_array_elements(convert_from(d.metadata_canonical,'UTF8')::jsonb->'source_ranges') r WHERE d.participation_id=? AND r->>'source_id'=? AND r->>'source_instance_id'=?`, owner.ParticipationID, string(edge.SourceID), edge.PreviousSourceInstanceID); err != nil {
+		return nil, 0, err
+	}
+	if edge.PreviousFinalSequence < max(watermark, retained) {
+		return nil, 0, nativeAppendConflict("batch_conflict")
+	}
+	if err = checkNativeBatchResetRanges(records, edge); err != nil {
+		return nil, 0, err
+	}
+	return &nativeResetRecord{ParticipationID: model.AttemptParticipationID(owner.ParticipationID), Reset: edge, Digest: digest}, previous, nil
+}
+
+// checkNativeBatchResetRanges refuses a batch whose other records place the
+// reset predecessor past its declared final sequence.
+func checkNativeBatchResetRanges(records []model.NativeRecord, edge model.NativeSourceReset) error {
+	for _, other := range records {
+		if other.Reset == nil {
+			row, err := encodeNativeRecord(other, 1, 0)
 			if err != nil {
 				return err
 			}
-			encoded[i] = raw
-			required += int64(len(raw))
+			var m nativeRecordMetadata
+			if json.Unmarshal(row.Metadata, &m) != nil {
+				return invalidPersistedState("native_delivery", "record", model.ErrNativeDeliveryInvalid)
+			}
+			for _, r := range m.SourceRanges {
+				if r.SourceID == edge.SourceID && r.SourceInstanceID == edge.PreviousSourceInstanceID && r.LastSequence > edge.PreviousFinalSequence {
+					return nativeAppendConflict("batch_conflict")
+				}
+			}
 		}
-		next, err := model.ReserveDeliveryMetadata(used, required)
+	}
+	return nil
+}
+
+// storeNativeBatchResets reserves metadata for and inserts the batch's new
+// historical reset records.
+func storeNativeBatchResets(ctx context.Context, tx *sqlxTxWrapper, owner nativeDeliveryOwner, pendingResets []nativeResetRecord) error {
+	var used int64
+	if err := tx.Get(ctx, &used, `SELECT b.control_metadata_bytes FROM exam_attempt_delivery_budgets b JOIN exam_attempt_security_owners o ON o.exam_attempt_id=b.exam_attempt_id WHERE o.participation_id=?`, owner.ParticipationID); err != nil {
+		return err
+	}
+	encoded := make([][]byte, len(pendingResets))
+	required := int64(0)
+	for i, record := range pendingResets {
+		raw, err := encodeNativeResetRecord(record)
 		if err != nil {
 			return err
 		}
-		for i, raw := range encoded {
-			if _, err := tx.Exec(ctx, `INSERT INTO exam_native_source_resets(participation_id,reset_id,reset_canonical) VALUES(?,?,?)`, owner.ParticipationID, pendingResets[i].Reset.ResetID, raw); err != nil {
-				return err
-			}
-		}
-		if _, err := tx.Exec(ctx, `UPDATE exam_attempt_delivery_budgets SET control_metadata_bytes=? WHERE exam_attempt_id=(SELECT exam_attempt_id FROM exam_attempt_security_owners WHERE participation_id=?)`, next, owner.ParticipationID); err != nil {
+		encoded[i] = raw
+		required += int64(len(raw))
+	}
+	next, err := model.ReserveDeliveryMetadata(used, required)
+	if err != nil {
+		return err
+	}
+	for i, raw := range encoded {
+		if _, err = tx.Exec(ctx, `INSERT INTO exam_native_source_resets(participation_id,reset_id,reset_canonical) VALUES(?,?,?)`, owner.ParticipationID, pendingResets[i].Reset.ResetID, raw); err != nil {
 			return err
 		}
 	}
-
+	if _, err = tx.Exec(ctx, `UPDATE exam_attempt_delivery_budgets SET control_metadata_bytes=? WHERE exam_attempt_id=(SELECT exam_attempt_id FROM exam_attempt_security_owners WHERE participation_id=?)`, next, owner.ParticipationID); err != nil {
+		return err
+	}
 	return nil
 }
 
