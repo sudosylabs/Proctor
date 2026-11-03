@@ -229,19 +229,17 @@ func (s *SQLExamAttemptStore) examAttemptConnectResult(ctx context.Context, outc
 	if err != nil {
 		return nil, invalidPersistedState("attempt_connection", "id", err)
 	}
-	attempt, err := model.NewExamAttempt(attemptID, examID, sittingID, candidateID, revisionID, outcome.StartedAt)
-	if err != nil {
+	if _, err = model.NewExamAttempt(attemptID, examID, sittingID, candidateID, revisionID, outcome.StartedAt); err != nil {
 		return nil, invalidPersistedState("exam_attempt", "outcome", err)
 	}
-	workspace, err := model.NewExamAttemptWorkspace(workspaceID, attemptID, outcome.StartedAt)
-	if err != nil {
+	if _, err = model.NewExamAttemptWorkspace(workspaceID, attemptID, outcome.StartedAt); err != nil {
 		return nil, invalidPersistedState("exam_attempt_workspace", "outcome", err)
 	}
 	current, err := s.Get(ctx, examID, attemptID)
 	if err != nil {
 		return nil, err
 	}
-	attempt, workspace = current.Attempt, current.Workspace
+	attempt, workspace := current.Attempt, current.Workspace
 	var participationRow struct {
 		State           string         `db:"state"`
 		Generation      int64          `db:"generation"`
