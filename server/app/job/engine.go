@@ -329,61 +329,107 @@ func (r *Engine) execute(parent context.Context, descriptor Descriptor, claim *s
 	claimLost := make(chan struct{}, 1)
 	go func() {
 		defer close(heartbeatStopped)
-		ticker := time.NewTicker(descriptor.HeartbeatInterval)
-		defer ticker.Stop()
-		// The lease runs from the last renewal the store accepted. A failed
-		// heartbeat abandons the attempt only when the store reports the claim
-		// lost or when the next heartbeat could no longer land inside the lease.
-		renewedAt := startedAt
-		for {
-			select {
-			case <-heartbeatDone:
+		r.heartbeatClaim(claimHeartbeat{parent: parent, handlerCtx: handlerCtx, cancelHandler: cancelHandler, descriptor: descriptor,
+			claim: claim, startedAt: startedAt, done: heartbeatDone, claimLost: claimLost})
+	}()
+	execution := r.newClaimExecution(descriptor, claim)
+	outcome := runHandler(handlerCtx, descriptor.Handler, execution)
+	close(heartbeatDone)
+	<-heartbeatStopped
+	select {
+	case <-claimLost:
+		r.record(Activity{Kind: "job", Name: string(descriptor.Type), Operation: "lease", Outcome: "lost"})
+		metricOutcome = ExecutionClaimLost
+		return
+	default:
+	}
+	if errors.Is(parent.Err(), context.Canceled) {
+		metricOutcome = ExecutionShutdown
+		return
+	}
+	// A handler that returned success has committed its work, even when it
+	// finished as its timeout elapsed; only an unfinished outcome is a timeout.
+	if outcome.Kind != OutcomeSucceeded && errors.Is(handlerCtx.Err(), context.DeadlineExceeded) {
+		outcome = RetryableFailure("job.timeout", handlerCtx.Err())
+	}
+	metricOutcome = executionOutcomeFromHandler(outcome.Kind)
+	r.complete(parent, descriptor, claim, outcome)
+}
+
+// claimHeartbeat carries the state one claimed attempt's heartbeat loop shares with its execution.
+type claimHeartbeat struct {
+	parent        context.Context
+	handlerCtx    context.Context
+	cancelHandler context.CancelFunc
+	descriptor    Descriptor
+	claim         *store.JobClaim
+	startedAt     time.Time
+	done          <-chan struct{}
+	claimLost     chan<- struct{}
+}
+
+// heartbeatClaim renews the attempt's lease and, for cancelable types, observes cancellation on every heartbeat
+// tick until the handler finishes, abandoning the attempt when the claim is lost.
+func (r *Engine) heartbeatClaim(h claimHeartbeat) {
+	descriptor, claim := h.descriptor, h.claim
+	ticker := time.NewTicker(descriptor.HeartbeatInterval)
+	defer ticker.Stop()
+	// The lease runs from the last renewal the store accepted. A failed
+	// heartbeat abandons the attempt only when the store reports the claim
+	// lost or when the next heartbeat could no longer land inside the lease.
+	renewedAt := h.startedAt
+	for {
+		select {
+		case <-h.done:
+			return
+		case <-h.handlerCtx.Done():
+			return
+		case <-ticker.C:
+			heartbeatStarted := time.Now()
+			if _, err := r.deps.Store.Heartbeat(h.handlerCtx, &store.JobHeartbeat{AttemptID: claim.Attempt.ID, ClaimToken: claim.Attempt.ClaimToken, LeaseDuration: descriptor.LeaseDuration}); err != nil {
+				r.record(Activity{Kind: "job", Name: string(descriptor.Type), Operation: "heartbeat", Outcome: "error", Duration: time.Since(heartbeatStarted)})
+				r.deps.Diagnostics.ErrorContext(h.parent, "heartbeat durable job", err)
+				if !heartbeatClaimLost(err) && time.Since(renewedAt)+descriptor.HeartbeatInterval < descriptor.LeaseDuration {
+					continue
+				}
+				select {
+				case h.claimLost <- struct{}{}:
+				default:
+				}
+				h.cancelHandler()
 				return
-			case <-handlerCtx.Done():
-				return
-			case <-ticker.C:
-				heartbeatStarted := time.Now()
-				if _, err := r.deps.Store.Heartbeat(handlerCtx, &store.JobHeartbeat{AttemptID: claim.Attempt.ID, ClaimToken: claim.Attempt.ClaimToken, LeaseDuration: descriptor.LeaseDuration}); err != nil {
-					r.record(Activity{Kind: "job", Name: string(descriptor.Type), Operation: "heartbeat", Outcome: "error", Duration: time.Since(heartbeatStarted)})
-					r.deps.Diagnostics.ErrorContext(parent, "heartbeat durable job", err)
+			}
+			renewedAt = heartbeatStarted
+			r.record(Activity{Kind: "job", Name: string(descriptor.Type), Operation: "heartbeat", Outcome: "success", Duration: time.Since(heartbeatStarted)})
+			if descriptor.Cancelable {
+				cancellationStarted := time.Now()
+				requested, err := r.deps.Store.CancellationRequested(h.handlerCtx, claim.Attempt.ID, claim.Attempt.ClaimToken)
+				if err != nil {
+					r.record(Activity{Kind: "job", Name: string(descriptor.Type), Operation: "cancellation_check", Outcome: "error", Duration: time.Since(cancellationStarted)})
+					r.deps.Diagnostics.ErrorContext(h.parent, "observe durable job cancellation", err)
 					if !heartbeatClaimLost(err) && time.Since(renewedAt)+descriptor.HeartbeatInterval < descriptor.LeaseDuration {
 						continue
 					}
 					select {
-					case claimLost <- struct{}{}:
+					case h.claimLost <- struct{}{}:
 					default:
 					}
-					cancelHandler()
+					h.cancelHandler()
 					return
 				}
-				renewedAt = heartbeatStarted
-				r.record(Activity{Kind: "job", Name: string(descriptor.Type), Operation: "heartbeat", Outcome: "success", Duration: time.Since(heartbeatStarted)})
-				if descriptor.Cancelable {
-					cancellationStarted := time.Now()
-					requested, err := r.deps.Store.CancellationRequested(handlerCtx, claim.Attempt.ID, claim.Attempt.ClaimToken)
-					if err != nil {
-						r.record(Activity{Kind: "job", Name: string(descriptor.Type), Operation: "cancellation_check", Outcome: "error", Duration: time.Since(cancellationStarted)})
-						r.deps.Diagnostics.ErrorContext(parent, "observe durable job cancellation", err)
-						if !heartbeatClaimLost(err) && time.Since(renewedAt)+descriptor.HeartbeatInterval < descriptor.LeaseDuration {
-							continue
-						}
-						select {
-						case claimLost <- struct{}{}:
-						default:
-						}
-						cancelHandler()
-						return
-					}
-					if requested {
-						r.record(Activity{Kind: "job", Name: string(descriptor.Type), Operation: "cancellation_check", Outcome: "requested", Duration: time.Since(cancellationStarted)})
-						cancelHandler()
-						return
-					}
-					r.record(Activity{Kind: "job", Name: string(descriptor.Type), Operation: "cancellation_check", Outcome: "clear", Duration: time.Since(cancellationStarted)})
+				if requested {
+					r.record(Activity{Kind: "job", Name: string(descriptor.Type), Operation: "cancellation_check", Outcome: "requested", Duration: time.Since(cancellationStarted)})
+					h.cancelHandler()
+					return
 				}
+				r.record(Activity{Kind: "job", Name: string(descriptor.Type), Operation: "cancellation_check", Outcome: "clear", Duration: time.Since(cancellationStarted)})
 			}
 		}
-	}()
+	}
+}
+
+// newClaimExecution builds the handler's Execution with work reservation and checkpoint hooks fenced by the claim.
+func (r *Engine) newClaimExecution(descriptor Descriptor, claim *store.JobClaim) Execution {
 	execution := NewExecution(claim.Job, claim.Attempt, nil, nil)
 	execution.reserveWork = func(ctx context.Context, units, limit int) (bool, error) {
 		started := time.Now()
@@ -412,27 +458,7 @@ func (r *Engine) execute(parent context.Context, descriptor Descriptor, claim *s
 		r.record(Activity{Kind: "job", Name: string(descriptor.Type), Operation: "checkpoint", Outcome: simpleJobOutcome(err), Duration: time.Since(started)})
 		return err
 	}
-	outcome := runHandler(handlerCtx, descriptor.Handler, execution)
-	close(heartbeatDone)
-	<-heartbeatStopped
-	select {
-	case <-claimLost:
-		r.record(Activity{Kind: "job", Name: string(descriptor.Type), Operation: "lease", Outcome: "lost"})
-		metricOutcome = ExecutionClaimLost
-		return
-	default:
-	}
-	if errors.Is(parent.Err(), context.Canceled) {
-		metricOutcome = ExecutionShutdown
-		return
-	}
-	// A handler that returned success has committed its work, even when it
-	// finished as its timeout elapsed; only an unfinished outcome is a timeout.
-	if outcome.Kind != OutcomeSucceeded && errors.Is(handlerCtx.Err(), context.DeadlineExceeded) {
-		outcome = RetryableFailure("job.timeout", handlerCtx.Err())
-	}
-	metricOutcome = executionOutcomeFromHandler(outcome.Kind)
-	r.complete(parent, descriptor, claim, outcome)
+	return execution
 }
 
 // heartbeatClaimLost reports a heartbeat the store refused because another
