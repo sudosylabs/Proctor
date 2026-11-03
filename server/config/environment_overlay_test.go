@@ -20,7 +20,7 @@ import (
 )
 
 func TestEnvironmentOverrideCatalogContracts(t *testing.T) {
-	require.Len(t, environmentOverrideCatalog, 130, "environment override definitions")
+	require.Len(t, environmentOverrideCatalog, 135, "environment override definitions")
 
 	seen := make(map[string]struct{}, len(environmentOverrideCatalog))
 	for _, definition := range environmentOverrideCatalog {
@@ -159,6 +159,7 @@ func validEnvironmentValue(
 		"bucket",
 		"eu-west-1",
 		base64.StdEncoding.EncodeToString(make([]byte, 32)),
+		"0.25",
 		"debug",
 		"json",
 		"127.0.0.1:6379,127.0.0.2:6379",

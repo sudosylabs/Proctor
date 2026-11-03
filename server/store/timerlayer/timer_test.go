@@ -212,6 +212,71 @@ func TestSlowRecorderPanicCannotChangeStoreSemantics(t *testing.T) {
 	require.Same(t, want, got)
 }
 
+type spanKey struct{}
+
+type recordingTracer struct {
+	started  []string
+	outcomes []Outcome
+}
+
+func (r *recordingTracer) StartOperation(ctx context.Context, operation Operation) (context.Context, func(Outcome)) {
+	r.started = append(r.started, operation.String())
+	return context.WithValue(ctx, spanKey{}, operation.String()), func(outcome Outcome) {
+		r.outcomes = append(r.outcomes, outcome)
+	}
+}
+
+type contextCapturingInstitutionStore struct {
+	store.InstitutionStore
+	ctx context.Context
+	err error
+}
+
+func (s *contextCapturingInstitutionStore) Get(ctx context.Context, _ model.InstitutionID) (*model.Institution, error) {
+	s.ctx = ctx
+	return nil, s.err
+}
+
+func TestTracerEnclosesTheForwardedCallAndReceivesTheOutcome(t *testing.T) {
+	t.Parallel()
+
+	wantErr := errors.New("student-secret-must-not-leak")
+	wrapped := &contextCapturingInstitutionStore{err: wantErr}
+	tracer := &recordingTracer{}
+	slow := &recordingSlow{}
+	layer := newLayer(
+		&rootStub{institution: wrapped}, NopRecorder{},
+		Options{Tracer: tracer, SlowThreshold: time.Nanosecond, Slow: slow},
+		sequenceClock(time.Unix(0, 0), time.Unix(1, 0)),
+	)
+	_, err := layer.Institution().Get(context.Background(), model.NewInstitutionID())
+	require.Equal(t, wantErr, err)
+	require.Equal(t, []string{"institution.get"}, tracer.started)
+	require.Equal(t, []Outcome{OutcomeError}, tracer.outcomes)
+	require.Equal(t, "institution.get", wrapped.ctx.Value(spanKey{}), "forwarded call runs inside the span")
+	require.Len(t, slow.events, 1)
+	require.Equal(t, "institution.get", slow.events[0].ctx.Value(spanKey{}), "slow log correlates with the span")
+}
+
+type panickingTracer struct{}
+
+func (panickingTracer) StartOperation(context.Context, Operation) (context.Context, func(Outcome)) {
+	panic("tracing unavailable")
+}
+
+func TestTracerPanicCannotChangeStoreSemantics(t *testing.T) {
+	t.Parallel()
+
+	want := &model.Institution{ID: model.NewInstitutionID()}
+	layer := newLayer(
+		&rootStub{institution: &institutionStub{result: want}}, NopRecorder{},
+		Options{Tracer: panickingTracer{}}, time.Now,
+	)
+	got, err := layer.Institution().Get(context.Background(), model.NewInstitutionID())
+	require.NoError(t, err)
+	require.Same(t, want, got)
+}
+
 type slowFunc func()
 
 func (f slowFunc) ObserveSlow(context.Context, Operation, time.Duration) { f() }

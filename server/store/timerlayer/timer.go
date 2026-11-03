@@ -59,8 +59,18 @@ type SlowRecorder interface {
 	ObserveSlow(context.Context, Operation, time.Duration)
 }
 
+// Tracer starts one span per store operation. It receives only the closed
+// operation name, and the returned context is handed to the forwarded call so
+// nested work joins the span. finish receives the bounded outcome; a panic
+// in either is isolated from store callers.
+type Tracer interface {
+	StartOperation(ctx context.Context, operation Operation) (spanCtx context.Context, finish func(Outcome))
+}
+
 // Options selects the optional observers of a Layer beyond its Recorder.
 type Options struct {
+	// Tracer, when set, encloses every operation in a span.
+	Tracer Tracer
 	// SlowThreshold, when positive, reports every operation lasting at least
 	// this long to Slow. Zero disables slow-operation reporting.
 	SlowThreshold time.Duration
@@ -99,9 +109,9 @@ func newLayer(next store.Store, recorder Recorder, options Options, now func() t
 }
 
 func timeStoreCall0(ctx context.Context, layer *Layer, operation Operation, call func(context.Context) error) error {
-	startedAt := layer.now()
+	ctx, finish := layer.begin(ctx, operation)
 	err := call(ctx)
-	layer.observe(ctx, operation, startedAt, err)
+	finish(err)
 	return err
 }
 
@@ -111,9 +121,9 @@ func timeStoreCall1[T any](
 	operation Operation,
 	call func(context.Context) (T, error),
 ) (T, error) {
-	startedAt := layer.now()
+	ctx, finish := layer.begin(ctx, operation)
 	result, err := call(ctx)
-	layer.observe(ctx, operation, startedAt, err)
+	finish(err)
 	return result, err
 }
 
@@ -123,13 +133,36 @@ func timeStoreCall2[T, U any](
 	operation Operation,
 	call func(context.Context) (T, U, error),
 ) (T, U, error) {
-	startedAt := layer.now()
+	ctx, finish := layer.begin(ctx, operation)
 	first, second, err := call(ctx)
-	layer.observe(ctx, operation, startedAt, err)
+	finish(err)
 	return first, second, err
 }
 
-func (l *Layer) observe(ctx context.Context, operation Operation, startedAt time.Time, err error) {
+// begin starts the operation's optional span and clock. The returned context
+// is the one the forwarded call receives; finish records every observation.
+func (l *Layer) begin(ctx context.Context, operation Operation) (context.Context, func(error)) {
+	endSpan := func(Outcome) {}
+	if l.options.Tracer != nil {
+		func() {
+			defer func() { _ = recover() }()
+			spanCtx, finish := l.options.Tracer.StartOperation(ctx, operation)
+			if spanCtx != nil && finish != nil {
+				ctx, endSpan = spanCtx, finish
+			}
+		}()
+	}
+	startedAt := l.now()
+	return ctx, func(err error) {
+		outcome := l.observe(ctx, operation, startedAt, err)
+		func() {
+			defer func() { _ = recover() }()
+			endSpan(outcome)
+		}()
+	}
+}
+
+func (l *Layer) observe(ctx context.Context, operation Operation, startedAt time.Time, err error) Outcome {
 	outcome := OutcomeSuccess
 	if err != nil {
 		outcome = OutcomeError
@@ -148,4 +181,5 @@ func (l *Layer) observe(ctx context.Context, operation Operation, startedAt time
 			l.options.Slow.ObserveSlow(ctx, operation, duration)
 		}()
 	}
+	return outcome
 }

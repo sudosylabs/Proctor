@@ -99,7 +99,10 @@ func New(options Options) (*API, error) {
 		webSocket:               options.WebSocket,
 		maxBodyBytes:            options.MaxBodyBytes,
 		transferDeadlines:       newTransferDeadlines(options.ReadTimeout, options.WriteTimeout),
-		middleware:              middlewarePolicy{trustedProxies: trustedProxies(slices.Clone(options.TrustedProxies))},
+		middleware: middlewarePolicy{
+			trustedProxies: trustedProxies(slices.Clone(options.TrustedProxies)),
+			tracing:        options.Tracing,
+		},
 	}
 	resources := productionResources(applications, options.Health, options.BuildInfo, cookies, api.webSocket)
 	if err := api.buildRoutingKernel(

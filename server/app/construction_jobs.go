@@ -52,6 +52,7 @@ func constructJobs(
 		Store: deps.Store.Job(), Descriptors: definitions.descriptors, NodeID: deps.NodeID,
 		Diagnostics:   deps.RecoveryDiagnostics,
 		Recorder:      deps.JobRecorder,
+		Tracer:        deps.JobTracer,
 		Policy:        job.Policy{PollInterval: 500 * time.Millisecond},
 		Recurrences:   definitions.recurrences,
 		PeriodicTasks: definitions.periodicTasks,

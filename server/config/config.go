@@ -46,6 +46,7 @@ type Config struct {
 	Version        int            `json:"Version"`
 	Server         Server         `json:"Server"`
 	Metrics        Metrics        `json:"Metrics"`
+	Tracing        Tracing        `json:"Tracing"`
 	Database       Database       `json:"Database"`
 	Cache          Cache          `json:"Cache"`
 	Cluster        Cluster        `json:"Cluster"`
@@ -89,6 +90,12 @@ func Default() Config {
 			IdleTimeout:              Duration{Duration: time.Minute},
 			ShutdownTimeout:          Duration{Duration: 5 * time.Second},
 			MaximumConcurrentScrapes: 2,
+		},
+		Tracing: Tracing{
+			EndpointURL:     "http://127.0.0.1:4318/v1/traces",
+			SampleRatio:     1,
+			ExportTimeout:   Duration{Duration: 10 * time.Second},
+			ShutdownTimeout: Duration{Duration: 5 * time.Second},
 		},
 		Database: Database{
 			DataSource:            "postgres://proctor:proctor@127.0.0.1:15432/proctor?sslmode=disable",
@@ -367,6 +374,7 @@ func (c Config) Validate() error {
 	}
 	validateServerTLS(c.Server, c.Cluster, add)
 	validateMetrics(c.Metrics, c.Server, add)
+	validateTracing(c.Tracing, add)
 	validateServerLimits(c.Server, add)
 
 	validateDatabase(c.Database, add)

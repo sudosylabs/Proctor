@@ -1,6 +1,6 @@
 ---
 title: Server and Metrics Configuration
-description: Reference the Proctor public listener, TLS, request bounds, lifecycle timeouts, and Prometheus listener configuration.
+description: Reference the Proctor public listener, TLS, request bounds, lifecycle timeouts, Prometheus listener, profiling, and tracing configuration.
 audience: operator
 maturity: preview
 slug: /reference/configuration/server-and-metrics/
@@ -93,3 +93,19 @@ use the same bearer token as `/metrics`; the command-line profile is never
 served because process arguments can carry secrets. A CPU profile or execution
 trace must finish within `Metrics.WriteTimeout`, so request a `seconds` value
 below it or raise the timeout for the diagnosis.
+
+## Tracing
+
+| Path and default | Meaning and accepted value |
+| --- | --- |
+| `Tracing.Enabled`<br />Default: `false` | Records OpenTelemetry spans for HTTP routes, store operations, and Job executions, and exports them over OTLP/HTTP. |
+| `Tracing.EndpointURL`<br />Default: `http://127.0.0.1:4318/v1/traces` | Complete OTLP/HTTP traces URL, normally a collector on the node or its network. Must be an absolute `http` or `https` URL without credentials, query, or fragment. |
+| `Tracing.SampleRatio`<br />Default: `1` | Fraction of new root traces recorded, from `0` to `1`. A request continued from a trusted proxy follows the proxy's sampling decision. |
+| `Tracing.ExportTimeout`<br />Default: `10s` | Deadline for one export request to the collector. Must be positive and at most `1m`. |
+| `Tracing.ShutdownTimeout`<br />Default: `5s` | Time allowed to flush buffered spans at shutdown. Must be positive and at most `1m`. |
+
+Proctor continues an inbound W3C `traceparent` only from a peer listed in
+`Server.TrustedProxies`, the same rule that admits its request ID; any other
+client starts a new trace and cannot force sampling. Spans never carry request
+paths, query strings, credentials, client addresses, User data, or exam
+content. See [traces](../../operator/health-and-observability.mdx#traces).

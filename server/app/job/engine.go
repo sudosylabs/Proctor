@@ -44,6 +44,13 @@ type Recorder interface {
 	Record(Activity)
 }
 
+// Tracer encloses one claimed Job execution in a span. It receives only the
+// registered Job type; the returned context carries the span to the handler
+// and its store calls, and finish receives the closed execution outcome.
+type Tracer interface {
+	StartExecution(ctx context.Context, jobType model.JobType) (spanCtx context.Context, finish func(ExecutionOutcome))
+}
+
 // ExecutionOutcome is the closed telemetry vocabulary for one claimed Job
 // execution. It includes runtime terminal states that are not handler outcomes.
 type ExecutionOutcome string
@@ -99,11 +106,13 @@ type Policy struct {
 // validates them once, fills policy defaults, and the Engine keeps them in
 // deps.
 type Dependencies struct {
-	Store         store.JobStore
-	Descriptors   []Descriptor
-	NodeID        string
-	Diagnostics   Diagnostics
-	Recorder      Recorder
+	Store       store.JobStore
+	Descriptors []Descriptor
+	NodeID      string
+	Diagnostics Diagnostics
+	Recorder    Recorder
+	// Tracer, when set, encloses each claimed execution in a span.
+	Tracer        Tracer
 	Policy        Policy
 	Clock         Clock
 	Recurrences   []Recurrence
@@ -280,7 +289,18 @@ func (r *Engine) worker(ctx context.Context, descriptor Descriptor) {
 	}
 }
 
+// trace starts the execution span when a Tracer is configured. The returned
+// finish must be called exactly once with the execution's final outcome.
+func (r *Engine) trace(ctx context.Context, jobType model.JobType) (context.Context, func(ExecutionOutcome)) {
+	if r.deps.Tracer == nil {
+		return ctx, func(ExecutionOutcome) {}
+	}
+	return r.deps.Tracer.StartExecution(ctx, jobType)
+}
+
 func (r *Engine) completeUnsupported(ctx context.Context, descriptor Descriptor, claim *store.JobClaim, resolutionErr error) {
+	ctx, finishSpan := r.trace(ctx, descriptor.Type)
+	defer finishSpan(ExecutionPermanentFailure)
 	startedAt := time.Now()
 	if r.deps.Recorder != nil {
 		r.deps.Recorder.Started(descriptor.Type)
@@ -292,8 +312,10 @@ func (r *Engine) completeUnsupported(ctx context.Context, descriptor Descriptor,
 }
 
 func (r *Engine) execute(parent context.Context, descriptor Descriptor, claim *store.JobClaim) {
-	startedAt := time.Now()
 	metricOutcome := ExecutionAbandoned
+	parent, finishSpan := r.trace(parent, descriptor.Type)
+	defer func() { finishSpan(metricOutcome) }()
+	startedAt := time.Now()
 	if r.deps.Recorder != nil {
 		r.deps.Recorder.Started(descriptor.Type)
 		defer func() {

@@ -498,6 +498,12 @@ var dependencyRules = []dependencyRule{
 		thirdParty: only(subtree("github.com/prometheus/client_golang")),
 	},
 	{
+		name:       "tracing",
+		sources:    []pathPattern{exact(serverModule + "/tracing")},
+		project:    only(exact(serverModule + "/config")),
+		thirdParty: only(subtree("go.opentelemetry.io/otel")),
+	},
+	{
 		name:    "external-auth adapters",
 		sources: []pathPattern{subtree(serverModule + "/platform/externalauth")},
 		project: only(

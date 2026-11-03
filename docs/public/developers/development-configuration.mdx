@@ -100,6 +100,7 @@ HTTPS.
 | `PROCTOR_GRAFANA_PORT` | `13000` | Grafana browser and API |
 | `PROCTOR_LOKI_PORT` | `13100` | Loki API |
 | `PROCTOR_OTEL_HEALTH_PORT` | `13133` | Collector health extension |
+| `PROCTOR_OTEL_OTLP_HTTP_PORT` | `14318` | Collector OTLP/HTTP trace receiver |
 
 When you change a service port through Make, the generated server configuration,
 Compose binding, and relevant test address receive the same value. If a custom

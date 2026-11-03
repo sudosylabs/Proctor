@@ -309,6 +309,20 @@ work names, mail template/state vocabularies, and named application events.
 Resource IDs, principals, addresses, paths, cache keys, message data, mail
 recipients, and error text are forbidden labels.
 
+The `tracing` module owns the optional OpenTelemetry tracer provider and its
+OTLP/HTTP exporter; it never installs a global provider. It is built with the
+metrics module, hands composition-built adapters to three consumer-owned ports
+(`httpapi.Tracing`, `timerlayer.Tracer`, `job.Tracer`), and closes after every
+span producer and before `platform.Service`, flushing within
+`Tracing.ShutdownTimeout`. Request spans are renamed to the sealed route
+template once routed and end at a WebSocket hijack; store spans exist only
+inside a recording trace; each Job execution is a new root. Inbound W3C trace
+context is continued only from a trusted proxy. The logging core's context
+extractor adds `request_id`, `trace_id`, and `span_id` to context-carrying
+records without overriding explicit fields. The timer layer also reports
+operations at or above `Database.SlowOperationThreshold` to a slow-operation
+log that records only the operation name and duration.
+
 Expensive password and file-processing work exposes node-local
 `proctor_work_active`, `proctor_work_rejected_total`, and
 `proctor_work_duration_seconds` metrics with only the fixed `password` and

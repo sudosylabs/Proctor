@@ -25,6 +25,7 @@ import (
 	"github.com/sudosylabs/proctor/server/config"
 	"github.com/sudosylabs/proctor/server/logging"
 	"github.com/sudosylabs/proctor/server/model"
+	"github.com/sudosylabs/proctor/server/tracing"
 )
 
 type options struct {
@@ -268,11 +269,13 @@ type runtimeComponents struct {
 	jobs                  runtimeComponent
 	servingLease          monitoredRuntimeComponent
 	metrics               runtimeMetrics
-	transport             runtimeTransport
-	websocket             runtimeComponent
-	readiness             runtimeReadiness
-	listen                func(string, string) (net.Listener, error)
-	newHTTP               func(httpServerSettings) httpRuntime
+	// tracing flushes and stops span export; nil when tracing was never built.
+	tracing   *tracing.Module
+	transport runtimeTransport
+	websocket runtimeComponent
+	readiness runtimeReadiness
+	listen    func(string, string) (net.Listener, error)
+	newHTTP   func(httpServerSettings) httpRuntime
 }
 
 // AdministratorRecoveryCommand is the narrow module-root contract consumed by
@@ -881,6 +884,9 @@ func (s *Server) closeRuntime() error {
 		if s.components.metrics != nil {
 			metricsErr = s.components.metrics.Close()
 		}
+		// Tracing closes after every span producer so their final spans are
+		// flushed, and before Platform so the exporter never outlives logging.
+		tracingErr := s.components.tracing.Close()
 		s.closeErr = errors.Join(
 			listenerErr,
 			jobsErr,
@@ -888,6 +894,7 @@ func (s *Server) closeRuntime() error {
 			transportErr,
 			servingLeaseErr,
 			metricsErr,
+			tracingErr,
 			s.components.platform.Close(),
 		)
 	})

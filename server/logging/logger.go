@@ -43,12 +43,18 @@ type Stats struct {
 }
 
 type core struct {
-	mu          sync.RWMutex
-	backend     *backend
-	locked      bool
-	closed      bool
-	diagnostics diagnostics
+	mu            sync.RWMutex
+	backend       *backend
+	locked        bool
+	closed        bool
+	diagnostics   diagnostics
+	contextFields atomic.Pointer[ContextFields]
 }
+
+// ContextFields derives bounded correlation fields, such as a request or
+// trace ID, from the context of a record. It must return quickly and must not
+// read anything but correlation identifiers from the context.
+type ContextFields func(context.Context) []Field
 
 type Logger struct {
 	core   *core
@@ -106,6 +112,20 @@ func (l *Logger) Configure(cfg Config) error {
 		}
 	}
 	return nil
+}
+
+// SetContextFields installs the correlation extractor every logger sharing
+// this core applies to context-carrying records. An extracted field is
+// added only when the record does not already carry its key. nil removes it.
+func (l *Logger) SetContextFields(extract ContextFields) {
+	if l == nil || l.core == nil {
+		return
+	}
+	if extract == nil {
+		l.core.contextFields.Store(nil)
+		return
+	}
+	l.core.contextFields.Store(&extract)
 }
 
 func (l *Logger) LockConfiguration() bool {
@@ -178,11 +198,32 @@ func (l *Logger) Log(ctx context.Context, level slog.Level, message string, fiel
 	combined := make([]Field, 0, len(l.fields)+len(fields))
 	combined = append(combined, l.fields...)
 	combined = append(combined, fields...)
+	combined = l.withContextFields(ctx, combined)
 	backend.logger.Log(
 		toLogrLevel(level),
 		truncateUTF8(message, backend.maxFieldBytes),
 		unwrapFields(combined, backend.maxFieldBytes)...,
 	)
+}
+
+func (l *Logger) withContextFields(ctx context.Context, fields []Field) []Field {
+	extract := l.core.contextFields.Load()
+	if ctx == nil || extract == nil {
+		return fields
+	}
+	for _, extracted := range (*extract)(ctx) {
+		present := false
+		for _, field := range fields {
+			if field.value.Key == extracted.value.Key {
+				present = true
+				break
+			}
+		}
+		if !present {
+			fields = append(fields, extracted)
+		}
+	}
+	return fields
 }
 
 func (l *Logger) StdLogger(level slog.Level) *log.Logger {

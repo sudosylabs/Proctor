@@ -42,6 +42,13 @@
     "MaximumConcurrentScrapes": 2,
     "ProfilingEnabled": false
   },
+  "Tracing": {
+    "Enabled": false,
+    "EndpointURL": "http://127.0.0.1:4318/v1/traces",
+    "SampleRatio": 1,
+    "ExportTimeout": "10s",
+    "ShutdownTimeout": "5s"
+  },
   "Database": {
     "DataSource": "postgres://proctor:proctor@127.0.0.1:15432/proctor?sslmode=disable",
     "MaxOpenConnections": 50,

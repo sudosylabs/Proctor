@@ -64,7 +64,9 @@ type Dependencies struct {
 	MailDeliveryRecorder MailDeliveryRecorder
 	MailMetricsReader    MailMetricsReader
 	JobRecorder          job.Recorder
-	OperationalRecorder  OperationalRecorder
+	// JobTracer, when set, encloses each claimed Job execution in a span.
+	JobTracer           job.Tracer
+	OperationalRecorder OperationalRecorder
 	// MFASecretSealer is the concrete in-process cryptographic module for TOTP
 	// secrets. It is nil until the independent MFA ring is configured.
 	MFASecretSealer *secretseal.Sealer

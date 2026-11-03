@@ -11,7 +11,7 @@ const cliReferencePath = path.join(repositoryDirectory, 'docs/public/reference/c
 const cliSourceDirectory = path.join(repositoryDirectory, 'server/cmd/proctor/commands');
 
 const source = await readFile(environmentSourcePath, 'utf8');
-const matcher = /(stringList|string|duration|int64|int|bool|scalar|console)EnvironmentOverride\(\s*"(PROCTOR_[A-Z0-9_]+)"/g;
+const matcher = /(stringList|string|duration|int64|int|float64|bool|scalar|console)EnvironmentOverride\(\s*"(PROCTOR_[A-Z0-9_]+)"/g;
 const variables = [];
 const seen = new Set();
 
@@ -24,8 +24,8 @@ for (const match of source.matchAll(matcher)) {
   variables.push({name, parser});
 }
 
-if (variables.length !== 130) {
-  throw new Error(`expected 130 environment overrides, found ${variables.length}`);
+if (variables.length !== 135) {
+  throw new Error(`expected 135 environment overrides, found ${variables.length}`);
 }
 
 const typeLabel = {
@@ -34,13 +34,14 @@ const typeLabel = {
   duration: 'Go duration',
   int64: 'integer',
   int: 'integer',
+  float64: 'decimal number',
   bool: 'boolean',
   scalar: 'closed string',
   console: 'string',
 };
 
 const groupOrder = [
-  'Server', 'Metrics', 'Database', 'Cache', 'Cluster', 'Mail', 'VFS', 'FileContent',
+  'Server', 'Metrics', 'Tracing', 'Database', 'Cache', 'Cluster', 'Mail', 'VFS', 'FileContent',
   'Authentication', 'Log',
 ];
 const groups = new Map(groupOrder.map((group) => [group, []]));

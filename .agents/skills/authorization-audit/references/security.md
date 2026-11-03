@@ -134,7 +134,12 @@ logs; unsupported values record only their Go type.
 
 Metrics and tracing instrument HTTP, WebSocket, store, and outbound-adapter
 boundaries through explicit wrappers. Application use cases may expose named
-outcomes or events but do not call a global telemetry facade.
+outcomes or events but do not call a global telemetry facade. Span names and
+attributes follow the metric-label rule: route templates, closed operation and
+Job-type names, bounded methods and outcomes, and server-assigned request IDs
+only. A span never records paths, queries, headers, client addresses, SQL,
+arguments, rows, payloads, or error text. Inbound trace context is accepted
+only from a trusted proxy, and baggage is never read.
 
 The Prometheus listener is disabled and loopback-bound by default. Binding it
 beyond loopback requires static TLS plus a 32-to-512-byte bearer token; the

@@ -102,6 +102,15 @@ func int64EnvironmentOverride(
 	})
 }
 
+func float64EnvironmentOverride(
+	key string,
+	field func(*Config) *float64,
+) environmentOverride {
+	return scalarEnvironmentOverride(key, field, func(value string) (float64, error) {
+		return strconv.ParseFloat(value, 64)
+	})
+}
+
 func boolEnvironmentOverride(
 	key string,
 	field func(*Config) *bool,
@@ -190,6 +199,21 @@ var environmentOverrideCatalog = []environmentOverride{
 	}),
 	stringEnvironmentOverride("PROCTOR_METRICS_TLS_PRIVATE_KEY_FILE", func(cfg *Config) *string {
 		return &cfg.Metrics.TLS.PrivateKeyFile
+	}),
+	boolEnvironmentOverride("PROCTOR_TRACING_ENABLED", func(cfg *Config) *bool {
+		return &cfg.Tracing.Enabled
+	}),
+	stringEnvironmentOverride("PROCTOR_TRACING_ENDPOINT_URL", func(cfg *Config) *string {
+		return &cfg.Tracing.EndpointURL
+	}),
+	float64EnvironmentOverride("PROCTOR_TRACING_SAMPLE_RATIO", func(cfg *Config) *float64 {
+		return &cfg.Tracing.SampleRatio
+	}),
+	durationEnvironmentOverride("PROCTOR_TRACING_EXPORT_TIMEOUT", func(cfg *Config) *Duration {
+		return &cfg.Tracing.ExportTimeout
+	}),
+	durationEnvironmentOverride("PROCTOR_TRACING_SHUTDOWN_TIMEOUT", func(cfg *Config) *Duration {
+		return &cfg.Tracing.ShutdownTimeout
 	}),
 	stringEnvironmentOverride("PROCTOR_AUTHENTICATION_BOOTSTRAP_SECRET", func(cfg *Config) *string {
 		return &cfg.Authentication.Bootstrap.Secret

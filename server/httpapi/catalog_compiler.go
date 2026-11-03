@@ -108,6 +108,9 @@ func (a *API) collectResources(apiPrefix string, resources ...apiResource) error
 			if a.metrics != nil && definition.protocolKind != RouteProtocolUpgrade {
 				handler = observeRequestMetrics(handler, a.metrics, path, definition.method)
 			}
+			if a.middleware.tracing != nil {
+				handler = nameRequestSpan(handler, path)
+			}
 			probe := mux.NewRouter().NewRoute().Path(path).Methods(definition.method)
 			if err := probe.GetError(); err != nil {
 				return fmt.Errorf("compile resource %q %s %s: %w", resource.name, definition.method, path, err)

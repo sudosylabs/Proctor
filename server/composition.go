@@ -27,6 +27,7 @@ import (
 	"github.com/sudosylabs/proctor/server/localization"
 	"github.com/sudosylabs/proctor/server/logging"
 	"github.com/sudosylabs/proctor/server/model"
+	"github.com/sudosylabs/proctor/server/tracing"
 	"github.com/sudosylabs/proctor/server/websocket"
 	"github.com/sudosylabs/proctor/server/webui"
 )
@@ -213,7 +214,7 @@ func composeNode(ctx context.Context, input compositionInput) (*compositionResul
 		input.serviceEnvironment,
 	)
 	if constructorsErr != nil {
-		return nil, compositionRelease{platform: applicationPlatform, metrics: capabilities.metrics}.fail(constructorsErr)
+		return nil, compositionRelease{platform: applicationPlatform, metrics: capabilities.metrics, tracing: capabilities.tracing}.fail(constructorsErr)
 	}
 	if input.constructors != nil {
 		constructors = *input.constructors
@@ -231,7 +232,7 @@ func composeConsumers(
 ) (*compositionResult, error) {
 	// 3. Construct consumers in dependency order. Every failure releases only
 	// the consumers already built, followed by Platform.
-	release := compositionRelease{platform: applicationPlatform, metrics: capabilities.metrics}
+	release := compositionRelease{platform: applicationPlatform, metrics: capabilities.metrics, tracing: capabilities.tracing}
 	content, err := constructors.fileContent(capabilities)
 	if err != nil {
 		return nil, release.fail(fmt.Errorf("construct file content: %w", err))
@@ -244,6 +245,9 @@ func composeConsumers(
 		applicationDeps.JobRecorder = jobMetricsRecorder{metrics: capabilities.metrics}
 		applicationDeps.OperationalRecorder = applicationMetricsRecorder{metrics: capabilities.metrics}
 		applicationDeps.PasswordWorkRecorder = workMetricsRecorder{metrics: capabilities.metrics, pool: "password"}
+	}
+	if capabilities.tracing.Enabled() {
+		applicationDeps.JobTracer = jobTracing{tracing: capabilities.tracing}
 	}
 	mailMetrics := input.overrides.MailMetrics
 	if capabilities.metrics != nil && capabilities.metrics.Enabled() {
@@ -325,6 +329,10 @@ func composeConsumers(
 	if capabilities.metrics != nil && capabilities.metrics.Enabled() {
 		httpMetrics = capabilities.metrics
 	}
+	var httpTracer httpapi.Tracing
+	if capabilities.tracing.Enabled() {
+		httpTracer = httpTracing{tracing: capabilities.tracing}
+	}
 	trustedProxies, err := config.ParseTrustedProxies(snapshot.Server.TrustedProxies)
 	if err != nil {
 		return nil, release.fail(fmt.Errorf("parse trusted proxies: %w", err))
@@ -332,6 +340,7 @@ func composeConsumers(
 	httpTransport, httpAPI, err := constructors.http(httpapi.Options{
 		Logger: apiLogger{log: capabilities.logger}, Health: readiness,
 		Metrics:     httpMetrics,
+		Tracing:     httpTracer,
 		Application: application, AcademicUnits: application, Institutions: application,
 		Programmes: application, ProgrammeLevels: application, AcademicPeriods: application,
 		Classes: application, Affiliations: application, AcademicUnitMembers: application,
@@ -386,7 +395,7 @@ func composeConsumers(
 		platform: applicationPlatform, reconciler: application, administratorRecovery: application,
 		settings: runtimeSettingsFromConfig(snapshot.Server),
 		logger:   capabilities.logger, jobs: jobRuntime, servingLease: servingLease, transport: rootTransport,
-		websocket: webSocketHub, metrics: capabilities.metrics, readiness: readiness, listen: net.Listen, newHTTP: newHTTPServer,
+		websocket: webSocketHub, metrics: capabilities.metrics, tracing: capabilities.tracing, readiness: readiness, listen: net.Listen, newHTTP: newHTTPServer,
 	}}
 	return &compositionResult{
 		server: node,
@@ -403,14 +412,15 @@ func composeConsumers(
 type compositionRelease struct {
 	platform  runtimeComponent
 	metrics   runtimeMetrics
+	tracing   *tracing.Module
 	transport func() error
 	websocket func() error
 }
 
 // fail joins cause with the release of every owner built so far, closing the
-// transport, the WebSocket hub, metrics, and Platform in that order.
+// transport, the WebSocket hub, metrics, tracing, and Platform in that order.
 func (r compositionRelease) fail(cause error) error {
-	var transportErr, websocketErr, metricsErr error
+	var transportErr, websocketErr, metricsErr, tracingErr error
 	if r.transport != nil {
 		transportErr = r.transport()
 	}
@@ -420,5 +430,8 @@ func (r compositionRelease) fail(cause error) error {
 	if r.metrics != nil {
 		metricsErr = r.metrics.Close()
 	}
-	return errors.Join(cause, transportErr, websocketErr, errors.Join(metricsErr, r.platform.Close()))
+	if r.tracing != nil {
+		tracingErr = r.tracing.Close()
+	}
+	return errors.Join(cause, transportErr, websocketErr, errors.Join(metricsErr, tracingErr, r.platform.Close()))
 }

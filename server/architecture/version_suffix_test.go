@@ -30,6 +30,7 @@ var versionedStringAllowlist = map[string]string{
 	".v1": "Desktop native coverage keys are defined by the Desktop native agreement",
 	"https://acme-v02.api.letsencrypt.org/directory": "the ACME directory URL Let's Encrypt publishes",
 	"proctor-lockup-25d-v1.png":                      "a released, digest-pinned mail image file name",
+	"http://127.0.0.1:4318/v1/traces":                "the OTLP/HTTP traces path the OpenTelemetry specification fixes",
 }
 
 // versionedString matches a v<digits> segment delimited by '.', '_', ':',

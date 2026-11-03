@@ -15,6 +15,7 @@ import (
 	"net"
 	"net/http"
 	"runtime/debug"
+	"strings"
 	"time"
 
 	"github.com/sudosylabs/proctor/server/model"
@@ -24,12 +25,15 @@ import (
 // middleware chain.
 type middlewarePolicy struct {
 	trustedProxies trustedProxies
+	// tracing is nil unless tracing is enabled.
+	tracing Tracing
 }
 
 func withMiddleware(next http.Handler, logger Logger, policy middlewarePolicy) http.Handler {
 	handler := next
 	handler = recoverPanics(handler, logger)
 	handler = logRequests(handler, logger)
+	handler = traceRequests(handler, policy.tracing)
 	handler = securityHeaders(handler)
 	handler = attachRequestIdentity(handler, policy.trustedProxies)
 	return handler
@@ -54,8 +58,95 @@ func attachRequestIdentity(next http.Handler, proxies trustedProxies) http.Handl
 			UserAgent: request.UserAgent(),
 		}
 		ctx = context.WithValue(ctx, requestMetadataContextKey{}, metadata)
+		ctx = context.WithValue(ctx, trustedPeerContextKey{}, peer.trusted)
 		next.ServeHTTP(writer, request.WithContext(ctx))
 	})
+}
+
+// trustedPeerContextKey records whether the connection peer is a trusted
+// proxy, the same decision that admits its request ID and trace context.
+type trustedPeerContextKey struct{}
+
+func requestFromTrustedPeer(ctx context.Context) bool {
+	trusted, _ := ctx.Value(trustedPeerContextKey{}).(bool)
+	return trusted
+}
+
+type requestSpanContextKey struct{}
+
+// traceRequests encloses each request in a span named by its method until
+// the matched route names it by template. The span ends with the response,
+// or at a protocol upgrade's hijack so a long-lived WebSocket connection
+// does not hold its handshake span open.
+func traceRequests(next http.Handler, tracing Tracing) http.Handler {
+	if tracing == nil {
+		return next
+	}
+	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		ctx, span := tracing.StartRequest(request.Context(), TracedRequest{
+			Header:         request.Header,
+			Method:         boundedHTTPMethod(request.Method),
+			ContinueParent: requestFromTrustedPeer(request.Context()),
+			RequestID:      RequestID(request.Context()),
+		})
+		ctx = context.WithValue(ctx, requestSpanContextKey{}, span)
+		recorder := &responseRecorder{ResponseWriter: writer, hijacked: func() { span.End(http.StatusSwitchingProtocols) }}
+		defer func() {
+			recovered := recover()
+			status := recorder.status
+			if recovered != nil {
+				status = http.StatusInternalServerError
+			}
+			if status == 0 {
+				status = http.StatusOK
+			}
+			span.End(status)
+			if recovered != nil {
+				panic(recovered)
+			}
+		}()
+		next.ServeHTTP(recorder, request.WithContext(ctx))
+	})
+}
+
+// nameRequestSpan gives the request span its sealed route template, with each
+// parameter shown by name only.
+func nameRequestSpan(next http.Handler, path string) http.Handler {
+	route := routeTemplate(path)
+	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if span, ok := request.Context().Value(requestSpanContextKey{}).(RequestSpan); ok {
+			span.SetRoute(route)
+		}
+		next.ServeHTTP(writer, request)
+	})
+}
+
+// routeTemplate drops each parameter's matcher from a compiled route path, so
+// "/api/v1/users/{user_id:[0-9a-z]{26}}" becomes "/api/v1/users/{user_id}".
+func routeTemplate(path string) string {
+	var template strings.Builder
+	for index := 0; index < len(path); index++ {
+		if path[index] != '{' {
+			template.WriteByte(path[index])
+			continue
+		}
+		depth, end := 0, len(path)
+		for cursor := index; cursor < len(path); cursor++ {
+			if path[cursor] == '{' {
+				depth++
+			} else if path[cursor] == '}' {
+				depth--
+				if depth == 0 {
+					end = cursor
+					break
+				}
+			}
+		}
+		name, _, _ := strings.Cut(path[index+1:min(end, len(path))], ":")
+		template.WriteString("{" + name + "}")
+		index = end
+	}
+	return template.String()
 }
 
 type requestMetadataContextKey struct{}
@@ -97,6 +188,8 @@ type responseRecorder struct {
 	http.ResponseWriter
 	status int
 	bytes  int
+	// hijacked, when set, runs once the connection is successfully hijacked.
+	hijacked func()
 }
 
 func (r *responseRecorder) WriteHeader(status int) {
@@ -130,6 +223,9 @@ func (r *responseRecorder) Hijack() (net.Conn, *bufio.ReadWriter, error) {
 		// The WebSocket upgrader writes the handshake after hijacking, so the
 		// recorder must track the protocol switch without calling WriteHeader.
 		r.status = http.StatusSwitchingProtocols
+	}
+	if err == nil && r.hijacked != nil {
+		r.hijacked()
 	}
 	return connection, buffered, err
 }

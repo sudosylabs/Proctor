@@ -65,6 +65,35 @@ type Metrics interface {
 	ObserveHTTPPayload(route, method string, requestBytes, responseBytes int64)
 }
 
+// Tracing is the narrow, transport-owned tracing port. Composition supplies
+// it only when tracing is enabled; package httpapi never imports a tracing
+// SDK.
+type Tracing interface {
+	StartRequest(ctx context.Context, request TracedRequest) (context.Context, RequestSpan)
+}
+
+// TracedRequest is everything a request span may learn about a request:
+// never its path, query, body, credentials, or client address.
+type TracedRequest struct {
+	// Header is consulted only for W3C trace context, and only when
+	// ContinueParent is true.
+	Header http.Header
+	// Method is the bounded HTTP method.
+	Method string
+	// ContinueParent is true only when the connection peer is a trusted
+	// proxy, so an untrusted client cannot choose a trace or force sampling.
+	ContinueParent bool
+	// RequestID is the request's server-assigned correlation ID.
+	RequestID string
+}
+
+// RequestSpan is one request's span. SetRoute receives the sealed route
+// template; End is idempotent.
+type RequestSpan interface {
+	SetRoute(route string)
+	End(status int)
+}
+
 type AuthRequirement string
 type IdempotencyRequirement string
 type RouteProtocolKind string
@@ -116,6 +145,7 @@ type routeMatcher struct {
 type Options struct {
 	Logger                        Logger
 	Metrics                       Metrics
+	Tracing                       Tracing
 	Localizer                     Localizer
 	Health                        Health
 	Application                   Application

@@ -43,6 +43,7 @@ import (
 	"github.com/sudosylabs/proctor/server/store/retrylayer"
 	"github.com/sudosylabs/proctor/server/store/sqlstore"
 	"github.com/sudosylabs/proctor/server/store/timerlayer"
+	"github.com/sudosylabs/proctor/server/tracing"
 )
 
 const (
@@ -103,6 +104,7 @@ type ownedInfrastructure struct {
 	externalAuthentication *externalauth.Registry
 	migration              *sqlstore.MigrationResult
 	metrics                *metrics.Module
+	tracing                *tracing.Module
 }
 
 // constructionCapabilities is a short-lived, non-owning projection used only
@@ -120,6 +122,7 @@ type constructionCapabilities struct {
 	nodeID                 string
 	migration              *sqlstore.MigrationResult
 	metrics                *metrics.Module
+	tracing                *tracing.Module
 }
 
 type borrowedCache interface {
@@ -183,6 +186,7 @@ func openRuntimeInfrastructure(
 		}
 		result.logger = logger
 	}
+	result.logger.SetContextFields(logCorrelationFields)
 	if err := checkAcquisitionContext(ctx, "acquire logger"); err != nil {
 		return result, err
 	}
@@ -222,6 +226,13 @@ func openRuntimeInfrastructure(
 		return result, fmt.Errorf("construct metrics module: %w", err)
 	}
 	result.metrics = metricsModule
+	tracingModule, err := tracing.New(cfg.Tracing, tracing.Identity{
+		Version: currentBuild.Version, NodeID: cfg.Cluster.NodeID,
+	}, result.logger.StdLogger(slog.LevelError))
+	if err != nil {
+		return result, fmt.Errorf("construct tracing module: %w", err)
+	}
+	result.tracing = tracingModule
 	storeRetry := retrylayer.DefaultPolicy(sqlstore.IsTransientError)
 	if overrides.StoreRetry != nil {
 		storeRetry = *overrides.StoreRetry
@@ -246,10 +257,14 @@ func openRuntimeInfrastructure(
 			storeMetrics = timerlayer.NopRecorder{}
 		}
 	}
-	timedPersistence, err := timerlayer.New(result.persistence, storeMetrics, timerlayer.Options{
+	timerOptions := timerlayer.Options{
 		SlowThreshold: cfg.Database.SlowOperationThreshold.Duration,
 		Slow:          slowStoreOperationLog{logger: result.logger},
-	})
+	}
+	if tracingModule.Enabled() {
+		timerOptions.Tracer = storeTracing{tracing: tracingModule}
+	}
+	timedPersistence, err := timerlayer.New(result.persistence, storeMetrics, timerOptions)
 	if err != nil {
 		return result, fmt.Errorf("construct store timing layer: %w", err)
 	}
@@ -431,6 +446,7 @@ func (i *ownedInfrastructure) acceptPlatform(
 		externalAuthentication: i.externalAuthentication,
 		migration:              i.migration,
 		metrics:                i.metrics,
+		tracing:                i.tracing,
 	}
 	if i.cluster != nil {
 		capabilities.nodeID = i.cluster.NodeID()
@@ -448,7 +464,7 @@ func (i *ownedInfrastructure) acceptPlatform(
 	*i = ownedInfrastructure{}
 	service, snapshot, err := platform.Accept(ctx, resources)
 	if err != nil {
-		return nil, config.Config{}, constructionCapabilities{}, errors.Join(err, capabilities.metrics.Close())
+		return nil, config.Config{}, constructionCapabilities{}, errors.Join(err, capabilities.metrics.Close(), capabilities.tracing.Close())
 	}
 	return service, snapshot, capabilities, nil
 }
@@ -496,8 +512,13 @@ func (i *ownedInfrastructure) release() error {
 	if i.metrics != nil {
 		metricsErr = i.metrics.Close()
 	}
+	var tracingErr error
+	if i.tracing != nil {
+		tracingErr = i.tracing.Close()
+	}
 	return errors.Join(
 		metricsErr,
+		tracingErr,
 		clusterErr,
 		vfsErr,
 		mailErr,

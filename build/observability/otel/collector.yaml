@@ -5,6 +5,11 @@ extensions:
     endpoint: 0.0.0.0:13133
 
 receivers:
+  # Proctor nodes export spans here over OTLP/HTTP when Tracing.Enabled is set.
+  otlp:
+    protocols:
+      http:
+        endpoint: 0.0.0.0:4318
   filelog/proctor:
     include:
       - /var/log/proctor/*/server.log
@@ -34,6 +39,10 @@ processors:
 exporters:
   otlp_http/loki:
     endpoint: http://loki:3100/otlp
+  # The development stack has no trace store; received spans are summarized in
+  # the collector's own log (`make dev-logs`), one line per span.
+  debug/traces:
+    verbosity: normal
 
 service:
   extensions: [file_storage, health_check]
@@ -42,3 +51,7 @@ service:
       receivers: [filelog/proctor]
       processors: [resource/proctor, batch]
       exporters: [otlp_http/loki]
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [debug/traces]
