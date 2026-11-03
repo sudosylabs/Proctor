@@ -104,7 +104,7 @@ func (s *SQLExamAttemptStore) prepareSecurityPreflight(ctx context.Context, tx *
 	now := guard.DatabaseNow.UTC().Truncate(time.Millisecond)
 	// Reclaim a bounded page of expired pending slots. Skip rows in concurrent
 	// admission/report transactions; immutable Connect provenance lives in its owner.
-	if _, err := tx.Exec(ctx, `DELETE FROM exam_security_preflights WHERE (session_id,sitting_id) IN (SELECT session_id,sitting_id FROM exam_security_preflights WHERE expires_at<=? ORDER BY expires_at LIMIT 128 FOR UPDATE SKIP LOCKED)`, now); err != nil {
+	if _, err = tx.Exec(ctx, `DELETE FROM exam_security_preflights WHERE (session_id,sitting_id) IN (SELECT session_id,sitting_id FROM exam_security_preflights WHERE expires_at<=? ORDER BY expires_at LIMIT 128 FOR UPDATE SKIP LOCKED)`, now); err != nil {
 		return nil, err
 	}
 	var previous time.Time
@@ -115,66 +115,11 @@ func (s *SQLExamAttemptStore) prepareSecurityPreflight(ctx context.Context, tx *
 	if err == nil && now.Sub(previous) < time.Second {
 		return nil, preflightConflict("preflight_rate_limited")
 	}
-	var existing struct {
-		ID            string `db:"id"`
-		State         string `db:"state"`
-		Configuration []byte `db:"attempt_configuration_canonical"`
-		Digest        string `db:"attempt_configuration_digest"`
-	}
-	err = tx.Get(ctx, &existing, `SELECT id,state,attempt_configuration_canonical,attempt_configuration_digest FROM exam_attempts WHERE exam_sitting_id=? AND candidate_user_id=? FOR SHARE`, access.SittingID.String(), access.CandidateUserID.String())
-	var frozen *model.AttemptConfiguration
-	switch {
-	case err == nil:
-		if input.AttemptID.String() != existing.ID || existing.State != string(model.ExamAttemptReady) {
-			return nil, preflightConflict("attempt_not_ready")
-		}
-		configuration, decodeErr := validateExistingAttemptConfiguration(existing.Configuration, existing.Digest, preflightConnectSelector(access))
-		if decodeErr != nil {
-			return nil, decodeErr
-		}
-		frozen = &configuration
-	case errors.Is(err, sql.ErrNoRows):
-		if input.AttemptID != "" {
-			return nil, store.NewErrNotFound("exam_attempt", input.AttemptID.String())
-		}
-	default:
-		return nil, fmt.Errorf("inspect preflight Attempt: %w", err)
-	}
-	examID, err := model.ParseExamID(guard.ExamID)
+	frozen, err := preflightFrozenConfiguration(ctx, tx, input)
 	if err != nil {
 		return nil, err
 	}
-	revisionID, err := model.ParseExamRevisionID(guard.RevisionID)
-	if err != nil {
-		return nil, err
-	}
-	revision, err := getExamRevisionSnapshot(ctx, tx, examID, revisionID)
-	if err != nil {
-		return nil, err
-	}
-	selections, err := model.DecodeExamPolicySet(revision.Policy.Bytes)
-	if err != nil {
-		return nil, err
-	}
-	var institution string
-	if err := tx.Get(ctx, &institution, `SELECT institution_id FROM academic_units WHERE id=?`, guard.AcademicUnitID); err != nil {
-		return nil, err
-	}
-	institutionID, err := model.ParseInstitutionID(institution)
-	if err != nil {
-		return nil, err
-	}
-	scope := model.SecurityPolicyScope{Kind: "admission", AdmissionScopeID: input.PreflightID}
-	if input.AttemptID.IsValid() {
-		scope = model.SecurityPolicyScope{Kind: "attempt", AttemptID: input.AttemptID}
-	}
-	ordinal := int64(1)
-	if input.AttemptID.IsValid() {
-		if err := tx.Get(ctx, &ordinal, `SELECT COALESCE(MAX(generation),0)+1 FROM exam_attempt_participations WHERE exam_attempt_id=?`, input.AttemptID.String()); err != nil {
-			return nil, err
-		}
-	}
-	resolved, err := model.ResolveNativePolicy(model.NativePolicyResolution{PolicyID: model.NewID(), Revision: guard.RevisionID, Ordinal: ordinal, InstitutionID: institutionID, ExamRevisionID: revisionID, SittingID: access.SittingID, Scope: scope, IssuedAt: now, ActiveFrom: now, ActivationTime: now, Selections: selections, Build: access.DesktopBuild})
+	revision, resolved, err := resolvePreflightPolicy(ctx, tx, input, guard, now)
 	if err != nil {
 		return nil, err
 	}
@@ -204,10 +149,87 @@ func (s *SQLExamAttemptStore) prepareSecurityPreflight(ctx context.Context, tx *
 	if err != nil {
 		return nil, fmt.Errorf("persist security preflight: %w", err)
 	}
-	if err := completeSecurityPreflightAudit(ctx, tx, input.AuditEventID, input.AuditAt, input.PreflightID, false); err != nil {
+	if err = completeSecurityPreflightAudit(ctx, tx, input.AuditEventID, input.AuditAt, input.PreflightID, false); err != nil {
 		return nil, err
 	}
 	return prepared, nil
+}
+
+// preflightFrozenConfiguration returns the frozen configuration of the
+// Candidate's ready Attempt, or nil when the preflight precedes admission.
+func preflightFrozenConfiguration(ctx context.Context, tx *sqlxTxWrapper, input *store.SecurityPreflightPrepare) (*model.AttemptConfiguration, error) {
+	access := input.Access
+	var existing struct {
+		ID            string `db:"id"`
+		State         string `db:"state"`
+		Configuration []byte `db:"attempt_configuration_canonical"`
+		Digest        string `db:"attempt_configuration_digest"`
+	}
+	err := tx.Get(ctx, &existing, `SELECT id,state,attempt_configuration_canonical,attempt_configuration_digest FROM exam_attempts WHERE exam_sitting_id=? AND candidate_user_id=? FOR SHARE`, access.SittingID.String(), access.CandidateUserID.String())
+	var frozen *model.AttemptConfiguration
+	switch {
+	case err == nil:
+		if input.AttemptID.String() != existing.ID || existing.State != string(model.ExamAttemptReady) {
+			return nil, preflightConflict("attempt_not_ready")
+		}
+		configuration, decodeErr := validateExistingAttemptConfiguration(existing.Configuration, existing.Digest, preflightConnectSelector(access))
+		if decodeErr != nil {
+			return nil, decodeErr
+		}
+		frozen = &configuration
+	case errors.Is(err, sql.ErrNoRows):
+		if input.AttemptID != "" {
+			return nil, store.NewErrNotFound("exam_attempt", input.AttemptID.String())
+		}
+	default:
+		return nil, fmt.Errorf("inspect preflight Attempt: %w", err)
+	}
+	return frozen, nil
+}
+
+// resolvePreflightPolicy resolves the Sitting's current native policy for the
+// preflight's admission or Attempt scope and returns it with its revision.
+func resolvePreflightPolicy(ctx context.Context, tx *sqlxTxWrapper, input *store.SecurityPreflightPrepare, guard examAttemptAdmissionGuard, now time.Time) (*model.ExamRevision, model.ResolvedNativePolicy, error) {
+	access := input.Access
+	examID, err := model.ParseExamID(guard.ExamID)
+	if err != nil {
+		return nil, model.ResolvedNativePolicy{}, err
+	}
+	revisionID, err := model.ParseExamRevisionID(guard.RevisionID)
+	if err != nil {
+		return nil, model.ResolvedNativePolicy{}, err
+	}
+	revision, err := getExamRevisionSnapshot(ctx, tx, examID, revisionID)
+	if err != nil {
+		return nil, model.ResolvedNativePolicy{}, err
+	}
+	selections, err := model.DecodeExamPolicySet(revision.Policy.Bytes)
+	if err != nil {
+		return nil, model.ResolvedNativePolicy{}, err
+	}
+	var institution string
+	if err = tx.Get(ctx, &institution, `SELECT institution_id FROM academic_units WHERE id=?`, guard.AcademicUnitID); err != nil {
+		return nil, model.ResolvedNativePolicy{}, err
+	}
+	institutionID, err := model.ParseInstitutionID(institution)
+	if err != nil {
+		return nil, model.ResolvedNativePolicy{}, err
+	}
+	scope := model.SecurityPolicyScope{Kind: "admission", AdmissionScopeID: input.PreflightID}
+	if input.AttemptID.IsValid() {
+		scope = model.SecurityPolicyScope{Kind: "attempt", AttemptID: input.AttemptID}
+	}
+	ordinal := int64(1)
+	if input.AttemptID.IsValid() {
+		if err = tx.Get(ctx, &ordinal, `SELECT COALESCE(MAX(generation),0)+1 FROM exam_attempt_participations WHERE exam_attempt_id=?`, input.AttemptID.String()); err != nil {
+			return nil, model.ResolvedNativePolicy{}, err
+		}
+	}
+	resolved, err := model.ResolveNativePolicy(model.NativePolicyResolution{PolicyID: model.NewID(), Revision: guard.RevisionID, Ordinal: ordinal, InstitutionID: institutionID, ExamRevisionID: revisionID, SittingID: access.SittingID, Scope: scope, IssuedAt: now, ActiveFrom: now, ActivationTime: now, Selections: selections, Build: access.DesktopBuild})
+	if err != nil {
+		return nil, model.ResolvedNativePolicy{}, err
+	}
+	return revision, resolved, nil
 }
 
 // securityPreflightResultOutcome is the persisted outcome of a preflight
