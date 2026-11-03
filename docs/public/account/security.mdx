@@ -14,6 +14,45 @@ key; and a <Term id="personal-access-token">Personal Access Token</Term> is an
 automation credential. Treating them as one “login token” hides important
 revocation consequences.
 
+## Choose and Change a Password
+
+Proctor follows NIST SP 800-63B: there are no required character classes and
+no scheduled expiry. Length matters most. A new password is refused, each with
+its own message, when it:
+
+- is shorter or longer than the installation's configured bounds;
+- is one repeated character, a short repeated unit such as `abcabc…`, a run
+  such as `abcdef…` or `98765…`, or a keyboard row such as `qwerty…`;
+- appears on a bundled list of commonly used passwords, in any letter case, or
+  is such a password followed only by digits and symbols (`sunshine2026!`);
+- contains your username, the part of your email address before `@`, or your
+  name;
+- matches one of your recent passwords. The number remembered is set by the
+  operator (five by default); the comparison happens on the server and no
+  password is ever sent to an outside breach service.
+
+The same rules apply when the account is created, when an Invitation is
+accepted, and when a password is enrolled, changed, or reset. A passphrase of
+several unrelated words is the easiest way to satisfy them.
+
+Changing a password from the account requires a strong recent Session. The
+browser that makes the change stays signed in; every other Session of the
+account is signed out, any unused password-reset link stops working, and a
+"password changed" notice goes to the account address.
+
+## Undo an Unexpected Email Change
+
+When the email address on an account changes, Proctor sends the previous
+address a notice with a single-use **Undo this change** link, valid for a
+limited window after the change (72 hours by default). If you did not expect
+the change, open the link and choose **Restore previous email**. Proctor puts
+the previous address back (verified, because the link proved you control it),
+signs out every Session of the account, cancels pending verification and
+password-reset links for the replaced address, and records the undo in the
+audit history. If another account now uses the previous address, the undo is
+refused; contact your institution. The link never signs you in: sign in again
+afterwards, resetting the password if you need to.
+
 ## Add MFA and Keep Recovery Codes Offline
 
 MFA setup is a two-stage operation: begin setup, then activate it by proving a
@@ -79,8 +118,10 @@ exposure.
 
 1. From a known-good browser and canonical server origin, revoke the affected
    Session, Desktop Registration, or Personal Access Token.
-2. If the boundary is unclear, revoke all current-User Sessions and rotate the
-   local password or recover the affected external provider.
+2. If the boundary is unclear, revoke all current-User Sessions and change the
+   local password or recover the affected external provider. If the account's
+   email address was changed without your consent, use the undo link sent to
+   the previous address first.
 3. Regenerate MFA recovery codes if a stored set may have been read.
 4. Ask an administrator to inspect bounded audit events by time and resource.
 5. Never attach credentials, raw provider claims, Exam answers, or unbounded
