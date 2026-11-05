@@ -54,7 +54,7 @@ webapp-build-debug: webapp-install ## Compile the hosted webapp with the Go serv
 dev-up: dev-tools dev-state ## Start and health-wait for persistent dependencies and observability.
 	@$(DEV_COMPOSE) up --detach --wait postgres redis minio mailpit
 	@$(DEV_COMPOSE) run --rm minio-init
-	@PROCTOR_PROMETHEUS_TARGETS_FILE=single-node-targets.json $(DEV_COMPOSE) up --detach --no-deps --force-recreate --wait prometheus grafana loki otel-collector
+	@PROCTOR_PROMETHEUS_TARGETS_FILE=single-node-targets.json $(DEV_COMPOSE) up --detach --no-deps --force-recreate --wait prometheus grafana loki jaeger otel-collector
 	@CURL_COMMAND="$(CURL)" "$(ROOT_DIR)/build/scripts/wait-http" 'http://127.0.0.1:$(PROCTOR_OTEL_HEALTH_PORT)'
 
 run: run-server ## Run the production-shaped single-node development lifecycle.
@@ -111,7 +111,7 @@ cluster-up: dev-tools dev-state container ## Start and health-wait for the three
 	@$(CLUSTER_DEV_COMPOSE) up --detach --wait postgres redis minio mailpit
 	@$(CLUSTER_DEV_COMPOSE) run --rm minio-init
 	@$(CLUSTER_DEV_COMPOSE) up --detach --no-deps --force-recreate --wait node-a node-b node-c
-	@PROCTOR_PROMETHEUS_TARGETS_FILE=cluster-targets.json $(CLUSTER_DEV_COMPOSE) up --detach --no-deps --force-recreate --wait prometheus grafana loki otel-collector
+	@PROCTOR_PROMETHEUS_TARGETS_FILE=cluster-targets.json $(CLUSTER_DEV_COMPOSE) up --detach --no-deps --force-recreate --wait prometheus grafana loki jaeger otel-collector
 	@$(CLUSTER_DEV_COMPOSE) up --detach --no-deps --force-recreate --wait gateway
 	@CURL_COMMAND="$(CURL)" "$(ROOT_DIR)/build/scripts/wait-http" 'http://127.0.0.1:$(PROCTOR_OTEL_HEALTH_PORT)'
 
@@ -128,7 +128,7 @@ cluster-logs: ## Follow gateway and all Proctor node logs.
 
 cluster-diagnostics: ## Print bounded cluster state and logs for CI/failure diagnosis.
 	@$(CLUSTER_DEV_COMPOSE) ps
-	@$(CLUSTER_DEV_COMPOSE) logs --no-color --tail=300 gateway node-a node-b node-c prometheus otel-collector
+	@$(CLUSTER_DEV_COMPOSE) logs --no-color --tail=300 gateway node-a node-b node-c prometheus otel-collector jaeger
 
 cluster-smoke: cluster-up ## Certify readiness, metrics, load balancing, and one-node failure recovery.
 	@CURL_COMMAND="$(CURL)" JQ_COMMAND="$(JQ)" PROCTOR_EXPECTED_VERSION='$(VERSION)' PROCTOR_EXPECTED_COMMIT='$(COMMIT)' "$(ROOT_DIR)/build/scripts/cluster-smoke" 'http://127.0.0.1:$(PROCTOR_CLUSTER_HTTP_PORT)' 'http://127.0.0.1:$(PROCTOR_PROMETHEUS_PORT)'
@@ -138,4 +138,4 @@ cluster-smoke: cluster-up ## Certify readiness, metrics, load balancing, and one
 	@CURL_COMMAND="$(CURL)" JQ_COMMAND="$(JQ)" PROCTOR_EXPECTED_VERSION='$(VERSION)' PROCTOR_EXPECTED_COMMIT='$(COMMIT)' "$(ROOT_DIR)/build/scripts/cluster-smoke" 'http://127.0.0.1:$(PROCTOR_CLUSTER_HTTP_PORT)' 'http://127.0.0.1:$(PROCTOR_PROMETHEUS_PORT)'
 
 metrics-urls: ## Print local observability endpoints.
-	@printf 'Prometheus: http://127.0.0.1:%s\nGrafana:    http://127.0.0.1:%s\nLoki:       http://127.0.0.1:%s\n' '$(PROCTOR_PROMETHEUS_PORT)' '$(PROCTOR_GRAFANA_PORT)' '$(PROCTOR_LOKI_PORT)'
+	@printf 'Prometheus: http://127.0.0.1:%s\nGrafana:    http://127.0.0.1:%s\nLoki:       http://127.0.0.1:%s\nJaeger:     http://127.0.0.1:%s\n' '$(PROCTOR_PROMETHEUS_PORT)' '$(PROCTOR_GRAFANA_PORT)' '$(PROCTOR_LOKI_PORT)' '$(PROCTOR_JAEGER_UI_PORT)'

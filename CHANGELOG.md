@@ -240,6 +240,10 @@ module when a change is not server-only. No module has been released yet.
   sign-out, MFA enrollment and challenge, a mailed password reset and a mailed
   Invitation against one real `proctor serve` node with disposable PostgreSQL
   and Mailpit. CI runs it after the hermetic gate, and releases wait for it.
+- Build: the development stack runs Jaeger 2.22.0 (all-in-one, in-memory)
+  and the development collector forwards every span to it, so traces from
+  `make run` and the cluster stack can be browsed at `http://127.0.0.1:16686`
+  (`PROCTOR_JAEGER_UI_PORT`, `PROCTOR_JAEGER_IMAGE`).
 - Build: `make container-scan` scans the runtime image with a pinned Trivy and
   fails on critical or fixable high vulnerabilities. CI scans on relevant pull
   requests and weekly. Releases build the image locally, scan each platform,

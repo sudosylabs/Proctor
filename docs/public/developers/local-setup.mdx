@@ -261,6 +261,10 @@ curl --fail --silent --get \
   http://127.0.0.1:19090/api/v1/query | jq '.data.result'
 ```
 
+The local server exports traces to the development collector, which forwards
+them to Jaeger. Open `http://127.0.0.1:16686`, choose the `proctor` service, and
+select **Find Traces** to see recent requests, store operations, and Jobs.
+
 For service-by-service checks and failure symptoms, use the
 [local services handbook](./local-services.mdx).
 

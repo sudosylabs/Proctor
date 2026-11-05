@@ -86,7 +86,7 @@ healthy_output=$(run_doctor)
 printf '%s\n' "$healthy_output" | grep -q '^PASS  toolchain$'
 printf '%s\n' "$healthy_output" | grep -q '^PASS  container postgres is healthy$'
 printf '%s\n' "$healthy_output" | grep -q '^PASS  server readiness$'
-printf '%s\n' "$healthy_output" | grep -q '^Summary: 22 passed, 0 errors$'
+printf '%s\n' "$healthy_output" | grep -q '^Summary: 23 passed, 0 errors$'
 
 failed_output="$test_dir/failed-output"
 if FAKE_FAILED_URL=http://127.0.0.1:8065/health/ready run_doctor >"$failed_output" 2>&1; then
@@ -94,7 +94,7 @@ if FAKE_FAILED_URL=http://127.0.0.1:8065/health/ready run_doctor >"$failed_outpu
 	exit 1
 fi
 grep -q '^ERROR server readiness$' "$failed_output"
-grep -q '^Summary: 21 passed, 1 errors$' "$failed_output"
+grep -q '^Summary: 22 passed, 1 errors$' "$failed_output"
 
 if FAKE_UNHEALTHY_SERVICE=redis run_doctor >"$failed_output" 2>&1; then
 	printf 'dev-doctor unexpectedly accepted an unhealthy container\n' >&2

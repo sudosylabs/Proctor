@@ -107,8 +107,34 @@ services:
     depends_on:
       loki:
         condition: service_healthy
+      jaeger:
+        condition: service_healthy
     restart: unless-stopped
     user: ${PROCTOR_UID:-1000}:${PROCTOR_GID:-1000}
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=32m
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    networks:
+      - proctor-dev
+
+  # All-in-one Jaeger with its default in-memory store: the collector forwards
+  # spans over OTLP/HTTP on the Compose network, and only the UI is published.
+  # Traces are discarded whenever the container is recreated.
+  jaeger:
+    image: ${PROCTOR_JAEGER_IMAGE:-jaegertracing/jaeger:2.22.0@sha256:836b967b5abcf1f7758066aa6b348619267a2f1459f72d472840570f9bd88a17}
+    ports:
+      - 127.0.0.1:${PROCTOR_JAEGER_UI_PORT:-16686}:16686
+    healthcheck:
+      test: [CMD, wget, --spider, --quiet, "http://127.0.0.1:13133/status"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+      start_period: 3s
+    restart: unless-stopped
     read_only: true
     tmpfs:
       - /tmp:rw,noexec,nosuid,size=32m

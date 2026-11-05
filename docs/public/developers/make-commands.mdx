@@ -93,7 +93,7 @@ expected.
 | `make run-server` | Builds the webapp, starts local dependencies, and runs the Go server in the foreground. **Effect:** runtime state. |
 | `make run-webapp` | Runs Vite with hot reload and proxies API and WebSocket traffic to a separately running server. **Effect:** runtime state. |
 | `make dev-seed` | Creates or reports the guarded synthetic Institution, users, academic structure, Exam, and Sitting through the public API. **Effect:** runtime state. |
-| `make metrics-urls` | Prints the local Prometheus, Grafana, and Loki addresses. **Effect:** read-only. |
+| `make metrics-urls` | Prints the local Prometheus, Grafana, Loki, and Jaeger addresses. **Effect:** read-only. |
 | `make dev-logs` | Follows dependency and observability logs until interrupted. **Effect:** read-only. |
 | `make dev-down` | Stops the development services and preserves their volumes and generated state. **Effect:** runtime state. |
 | `make dev-reset` | Stops the development services, deletes their persistent volumes, and removes guarded seed state. **Effect:** **destructive runtime state.** |

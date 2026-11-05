@@ -101,6 +101,7 @@ HTTPS.
 | `PROCTOR_LOKI_PORT` | `13100` | Loki API |
 | `PROCTOR_OTEL_HEALTH_PORT` | `13133` | Collector health extension |
 | `PROCTOR_OTEL_OTLP_HTTP_PORT` | `14318` | Collector OTLP/HTTP trace receiver |
+| `PROCTOR_JAEGER_UI_PORT` | `16686` | Jaeger trace UI |
 
 When you change a service port through Make, the generated server configuration,
 Compose binding, and relevant test address receive the same value. If a custom
@@ -124,6 +125,7 @@ PROCTOR_PROMETHEUS_IMAGE
 PROCTOR_GRAFANA_IMAGE
 PROCTOR_LOKI_IMAGE
 PROCTOR_OTEL_IMAGE
+PROCTOR_JAEGER_IMAGE
 PROCTOR_HAPROXY_IMAGE
 PROCTOR_GO_IMAGE
 PROCTOR_RUNTIME_IMAGE
