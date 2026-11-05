@@ -143,7 +143,17 @@ func TestTracingHeadersEnvironmentOverride(t *testing.T) {
 	require.NoError(t, err)
 	require.Empty(t, cleared.Tracing.Headers, "an empty value clears the headers")
 
-	for _, malformed := range []string{"api-key-secret-without-separator", "X-Api-Key=bad%zzsecret", "=orphan-secret", "X-A=1,X-A=2-secret"} {
+	for _, lenient := range []string{"X-A=1,", "X-A=1,,X-B=2", " , X-A=1 , ,X-B=2, "} {
+		candidate := persisted.Clone()
+		_, err := applyEnvironment(&candidate, lookup(lenient))
+		require.NoError(t, err, lenient)
+		require.Equal(t, "1", candidate.Tracing.Headers["X-A"], lenient)
+	}
+	_, err = applyEnvironment(&cleared, lookup(" , ,"))
+	require.NoError(t, err)
+	require.Empty(t, cleared.Tracing.Headers, "a list of only empty members clears the headers")
+
+	for _, malformed := range []string{"api-key-secret-without-separator", "X-Api-Key=bad%zzsecret", "=orphan-secret", " =orphan-secret", "X-A=1,,secret-without-separator", "X-A=1,X-A=2-secret"} {
 		candidate := persisted.Clone()
 		_, err := applyEnvironment(&candidate, lookup(malformed))
 		require.Error(t, err, malformed)

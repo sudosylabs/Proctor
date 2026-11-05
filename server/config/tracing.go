@@ -133,13 +133,14 @@ var errMalformedTracingHeaders = errors.New(
 
 // parseTracingHeaders reads the OTEL_EXPORTER_OTLP_HEADERS list format:
 // comma-separated name=value pairs whose values are percent-decoded, with
-// surrounding whitespace trimmed. An empty input clears every header.
+// surrounding whitespace trimmed. Like the OpenTelemetry SDK, it skips empty
+// list members, so an empty input clears every header.
 func parseTracingHeaders(input string) (map[string]string, error) {
 	headers := map[string]string{}
-	if strings.TrimSpace(input) == "" {
-		return headers, nil
-	}
 	for _, pair := range strings.Split(input, ",") {
+		if strings.TrimSpace(pair) == "" {
+			continue
+		}
 		name, encoded, found := strings.Cut(pair, "=")
 		if !found {
 			return nil, errMalformedTracingHeaders
