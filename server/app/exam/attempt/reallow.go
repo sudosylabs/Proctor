@@ -19,6 +19,9 @@ import (
 	"github.com/sudosylabs/proctor/server/store"
 )
 
+// ReallowCommand asks to close one active Attempt Suspension and return the
+// Attempt to active, fenced by ExpectedAttemptRevision. It carries the
+// manager's private reason and is idempotent by IdempotencyKey.
 type ReallowCommand struct {
 	ExamID                  model.ExamID
 	SittingID               model.ExamSittingID
@@ -29,6 +32,8 @@ type ReallowCommand struct {
 	IdempotencyKey          string
 }
 
+// ReallowResult is the re-allowed Attempt and its closed Attempt Suspension,
+// with the Exam, Sitting, Class, and candidate they belong to.
 type ReallowResult struct {
 	ExamID          model.ExamID
 	SittingID       model.ExamSittingID

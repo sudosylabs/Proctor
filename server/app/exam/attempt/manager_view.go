@@ -18,6 +18,8 @@ import (
 	"github.com/sudosylabs/proctor/server/store"
 )
 
+// GetManagedAttemptQuery names one Attempt by its exact Exam and Sitting for
+// a managed view.
 type GetManagedAttemptQuery struct {
 	ExamID    model.ExamID
 	SittingID model.ExamSittingID
@@ -81,6 +83,9 @@ func (s *Service) GetExamAttempt(ctx context.Context, invocation invocation.Invo
 	return *clone, nil
 }
 
+// ListManagedAttemptsQuery selects one page of Attempts in a Sitting,
+// optionally filtered by state. BeforeCreatedAt and BeforeAttemptID are the
+// keyset cursor of the last Attempt already seen.
 type ListManagedAttemptsQuery struct {
 	ExamID          model.ExamID
 	SittingID       model.ExamSittingID
@@ -90,11 +95,15 @@ type ListManagedAttemptsQuery struct {
 	Limit           int
 }
 
+// ManagedAttemptPage is one page of managed Attempt snapshots; HasMore reports
+// that a later page exists.
 type ManagedAttemptPage struct {
 	Items   []store.ExamAttemptManagerSnapshot
 	HasMore bool
 }
 
+// SittingCandidateStatusesQuery selects one page of per-candidate Attempt
+// statuses for a Sitting, starting after AfterCandidateUserID.
 type SittingCandidateStatusesQuery struct {
 	ExamID               model.ExamID
 	SittingID            model.ExamSittingID
@@ -102,6 +111,8 @@ type SittingCandidateStatusesQuery struct {
 	Limit                int
 }
 
+// SittingCandidateStatusesPage is one page of per-candidate Attempt statuses
+// for a Sitting; HasMore reports that a later page exists.
 type SittingCandidateStatusesPage struct {
 	store.SittingCandidateStatusPage
 	HasMore bool

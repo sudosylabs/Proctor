@@ -18,6 +18,10 @@ import (
 	"github.com/sudosylabs/proctor/server/store"
 )
 
+// ParticipationExpiry is the durable outcome of one Connection Loss: the
+// suspended Attempt, its expired Attempt Participation and latest Attempt
+// Connection, and the Integrity Evidence, Integrity Flag, and policy Attempt
+// Suspension recorded for it, decided at DatabaseTime.
 type ParticipationExpiry struct {
 	ExamID           model.ExamID
 	SittingID        model.ExamSittingID

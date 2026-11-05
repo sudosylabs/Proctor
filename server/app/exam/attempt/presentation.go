@@ -18,6 +18,9 @@ import (
 	"github.com/sudosylabs/proctor/server/store"
 )
 
+// Presentation is what the candidate's live Attempt displays: the Exam title,
+// sanitized Exam Instructions, capacity policy, Exam Resources, runtime
+// capabilities, browser policy, and live corrections.
 type Presentation struct {
 	AttemptID            model.ExamAttemptID
 	SittingID            model.ExamSittingID
@@ -31,6 +34,8 @@ type Presentation struct {
 	Resources            []Resource
 }
 
+// Resource is the candidate-visible metadata of one published Exam Resource,
+// in presentation order.
 type Resource struct {
 	ResourceID          model.ExamResourceID
 	DisplayName         string

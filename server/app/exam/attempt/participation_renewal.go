@@ -18,6 +18,10 @@ import (
 	"github.com/sudosylabs/proctor/server/store"
 )
 
+// RenewParticipationCommand renews the Participation Lease of one Attempt
+// Participation Generation on a named Attempt Connection. Sequence orders
+// renewals within the generation, and the continuity credential and security
+// coverage renewal authenticate it.
 type RenewParticipationCommand struct {
 	SecurityCoverage     model.SecurityCoverageRenewal
 	AttemptID            model.ExamAttemptID
@@ -45,9 +49,10 @@ type ParticipationRenewal struct {
 	Duplicate        bool
 }
 
-// RenewParticipation authenticates a continuity renewal independently of the
-// WebSocket transport ping. Store owns the database clock, exclusive expiry
-// boundary, duplicate outcome, and permanent generation fence.
+// RenewExamAttemptParticipation authenticates a continuity renewal
+// independently of the WebSocket transport ping. Store owns the database
+// clock, exclusive expiry boundary, duplicate outcome, and permanent
+// generation fence.
 func (s *Service) RenewExamAttemptParticipation(ctx context.Context, invocation invocation.Invocation, command RenewParticipationCommand) (_ ParticipationRenewal, resultErr error) {
 	defer func() { s.recordOperational("renew", resultErr) }()
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()

@@ -17,6 +17,10 @@ import (
 	"github.com/sudosylabs/proctor/server/store"
 )
 
+// ConnectCommand asks to admit the caller's registered desktop to a Sitting
+// and open a new Attempt Participation. It carries the desktop's security
+// posture, continuity credential, and configuration manifest fingerprint, and
+// is idempotent by IdempotencyKey.
 type ConnectCommand struct {
 	Security                         model.ConnectSecurity
 	SittingID                        model.ExamSittingID
@@ -26,6 +30,10 @@ type ConnectCommand struct {
 	IdempotencyKey                   string
 }
 
+// ConnectionResult is the admitted Attempt with its Attempt Workspace, current
+// Attempt Participation, and open Attempt Connection, plus the configuration
+// and candidate runtime policy the desktop applies. It also reports whether
+// this was the first admission and which Sessions the admission revoked.
 type ConnectionResult struct {
 	Security                  model.AdmittedSecurity
 	Attempt                   model.ExamAttempt
@@ -148,6 +156,8 @@ func cloneAttemptConfigurationPointer(value *model.AttemptConfigurationCandidate
 	return &clone
 }
 
+// CloseConnectionCommand names one of the caller's Attempt Connections, with
+// its Attempt, Sitting, and Class scope, and the reason it is closing.
 type CloseConnectionCommand struct {
 	AttemptID    model.ExamAttemptID
 	SittingID    model.ExamSittingID
@@ -156,6 +166,9 @@ type CloseConnectionCommand struct {
 	Reason       model.AttemptConnectionCloseReason
 }
 
+// ConnectionClosedResult is the closed Attempt Connection and the Attempt,
+// Exam, Sitting, and candidate it belongs to. Changed reports whether this
+// close changed state rather than finding the Connection already closed.
 type ConnectionClosedResult struct {
 	AttemptID       model.ExamAttemptID
 	ExamID          model.ExamID

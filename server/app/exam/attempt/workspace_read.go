@@ -18,6 +18,9 @@ import (
 	"github.com/sudosylabs/proctor/server/store"
 )
 
+// WorkspaceQuery selects one page of the candidate's Attempt Workspace
+// manifest at ExpectedCursor, after AfterEntryID; ExpectedCursor -1 starts at
+// the current cursor.
 type WorkspaceQuery struct {
 	Access         CandidateAccess
 	ExpectedCursor int64
@@ -25,6 +28,9 @@ type WorkspaceQuery struct {
 	Limit          int
 }
 
+// WorkspacePage is one page of the Attempt Workspace manifest at Cursor.
+// RefreshRequired reports that the workspace changed since the expected
+// cursor, and HasMore that a later page exists.
 type WorkspacePage struct {
 	WorkspaceID     model.ExamAttemptWorkspaceID
 	Cursor          int64

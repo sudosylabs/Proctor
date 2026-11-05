@@ -18,12 +18,18 @@ import (
 	"github.com/sudosylabs/proctor/server/store"
 )
 
+// CandidateActivityQuery selects one page of the caller's own exam activity.
+// BeforeScheduledStart and BeforeSittingID are the keyset cursor of the last
+// Sitting already seen; zero values start at the newest scheduled start.
 type CandidateActivityQuery struct {
 	BeforeScheduledStart time.Time
 	BeforeSittingID      model.ExamSittingID
 	Limit                int
 }
 
+// CandidateActivityPage is one page of the caller's own Sittings and Attempts,
+// stamped with authoritative server time. HasMore reports that a later page
+// exists.
 type CandidateActivityPage struct {
 	ServerTime time.Time
 	Items      []store.CandidateExamActivityItem
