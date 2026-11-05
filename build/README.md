@@ -305,7 +305,10 @@ vulnerability and on a high vulnerability with a fixed version. The release
 job builds the multi-platform image into a local OCI archive and applies the
 same scan to each platform before it logs in to the registry. Only a passing
 archive is copied to GHCR, digest unchanged, and then signed, so a failing
-scan publishes no image and leaves a draft release. Trivy runs from an image
+scan publishes no image and leaves a draft release. For a server release, the
+documentation site deploys only after the release is published, by the final
+`docs` job calling the `Publish documentation` workflow
+([`docs/README.md`](../docs/README.md#publishing)). Trivy runs from an image
 pinned by version and digest in `build/make/config.mk` and receives only the
 saved image archive.
 

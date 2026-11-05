@@ -1,14 +1,13 @@
 name: Publish documentation
 
-# The site documents the released server, so it deploys from server release
-# tags (the release workflow's server tag form) or by manual dispatch, never
-# from every push to main. CI's `make check` already builds and validates the
-# site on pull requests and main. A release published by the release job's
-# token cannot trigger workflows, so the tag push is the release signal.
+# The site documents the released server, so it deploys only as the final
+# stage of a successful server release: release.yml calls this workflow after
+# its publish job has scanned, pushed, signed and published the release, so a
+# failed release never deploys documentation. Manual dispatch redeploys the
+# current site without a release. CI's `make check` already builds and
+# validates the site on pull requests and main.
 on:
-  push:
-    tags:
-      - 'server/v*'
+  workflow_call:
   workflow_dispatch:
 
 permissions:

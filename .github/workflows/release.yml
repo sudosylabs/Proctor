@@ -227,3 +227,17 @@ jobs:
         run: |
           gh release upload "$RELEASE_TAG" "$RELEASE_ASSETS"/*
           gh release edit "$RELEASE_TAG" --draft=false --prerelease="$PRERELEASE" --latest=false
+
+  # Documentation deploys only after the server release is published, so a
+  # failed scan, push, signature or publication never deploys the site.
+  docs:
+    name: Publish documentation
+    needs: [metadata, publish]
+    if: needs.metadata.outputs.server == 'true'
+    # The ceiling for the called workflow: only its deploy job uses the Pages
+    # and OIDC grants; its build job keeps contents: read.
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    uses: ./.github/workflows/docs-pages.yml

@@ -166,3 +166,25 @@ test("checksum manifests are written and strictly verified without platform tool
   await assert.rejects(writeChecksums(directory, ["empty.tar.gz"]), /must not be empty/);
   await assert.rejects(writeChecksums(directory, ["../a.tar.gz"]), /Invalid artifact name/);
 });
+
+test("documentation deploys only after a published server release", async () => {
+  const release = await readFile(new URL("../../.github/workflows/release.yml", import.meta.url), "utf8");
+  const pages = await readFile(new URL("../../.github/workflows/docs-pages.yml", import.meta.url), "utf8");
+  // The Pages workflow is reusable or manual only; it never races the release.
+  const triggers = pages.slice(pages.indexOf("\non:\n"), pages.indexOf("\npermissions:"));
+  assert.doesNotMatch(triggers, /push:|tags:/);
+  assert.match(triggers, /workflow_call:/);
+  const docs = release.slice(release.indexOf("\n  docs:\n"));
+  assert.ok(docs.length > 1 && docs.indexOf("\n  docs:\n") === 0);
+  assert.match(docs, /needs: \[metadata, publish\]/);
+  assert.match(docs, /if: needs\.metadata\.outputs\.server == 'true'/);
+  assert.match(docs, /uses: \.\/\.github\/workflows\/docs-pages\.yml/);
+  // Only the called deploy job and this caller hold the Pages grants.
+  const publish = release.slice(release.indexOf("\n  publish:\n"), release.indexOf("\n  docs:\n"));
+  assert.doesNotMatch(publish, /pages: write|id-token: write/);
+  const deploy = pages.slice(pages.indexOf("\n  deploy:\n"));
+  assert.match(deploy, /pages: write/);
+  assert.match(deploy, /id-token: write/);
+  assert.doesNotMatch(pages.slice(0, pages.indexOf("\n  deploy:\n")), /pages: write|id-token: write/);
+  assert.doesNotMatch(pages, /cache: npm/);
+});
