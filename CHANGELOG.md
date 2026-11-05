@@ -240,8 +240,10 @@ module when a change is not server-only. No module has been released yet.
   and only then push the scanned archive, digest unchanged, and sign it, so a
   failed scan publishes no image.
 - CI: CodeQL analyzes Go and TypeScript, pull requests that add high-severity
-  dependency advisories fail, and the webapp's production npm dependencies are
-  audited.
+  dependency advisories fail, and the webapp's production npm dependencies and
+  the documentation toolchain are audited. Both audits fail on high or critical
+  advisories; the documentation audit accepts only the two advisories with no
+  compatible fix documented in `docs/site/README.md`.
 - CI: an opt-in GitHub Pages deployment for the documentation, gated on
   `DOCS_PUBLISH_ENABLED` and `DOCS_SITE_URL`.
 - Project: GOVERNANCE.md, MAINTAINERS.md and CODEOWNERS describe the

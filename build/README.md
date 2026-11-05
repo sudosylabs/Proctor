@@ -291,10 +291,12 @@ cluster runs retain bounded service diagnostics for 7 days. Download these
 from the run's artifact panel. They may contain synthetic fixture data; treat
 them as internal diagnostics. Never expand uploads to the whole `.build`
 tree, which also contains development credentials and configuration. The
-separate vulnerability workflow runs `govulncheck` and an
-`npm audit --omit=dev` of the webapp lockfile, failing on moderate or higher
-advisories in the dependencies shipped to browsers. It runs on relevant
-changes, weekly, manually, and as a required release gate.
+separate vulnerability workflow runs `govulncheck` and `npm audit --omit=dev`
+of the webapp and documentation-site lockfiles. Both fail on high or critical
+advisories, matching the dependency review; the documentation audit accepts
+only the advisories listed in
+[`docs/site/README.md`](../docs/site/README.md#dependency-advisories). It runs
+on relevant changes, weekly, manually, and as a required release gate.
 
 The container scan workflow builds the runtime image with `make container`
 and runs `make container-scan` on pull requests that change the build,

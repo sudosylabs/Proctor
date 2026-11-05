@@ -13,6 +13,9 @@ on:
       - 'webapp/package.json'
       - 'webapp/package-lock.json'
       - 'webapp/.nvmrc'
+      - 'docs/site/package.json'
+      - 'docs/site/package-lock.json'
+      - 'build/ci/npm-audit.mjs'
       - '.github/actions/setup/**'
       - '.golangci.yml'
       - 'build/make/config.mk'
@@ -31,6 +34,9 @@ on:
       - 'webapp/package.json'
       - 'webapp/package-lock.json'
       - 'webapp/.nvmrc'
+      - 'docs/site/package.json'
+      - 'docs/site/package-lock.json'
+      - 'build/ci/npm-audit.mjs'
       - '.github/actions/setup/**'
       - '.golangci.yml'
       - 'build/make/config.mk'
@@ -80,8 +86,29 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version-file: webapp/.nvmrc
-      # The audit reads the lockfile; nothing is installed or executed. These
-      # packages ship to every browser, so moderate advisories also fail.
+      # The audit reads the lockfile; nothing is installed or executed. High
+      # and critical advisories fail, matching the dependency review.
       - name: Audit the shipped webapp dependency tree
         working-directory: webapp
-        run: npm audit --omit=dev --audit-level=moderate
+        run: npm audit --omit=dev --audit-level=high
+
+  docs-audit:
+    name: Documentation toolchain npm advisories
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: webapp/.nvmrc
+      # Like the webapp audit this reads only the lockfile and fails on high
+      # or critical advisories, except the ones docs/site/README.md accepts
+      # because no compatible fix exists. A failed or malformed audit fails.
+      - name: Audit the documentation build dependency tree
+        working-directory: docs/site
+        run: |
+          npm audit --omit=dev --json > "$RUNNER_TEMP/docs-audit.json" || true
+          node ../../build/ci/npm-audit.mjs "$RUNNER_TEMP/docs-audit.json" GHSA-vfj7-8cjw-p6xm GHSA-qxc2-j82w-r537

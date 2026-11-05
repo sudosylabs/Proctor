@@ -223,9 +223,12 @@ Two high-severity advisories have no compatible fix and are accepted:
   5.5.3 for Postman dynamic variables and never calls `helpers.fake`; the
   patched faker major removed the API it uses, so it cannot be overridden.
 
-Every other advisory npm reports stems from these two. Re-run the audit after
-each Docusaurus or OpenAPI plugin upgrade and drop an accepted advisory as soon
-as a compatible fix exists.
+Every other high advisory npm reports stems from these two. The vulnerability
+workflow audits this lockfile with `build/ci/npm-audit.mjs`, which fails on
+any high or critical advisory except these two IDs; accepting another one
+means listing it here and in that workflow. Re-run the audit after each
+Docusaurus or OpenAPI plugin upgrade and drop an accepted advisory as soon as
+a compatible fix exists.
 
 ## Image boundary
 
