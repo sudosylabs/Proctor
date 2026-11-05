@@ -145,7 +145,7 @@ func TestTracingHeadersEnvironmentOverride(t *testing.T) {
 
 	for _, lenient := range []string{"X-A=1,", "X-A=1,,X-B=2", " , X-A=1 , ,X-B=2, "} {
 		candidate := persisted.Clone()
-		_, err := applyEnvironment(&candidate, lookup(lenient))
+		_, err = applyEnvironment(&candidate, lookup(lenient))
 		require.NoError(t, err, lenient)
 		require.Equal(t, "1", candidate.Tracing.Headers["X-A"], lenient)
 	}
