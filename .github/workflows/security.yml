@@ -107,7 +107,10 @@ jobs:
       # Like the webapp audit this reads only the lockfile and fails on high
       # or critical advisories, except the ones docs/site/README.md accepts
       # because no compatible fix exists. A failed or malformed audit fails.
-      - name: Audit the documentation build dependency tree
+      # --omit=dev audits the production dependencies, which hold the whole
+      # Docusaurus build toolchain; the skipped development dependencies are
+      # only TypeScript and type packages used for editor and type checks.
+      - name: Audit the documentation build dependencies
         working-directory: docs/site
         run: |
           npm audit --omit=dev --json > "$RUNNER_TEMP/docs-audit.json" || true
