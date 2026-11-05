@@ -1,0 +1,77 @@
+#!/bin/sh
+# Copyright 2026 SudoSylabs
+# SPDX-License-Identifier: AGPL-3.0-only
+
+set -eu
+
+if [ "$#" -ne 1 ]; then
+	printf 'usage: %s CHECK_DCO\n' "$0" >&2
+	exit 2
+fi
+
+check=$1
+fixture=$(mktemp -d "${TMPDIR:-/tmp}/proctor-dco.XXXXXX")
+trap 'rm -rf "$fixture"' EXIT HUP INT TERM
+repo=$fixture/repo
+
+git init --quiet "$repo"
+git -C "$repo" config user.email author@example.invalid
+git -C "$repo" config user.name 'Ada Author'
+git -C "$repo" config commit.gpgsign false
+
+commit() {
+	git -C "$repo" commit --quiet --allow-empty "$@"
+}
+
+expect() {
+	outcome=$1
+	description=$2
+	shift 2
+	if "$check" "$@" "$repo" >"$fixture/output" 2>&1; then
+		result=pass
+	else
+		result=fail
+	fi
+	if [ "$result" != "$outcome" ]; then
+		printf 'check-dco: expected %s when %s, got:\n' "$outcome" "$description" >&2
+		cat "$fixture/output" >&2
+		exit 1
+	fi
+}
+
+commit -m 'unsigned history'
+base=$(git -C "$repo" rev-parse HEAD)
+expect pass 'the range is empty' "$base" HEAD
+
+commit --signoff -m 'signed change'
+expect pass 'every commit is signed off by its author, ignoring earlier history' "$base" HEAD
+
+commit -m 'unsigned change'
+expect fail 'a commit has no sign-off' "$base" HEAD
+if ! grep -Fq 'unsigned change' "$fixture/output"; then
+	printf 'check-dco: the unsigned commit was not named\n' >&2
+	exit 1
+fi
+git -C "$repo" reset --quiet --hard HEAD^
+
+commit -m 'other sign-off' -m 'Signed-off-by: Someone Else <else@example.invalid>'
+expect fail 'the sign-off names someone other than the author' "$base" HEAD
+git -C "$repo" reset --quiet --hard HEAD^
+
+commit -m 'mentioned sign-off' -m 'See Signed-off-by: Ada Author <author@example.invalid> above.' -m 'Reviewed-by: x <x@example.invalid>'
+expect fail 'the sign-off text is not a trailer' "$base" HEAD
+git -C "$repo" reset --quiet --hard HEAD^
+
+commit -m 'co-signed change' -m 'Signed-off-by: Someone Else <else@example.invalid>
+Signed-off-by: Ada Author <author@example.invalid>'
+expect pass 'one of several sign-offs matches the author' "$base" HEAD
+
+branch_base=$(git -C "$repo" rev-parse HEAD)
+git -C "$repo" checkout --quiet -b side
+commit --signoff -m 'side change'
+git -C "$repo" checkout --quiet -
+commit --signoff -m 'main change'
+git -C "$repo" merge --quiet --no-ff --no-edit side
+expect pass 'an unsigned merge joins signed commits' "$branch_base" HEAD
+
+expect fail 'the base is not a commit' 0000000000000000000000000000000000000000 HEAD

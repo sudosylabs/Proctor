@@ -15,6 +15,7 @@ build-scripts-check:
 	@"$(ROOT_DIR)/build/scripts/test-check-tools" "$(ROOT_DIR)/build/scripts/check-tools"
 	@"$(ROOT_DIR)/build/scripts/test-check-go-tools" "$(ROOT_DIR)/build/scripts/check-go-tools"
 	@"$(ROOT_DIR)/build/scripts/test-check-module-pins" "$(ROOT_DIR)/build/scripts/check-module-pins"
+	@"$(ROOT_DIR)/build/scripts/test-check-dco" "$(ROOT_DIR)/build/scripts/check-dco"
 	@"$(ROOT_DIR)/build/scripts/test-go-quality" "$(ROOT_DIR)/build/scripts/go-quality"
 	@"$(ROOT_DIR)/build/scripts/test-repository-toolchain" "$(ROOT_DIR)"
 	@"$(ROOT_DIR)/build/scripts/test-dev-doctor" "$(ROOT_DIR)/build/scripts/dev-doctor"

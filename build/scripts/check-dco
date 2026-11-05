@@ -1,0 +1,51 @@
+#!/bin/sh
+# Copyright 2026 SudoSylabs
+# SPDX-License-Identifier: AGPL-3.0-only
+
+# Fail unless every non-merge commit in BASE..HEAD carries a Developer
+# Certificate of Origin trailer, `Signed-off-by: Name <email>`, that matches
+# the commit's author exactly (`git commit --signoff` adds one). Only the
+# commits HEAD adds over BASE are checked, never earlier history. Merge
+# commits are skipped: they add no authored change of their own.
+
+set -eu
+
+if [ "$#" -lt 2 ] || [ "$#" -gt 3 ]; then
+	printf 'usage: %s BASE HEAD [REPOSITORY]\n' "$0" >&2
+	exit 2
+fi
+
+base=$1
+head=$2
+repo=${3:-.}
+
+for revision in "$base" "$head"; do
+	if ! git -C "$repo" rev-parse --quiet --verify "$revision^{commit}" >/dev/null; then
+		printf 'check-dco: %s is not a commit in %s\n' "$revision" "$repo" >&2
+		exit 2
+	fi
+done
+
+commits=$(git -C "$repo" rev-list --no-merges --reverse "$base..$head")
+checked=0
+failed=0
+for commit in $commits; do
+	checked=$((checked + 1))
+	author=$(git -C "$repo" show -s --format='%an <%ae>' "$commit")
+	if git -C "$repo" show -s --format='%(trailers:key=Signed-off-by,valueonly)' "$commit" |
+		grep -Fxq -- "$author"; then
+		continue
+	fi
+	failed=$((failed + 1))
+	printf 'check-dco: %s "%s" has no Signed-off-by: %s\n' \
+		"$(git -C "$repo" rev-parse --short "$commit")" \
+		"$(git -C "$repo" show -s --format=%s "$commit")" "$author" >&2
+done
+
+if [ "$failed" -ne 0 ]; then
+	printf 'check-dco: %d of %d commits lack a sign-off matching their author.\n' "$failed" "$checked" >&2
+	printf 'Sign off new commits with "git commit --signoff" (or -s); fix existing ones with\n' >&2
+	printf '"git rebase --signoff %s" and force-push the branch.\n' "$base" >&2
+	exit 1
+fi
+printf 'check-dco: %d commits carry a sign-off matching their author\n' "$checked"

@@ -244,6 +244,9 @@ module when a change is not server-only. No module has been released yet.
   the documentation toolchain are audited. Both audits fail on high or critical
   advisories; the documentation audit accepts only the two advisories with no
   compatible fix documented in `docs/site/README.md`.
+- CI: a DCO check fails a pull request when any of its non-merge commits
+  lacks a `Signed-off-by` trailer matching the commit author
+  (`build/scripts/check-dco`).
 - CI: an opt-in GitHub Pages deployment for the documentation, gated on
   `DOCS_PUBLISH_ENABLED` and `DOCS_SITE_URL`. It runs on server release tags
   and manual dispatch, not on every push to `main`.
