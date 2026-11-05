@@ -22,7 +22,9 @@ module when a change is not server-only. No module has been released yet.
   known standard-library and `x/net` vulnerabilities (CVE-2026-78667,
   CVE-2026-78669, CVE-2026-97031, CVE-2026-111943). Building any module now
   requires Go 1.26.10 or newer. The server also moves `google.golang.org/grpc`
-  to v1.83.2 and `filippo.io/edwards25519` to v1.1.1 to clear their advisories.
+  to v1.83.2, `filippo.io/edwards25519` to v1.1.1, and
+  `github.com/go-jose/go-jose/v4` to v4.1.6 (CVE-2026-116587) to clear their
+  advisories.
 - Server: every route's public error list now matches what its operation can
   return, checked against the code by a static analysis. Around 200 routes
   dropped codes they could never return (shared academic families on Exam
