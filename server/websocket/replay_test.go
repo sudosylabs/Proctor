@@ -147,7 +147,7 @@ func TestHubRetainsOnlyTheRuntimeFinalSnapshot(t *testing.T) {
 
 	hub := newInternalTestHub(t)
 	require.NoError(t, hub.Start(t.Context()))
-	t.Cleanup(func() { _ = hub.Close() })
+	t.Cleanup(func() { _ = hub.Close(context.Background()) })
 	principal := model.Principal{
 		UserID:    model.NewUserID(),
 		SessionID: model.NewSessionID(),
@@ -192,7 +192,6 @@ func newInternalTestHub(t *testing.T) *Hub {
 		"https://proctor.example",
 		"node-a",
 		nil,
-		15*time.Second,
 	)
 	require.NoError(t, err)
 	return hub

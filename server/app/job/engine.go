@@ -98,7 +98,6 @@ type Activity struct {
 
 type Policy struct {
 	PollInterval       time.Duration
-	ShutdownTimeout    time.Duration
 	ProposalRetryDelay time.Duration
 }
 
@@ -136,9 +135,6 @@ func New(deps Dependencies) (*Engine, error) {
 	periodicTasks, err := clonePeriodicTasks(deps.PeriodicTasks)
 	if err != nil {
 		return nil, err
-	}
-	if deps.Policy.ShutdownTimeout <= 0 {
-		deps.Policy.ShutdownTimeout = registry.MaximumTimeout()
 	}
 	if deps.Policy.ProposalRetryDelay <= 0 {
 		deps.Policy.ProposalRetryDelay = time.Minute
@@ -208,7 +204,12 @@ func (r *Engine) Start(ctx context.Context) error {
 	return nil
 }
 
-func (r *Engine) Close() error {
+// Close cancels claiming and every running execution, then waits for the
+// workers to return until ctx, the caller's shutdown budget, ends or the
+// longest registered Job timeout passes, whichever comes first. No execution
+// may legitimately outlive its own timeout, so the wait never exceeds it. An
+// ended wait returns an error while workers may still be returning.
+func (r *Engine) Close(ctx context.Context) error {
 	r.mu.Lock()
 	if r.closed {
 		r.mu.Unlock()
@@ -225,11 +226,13 @@ func (r *Engine) Close() error {
 		r.wg.Wait()
 		close(drained)
 	}()
+	wait, cancelWait := context.WithTimeout(ctx, r.registry.MaximumTimeout())
+	defer cancelWait()
 	select {
 	case <-drained:
 		return nil
-	case <-time.After(r.deps.Policy.ShutdownTimeout):
-		return errors.New("durable job engine shutdown deadline exceeded")
+	case <-wait.Done():
+		return fmt.Errorf("durable job engine shutdown deadline exceeded: %w", wait.Err())
 	}
 }
 

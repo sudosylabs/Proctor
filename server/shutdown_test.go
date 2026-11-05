@@ -270,3 +270,85 @@ func TestInertCloseDoesNotNotifyTheHostOfShutdown(t *testing.T) {
 	require.NoError(t, node.Close())
 	assertLifecycleEvents(t, events, "transport-close", "platform-close")
 }
+
+// budgetObservation records the shutdown budget one draining step was handed.
+type budgetObservation struct {
+	deadline atomic.Pointer[time.Time]
+	spent    atomic.Bool
+}
+
+func (o *budgetObservation) observe(ctx context.Context) {
+	if deadline, ok := ctx.Deadline(); ok {
+		o.deadline.Store(&deadline)
+	}
+	o.spent.Store(ctx.Err() != nil)
+}
+
+func TestShutdownSlowDrainingStepCannotExtendTheSharedBudget(t *testing.T) {
+	t.Parallel()
+
+	steps := []string{"jobs", "websocket", "metrics"}
+	for slowIndex, slow := range steps {
+		t.Run(slow, func(t *testing.T) {
+			t.Parallel()
+
+			const budget = 200 * time.Millisecond
+			events := &lifecycleEvents{}
+			observations := map[string]*budgetObservation{}
+			hooks := map[string]func(context.Context){}
+			for _, step := range steps {
+				observation := &budgetObservation{}
+				observations[step] = observation
+				hooks[step] = func(ctx context.Context) {
+					observation.observe(ctx)
+					if step == slow {
+						// The slow step never finishes on its own; only the
+						// budget it is handed ends its wait.
+						<-ctx.Done()
+					}
+				}
+			}
+			httpService := &lifecycleHTTP{events: events, started: make(chan struct{}), stopped: make(chan struct{})}
+			platformRuntime := &lifecyclePlatform{events: events}
+			node := newLifecycleTestServer(t, runtimeComponents{
+				platform:     platformRuntime,
+				jobs:         &lifecycleJobs{events: events, onClose: hooks["jobs"]},
+				websocket:    &lifecycleWebSocket{events: events, onClose: hooks["websocket"]},
+				transport:    &lifecycleTransport{events: events},
+				servingLease: &lifecycleServingNodeLease{events: events, failures: make(chan error)},
+				metrics:      &lifecycleMetrics{events: events, failures: make(chan error), onClose: hooks["metrics"]},
+				tracing:      &lifecycleTracing{events: events}, readiness: &lifecycleReadiness{events: events},
+				listen:  func(string, string) (net.Listener, error) { return &lifecycleListener{}, nil },
+				newHTTP: func(httpServerSettings) httpRuntime { return httpService },
+			})
+			node.components.settings.shutdownTimeout = budget
+			ctx, cancel := context.WithCancel(context.Background())
+			done := make(chan error, 1)
+			go func() { done <- node.Run(ctx) }()
+			waitForLifecycleReady(t, node)
+
+			stopStarted := time.Now()
+			cancel()
+			require.NoError(t, receiveLifecycleResult(t, done, "Run"))
+			elapsed := time.Since(stopStarted)
+			require.GreaterOrEqual(t, elapsed, budget, "the slow %s step did not wait for its budget", slow)
+			// A fresh timeout per step would add at least another budget.
+			require.Less(t, elapsed, budget+budget/2, "shutdown took %s for a %s budget", elapsed, budget)
+			assertLifecycleEvents(t, events,
+				"platform-start", "metrics-start", "serving-lease-start", "jobs-start", "websocket-start",
+				"http-serve", "ready", "unready", "http-shutdown", "jobs-close", "websocket-close",
+				"transport-close", "serving-lease-close", "metrics-close", "tracing-close", "platform-close",
+			)
+			for index, step := range steps {
+				deadline := observations[step].deadline.Load()
+				require.NotNil(t, deadline, "%s closed without the shutdown budget", step)
+				require.True(t, deadline.Before(stopStarted.Add(budget+budget/4)), "%s received a budget beyond the shared one", step)
+				// Every step after the slow one inherits a spent budget.
+				require.Equal(t, index > slowIndex, observations[step].spent.Load(), "%s budget spent", step)
+			}
+			platformDeadline := platformRuntime.closeDeadline.Load()
+			require.NotNil(t, platformDeadline, "Platform closed without the shutdown budget")
+			require.True(t, platformDeadline.Before(stopStarted.Add(budget+budget/4)), "Platform received a fresh budget instead of the remainder")
+		})
+	}
+}

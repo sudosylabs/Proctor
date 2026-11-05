@@ -199,7 +199,7 @@ func TestEngineClaimsAndCompletesThroughItsPublicLifecycle(t *testing.T) {
 		require.False(t, time.Now().After(deadline), "Engine did not claim and complete queued work")
 		time.Sleep(time.Millisecond)
 	}
-	err = engine.Close()
+	err = engine.Close(context.Background())
 	require.NoError(t, err)
 	recorder.mu.Lock()
 	defer recorder.mu.Unlock()
@@ -267,7 +267,7 @@ func TestEngineTracesEachExecutionWithTheHandlerInsideTheSpan(t *testing.T) {
 		require.False(t, time.Now().After(deadline), "execution span did not finish")
 		time.Sleep(time.Millisecond)
 	}
-	require.NoError(t, engine.Close())
+	require.NoError(t, engine.Close(context.Background()))
 	tracer.mu.Lock()
 	defer tracer.mu.Unlock()
 	require.Equal(t, []model.JobType{descriptor.Type}, tracer.started)
@@ -301,7 +301,7 @@ func TestEngineRecordsUnsupportedClaimAsAnExecution(t *testing.T) {
 		require.False(t, time.Now().After(deadline), "Engine did not complete the unsupported claim")
 		time.Sleep(time.Millisecond)
 	}
-	err = engine.Close()
+	err = engine.Close(context.Background())
 	require.NoError(t, err)
 	recorder.mu.Lock()
 	defer recorder.mu.Unlock()
@@ -553,12 +553,41 @@ func TestEngineShutdownIsBounded(t *testing.T) {
 		<-blocked
 	}()
 	started := time.Now()
-	err = runner.Close()
+	err = runner.Close(context.Background())
 	require.Error(t, err, "Close() waited without a shutdown deadline")
 	close(blocked)
 	elapsed := time.Since(started)
 	require.GreaterOrEqual(t, elapsed, descriptor.Timeout)
 	require.LessOrEqual(t, elapsed, time.Second)
+}
+
+func TestEngineShutdownEndsWithTheCallersBudget(t *testing.T) {
+	t.Parallel()
+	descriptor := testDescriptor(handlerFunc(func(context.Context, Execution) Outcome {
+		return succeededOutcome()
+	}))
+	// The longest Job timeout would allow a far longer wait than the budget.
+	descriptor.Timeout = time.Minute
+	registry, err := NewRegistry([]Descriptor{descriptor})
+	require.NoError(t, err)
+	runner, err := newTestEngine(&jobRunnerStoreFake{}, registry, "node-a", &jobDiagnosticsFake{}, time.Second)
+	require.NoError(t, err)
+	blocked := make(chan struct{})
+	t.Cleanup(func() { close(blocked) })
+	runner.wg.Add(1)
+	go func() {
+		defer runner.wg.Done()
+		<-blocked
+	}()
+	const budget = 50 * time.Millisecond
+	ctx, cancel := context.WithTimeout(context.Background(), budget)
+	defer cancel()
+	started := time.Now()
+	err = runner.Close(ctx)
+	elapsed := time.Since(started)
+	require.ErrorIs(t, err, context.DeadlineExceeded, "Close() outcome for a worker that never returns")
+	require.GreaterOrEqual(t, elapsed, budget)
+	require.Less(t, elapsed, budget+budget/2, "Close() outlived the shutdown budget it was handed")
 }
 
 func TestEngineEnforcesTypedCheckpointContract(t *testing.T) {

@@ -8,6 +8,7 @@
 package metrics
 
 import (
+	"context"
 	"crypto/ed25519"
 	"crypto/rand"
 	"crypto/tls"
@@ -41,7 +42,7 @@ func TestMetricsListenerReloadsItsCertificateOnRequest(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, module.ReloadCertificates(), "a module that has not started has nothing to reload")
 	require.NoError(t, module.Start(t.Context()))
-	t.Cleanup(func() { require.NoError(t, module.Close()) })
+	t.Cleanup(func() { require.NoError(t, module.Close(context.Background())) })
 	address := module.listener.Addr().String()
 	require.Equal(t, int64(1), metricsServedSerial(t, address), "initial serial")
 

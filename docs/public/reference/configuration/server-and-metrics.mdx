@@ -31,7 +31,7 @@ Defaults shown here are the values compiled into Proctor and represented in the
 | `Server.ReadTimeout`<br />Default: `30s` | Maximum time to read the complete request. Authenticated streaming uploads extend it by the time their route body limit takes at 64 KiB/s. Must be greater than zero. |
 | `Server.WriteTimeout`<br />Default: `30s` | Maximum response-write time. Streaming uploads and binary downloads extend it by the time their declared size takes at 64 KiB/s. Must be greater than zero. |
 | `Server.IdleTimeout`<br />Default: `2m` | Maximum keep-alive idle time. Must be greater than zero. |
-| `Server.ShutdownTimeout`<br />Default: `15s` | One shutdown budget, measured from when shutdown starts, for draining HTTP, waiting for serving to end, flushing spans, and the cluster's graceful leave. The WebSocket hub uses the same length for its own drain. Must be greater than zero. |
+| `Server.ShutdownTimeout`<br />Default: `15s` | One shutdown budget, measured from when shutdown starts, for the whole shutdown sequence: draining HTTP, waiting for serving to end, draining Jobs and WebSocket connections, stopping the metrics listener, flushing spans, and the cluster's graceful leave. Each step gets only what remains, so total shutdown never exceeds it, apart from the logging flush. Must be greater than zero. |
 | `Server.MaxHeaderBytes`<br />Default: `1048576` (1 MiB) | Maximum request-header size. Must be between `1024` and `16777216` bytes. |
 | `Server.MaxBodyBytes`<br />Default: `1048576` (1 MiB) | Global HTTP request-body ceiling before narrower route limits. Must be between `1024` and `104857600` bytes. |
 | `Server.TrustedProxies[]`<br />Default: empty list | Reverse-proxy peers, as IP addresses or CIDR prefixes, whose `X-Forwarded-For` and `X-Request-ID` headers are accepted. At most 256 entries. Empty trusts no proxy: the connection address is the client and every request ID is server-generated. A listed proxy must overwrite any client-supplied `X-Request-ID`, because the server accepts the value it forwards. |
@@ -79,7 +79,7 @@ built-in TLS mode, `Server.PublicURL` must use `https`.
 | `Metrics.ReadTimeout`<br />Default: `10s` | Maximum time to read a scrape request. Must be greater than zero. |
 | `Metrics.WriteTimeout`<br />Default: `30s` | Maximum time to write a scrape response. Must be greater than zero. |
 | `Metrics.IdleTimeout`<br />Default: `1m` | Maximum keep-alive idle time. Must be greater than zero. |
-| `Metrics.ShutdownTimeout`<br />Default: `5s` | Grace period for stopping the metrics listener. Must be greater than zero. |
+| `Metrics.ShutdownTimeout`<br />Default: `5s` | Longest grace period for stopping the metrics listener; the stop also ends when the shared `Server.ShutdownTimeout` budget runs out. Must be greater than zero. |
 | `Metrics.MaximumConcurrentScrapes`<br />Default: `2` | Per-node cap on simultaneous Prometheus scrapes. Must be between `1` and `32`. |
 | `Metrics.ProfilingEnabled`<br />Default: `false` | Also serves Go runtime profiles under `/debug/pprof/` on the metrics listener. Requires `Metrics.Enabled` and `Metrics.BearerToken`. |
 

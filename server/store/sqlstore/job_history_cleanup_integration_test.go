@@ -53,12 +53,12 @@ func TestJobHistoryCleanupContinuesAcrossNodesPastOneDailyBatch(t *testing.T) {
 	}
 	for _, nodeID := range []string{"cleanup-node-a", "cleanup-node-b"} {
 		engine, err := job.New(job.Dependencies{Store: ss.Job(), Descriptors: []job.Descriptor{descriptor}, NodeID: nodeID,
-			Diagnostics: historyCleanupDiagnostics{t: t}, Policy: job.Policy{PollInterval: 5 * time.Millisecond, ShutdownTimeout: time.Second}})
+			Diagnostics: historyCleanupDiagnostics{t: t}, Policy: job.Policy{PollInterval: 5 * time.Millisecond}})
 		require.NoError(t, err)
 		err = engine.Start(ctx)
 		require.NoError(t, err)
 		t.Cleanup(func() {
-			assert.NoError(t, engine.Close())
+			assert.NoError(t, engine.Close(context.Background()))
 		})
 	}
 	deadline := time.Now().Add(10 * time.Second)

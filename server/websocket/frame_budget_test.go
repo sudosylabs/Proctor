@@ -105,7 +105,7 @@ func TestFrameBudgetIsSharedBySessionAcrossConnectionsAndReconnects(t *testing.T
 
 	hub := newInternalTestHub(t)
 	require.NoError(t, hub.Start(context.Background()))
-	defer func() { _ = hub.Close() }()
+	defer func() { _ = hub.Close(context.Background()) }()
 	principal := model.Principal{UserID: model.NewUserID(), SessionID: model.NewSessionID()}
 	first, _ := hub.register(newRuntimeTestSocket(), principal, model.RequestMetadata{}, "", 0, "")
 	second, _ := hub.register(newRuntimeTestSocket(), principal, model.RequestMetadata{}, "", 0, "")

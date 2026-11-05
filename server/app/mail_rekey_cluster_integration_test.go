@@ -67,7 +67,7 @@ func TestMailRekeyOldPrimaryRelinquishesOnceAndNewPrimaryCompletes(t *testing.T)
 	require.NoError(t, err)
 	err = oldNode.Start(ctx)
 	require.NoError(t, err)
-	defer func() { _ = oldNode.Close() }()
+	defer func() { _ = oldNode.Close(context.Background()) }()
 	waitForMailRekeyJob(t, persistence.Job(), rekeyJob.ID, func(job *model.Job, attempts []model.JobAttempt) bool {
 		return job.Status == model.JobStatusQueued && job.AttemptCount == 1 && job.MaximumAttempts == 11 &&
 			len(attempts) == 1 && attempts[0].Status == model.JobAttemptStatusIncompatible
@@ -91,7 +91,7 @@ func TestMailRekeyOldPrimaryRelinquishesOnceAndNewPrimaryCompletes(t *testing.T)
 	require.NoError(t, err)
 	err = newNode.Start(ctx)
 	require.NoError(t, err)
-	defer func() { _ = newNode.Close() }()
+	defer func() { _ = newNode.Close(context.Background()) }()
 	waitForMailRekeyJob(t, persistence.Job(), rekeyJob.ID, func(job *model.Job, attempts []model.JobAttempt) bool {
 		return job.Status == model.JobStatusSucceeded && len(attempts) == 2 &&
 			attempts[0].Status == model.JobAttemptStatusIncompatible && attempts[1].Status == model.JobAttemptStatusSucceeded

@@ -156,7 +156,10 @@ module when a change is not server-only. No module has been released yet.
 - Server: every shutdown path runs one ordered sequence (listener, HTTP, Jobs,
   WebSocket, transport, serving lease, metrics, tracing, Platform) under a
   single `Server.ShutdownTimeout` budget that starts with shutdown, instead of
-  up to three back-to-back timeouts.
+  separate back-to-back timeouts. The Job, WebSocket, and metrics drains now
+  take what remains of that budget too, so a slow step can no longer stretch
+  shutdown past it or past the supervisor's stop timeout;
+  `Metrics.ShutdownTimeout` only caps the metrics step within it.
 - Server: the longest production functions and files are split by
   responsibility, without behavior changes. An architecture test now fails on
   any production function over 120 lines, with a short allowlist that may only

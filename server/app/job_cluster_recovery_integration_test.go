@@ -92,7 +92,7 @@ func TestJobRunnerRecoversNodeLossAroundADurableDomainCommit(t *testing.T) {
 				}
 			}
 			closedA := make(chan error, 1)
-			go func() { closedA <- nodeA.Close() }()
+			go func() { closedA <- nodeA.Close(context.Background()) }()
 			select {
 			case <-canceled:
 			case <-time.After(time.Second):
@@ -125,7 +125,7 @@ func TestJobRunnerRecoversNodeLossAroundADurableDomainCommit(t *testing.T) {
 				require.False(t, time.Now().After(deadline), "recovered job did not succeed: %#v", current)
 				time.Sleep(5 * time.Millisecond)
 			}
-			err = nodeB.Close()
+			err = nodeB.Close(context.Background())
 			require.NoError(t, err)
 			persistedUser, err := persistence.User().Get(context.Background(), user.ID)
 			require.NoError(t, err)

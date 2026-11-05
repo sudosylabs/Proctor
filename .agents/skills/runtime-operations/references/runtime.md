@@ -256,13 +256,15 @@ only after mandatory dependencies are usable. Shutdown reverses ownership under
 bounded deadlines through one ordered sequence (`server/shutdown.go`) that
 every stop path enters: listener, HTTP, Jobs, WebSocket, transport, serving
 lease, metrics, tracing, Platform. Its single `Server.ShutdownTimeout` budget starts
-with shutdown; do not add a second drain timer or a per-path close sequence. Every goroutine, client, queue, channel, and closer has an
+with shutdown, and every waiting step takes its deadline from what remains
+(`Close(ctx)`), optionally capped by its own smaller bound; do not add a second
+drain timer or a per-path close sequence. Every goroutine, client, queue, channel, and closer has an
 owner and shutdown path; request/event fan-out is bounded with an explicit
 backpressure, drop, or disconnect policy.
 
-The WebSocket Hub owns connection shutdown through pump termination, durable Attempt Connection finalization. Its Close uses
-one `Server.ShutdownTimeout` budget, stops new work, and waits for these owned
-operations before normal dependency disposal. Close frames share one short
+The WebSocket Hub owns connection shutdown through pump termination, durable Attempt Connection finalization. Its Close
+waits within the remaining shared shutdown budget it is handed, stops new
+work, and waits for these owned operations before normal dependency disposal. Close frames share one short
 write deadline across all peers; a slow peer cannot multiply the shutdown
 budget by the number of connections. Deadline exhaustion force-closes sockets,
 cancels active finalizers, and returns the same retained error to concurrent
@@ -284,7 +286,9 @@ holds: VFS is probed with `CheckRoot`, never a listing.
 The `metrics` module owns one private Prometheus registry and one optional,
 node-local scrape listener. It starts after shared infrastructure and before
 public readiness, reports readiness as zero during startup and shutdown, and
-is closed after Jobs and public transports but before `platform.Service`.
+is closed after Jobs and public transports but before `platform.Service`,
+within `Metrics.ShutdownTimeout` or what remains of the shared shutdown
+budget, whichever ends first.
 Binding, TLS-identity, and unexpected serving failures are terminal to
 `Server.Run`; metrics never run as an untracked sibling process. The listener
 exposes `GET /metrics` and, only when `Metrics.ProfilingEnabled` is set, the

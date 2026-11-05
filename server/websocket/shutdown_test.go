@@ -41,10 +41,17 @@ func (a *shutdownAttemptApplication) CloseExamAttemptConnection(ctx context.Cont
 	}
 }
 
-func startShutdownAttempt(t *testing.T, timeout time.Duration) (*Hub, *shutdownAttemptApplication, <-chan struct{}) {
+// closeWithin closes hub under a shutdown budget of the given length.
+func closeWithin(hub *Hub, budget time.Duration) error {
+	ctx, cancel := context.WithTimeout(context.Background(), budget)
+	defer cancel()
+	return hub.Close(ctx)
+}
+
+func startShutdownAttempt(t *testing.T) (*Hub, *shutdownAttemptApplication, <-chan struct{}) {
 	t.Helper()
 	application := &shutdownAttemptApplication{entered: make(chan struct{}), release: make(chan struct{}), canceled: make(chan struct{})}
-	hub, err := NewHub(application, replayTestLogger{}, "https://proctor.example", "node-a", nil, timeout)
+	hub, err := NewHub(application, replayTestLogger{}, "https://proctor.example", "node-a", nil)
 	require.NoError(t, err)
 	err = hub.Start(context.Background())
 	require.NoError(t, err)
@@ -66,7 +73,7 @@ func startShutdownAttempt(t *testing.T, timeout time.Duration) (*Hub, *shutdownA
 	}
 	t.Cleanup(func() {
 		close(application.release)
-		_ = hub.Close()
+		_ = closeWithin(hub, time.Second)
 		select {
 		case <-finished:
 		case <-time.After(time.Second):
@@ -78,15 +85,15 @@ func startShutdownAttempt(t *testing.T, timeout time.Duration) (*Hub, *shutdownA
 
 func TestHubShutdownWaitsForDurableAttemptFinalization(t *testing.T) {
 	t.Parallel()
-	hub, application, finished := startShutdownAttempt(t, time.Second)
+	hub, application, finished := startShutdownAttempt(t)
 	closed := make(chan error, 2)
-	go func() { closed <- hub.Close() }()
+	go func() { closed <- closeWithin(hub, time.Second) }()
 	select {
 	case <-application.entered:
 	case <-time.After(time.Second):
 		require.FailNow(t, "Attempt Connection finalization was not entered")
 	}
-	go func() { closed <- hub.Close() }()
+	go func() { closed <- closeWithin(hub, time.Second) }()
 	select {
 	case err := <-closed:
 		require.FailNow(t, fmt.Sprintf("Close returned %v before durable finalization", err))
@@ -108,19 +115,21 @@ func TestHubShutdownWaitsForDurableAttemptFinalization(t *testing.T) {
 	}
 }
 
-func TestHubShutdownDeadlineCancelsFinalizationAndRetainsError(t *testing.T) {
+func TestHubShutdownBudgetCancelsFinalizationAndRetainsError(t *testing.T) {
 	t.Parallel()
-	hub, application, _ := startShutdownAttempt(t, 50*time.Millisecond)
+	hub, application, _ := startShutdownAttempt(t)
+	const budget = 50 * time.Millisecond
 	started := time.Now()
-	err := hub.Close()
+	err := closeWithin(hub, budget)
 	require.ErrorIs(t, err, context.DeadlineExceeded)
-	require.LessOrEqual(t, time.Since(started), time.Second, "Close exceeded its shared deadline")
+	// Finalization never finishes on its own; only the caller's budget ends it.
+	require.Less(t, time.Since(started), budget+budget/2, "Close outlived the shutdown budget it was handed")
 	select {
 	case <-application.canceled:
 	case <-time.After(time.Second):
 		require.FailNow(t, "durable finalization did not observe cancellation")
 	}
-	repeated := hub.Close()
+	repeated := hub.Close(context.Background())
 	require.Equal(t, err, repeated, "repeated Close")
 }
 
@@ -146,8 +155,8 @@ func (s *shutdownSlowSocket) WriteControl(_ int, _ []byte, deadline time.Time) e
 func TestHubShutdownUsesOneControlWriteBudgetForAllPeers(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
+		const budget = 40 * time.Millisecond
 		hub := newInternalTestHub(t)
-		hub.shutdownTimeout = 40 * time.Millisecond
 		require.NoError(t, hub.Start(context.Background()))
 		var sockets []*shutdownSlowSocket
 		for range 4 {
@@ -158,8 +167,8 @@ func TestHubShutdownUsesOneControlWriteBudgetForAllPeers(t *testing.T) {
 			require.NotNil(t, connection, "register failed")
 		}
 		started := time.Now()
-		require.ErrorIs(t, hub.Close(), context.DeadlineExceeded)
-		require.Equal(t, hub.shutdownTimeout, time.Since(started))
+		require.ErrorIs(t, closeWithin(hub, budget), context.DeadlineExceeded)
+		require.Equal(t, budget, time.Since(started))
 		var firstDeadline time.Time
 		for _, socket := range sockets {
 			select {
@@ -187,11 +196,21 @@ func TestHubShutdownPreventsRegisteredConnectionFromStarting(t *testing.T) {
 	principal := model.Principal{UserID: model.NewUserID(), SessionID: model.NewSessionID()}
 	connection, _ := hub.register(socket, principal, model.RequestMetadata{}, "", 0, "")
 	require.NotNil(t, connection, "register failed")
-	require.NoError(t, hub.Close())
+	require.NoError(t, hub.Close(context.Background()))
 	connection.run(context.Background())
 	select {
 	case <-socket.readDeadline:
 		require.FailNow(t, "connection started after Hub closed")
 	default:
 	}
+}
+
+func TestHubShutdownEndsAtOnceWhenTheBudgetIsSpent(t *testing.T) {
+	t.Parallel()
+	hub, _, _ := startShutdownAttempt(t)
+	spent, cancel := context.WithCancel(context.Background())
+	cancel()
+	started := time.Now()
+	require.ErrorIs(t, hub.Close(spent), context.Canceled)
+	require.Less(t, time.Since(started), 500*time.Millisecond, "Close waited after the shutdown budget was spent")
 }
