@@ -510,10 +510,14 @@ func (i *ownedInfrastructure) acceptPlatform(
 		VFS:                    i.filesystem,
 		ExternalAuthentication: i.externalAuthentication,
 	}
+	shutdownTimeout := i.shutdownTimeout()
 	*i = ownedInfrastructure{}
 	service, snapshot, err := platform.Accept(ctx, resources)
 	if err != nil {
-		return nil, config.Config{}, constructionCapabilities{}, errors.Join(err, capabilities.metrics.Close(context.Background()), capabilities.tracing.Close(context.Background()))
+		// Metrics and tracing share one shutdown budget, as in release.
+		budget, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
+		defer cancel()
+		return nil, config.Config{}, constructionCapabilities{}, errors.Join(err, capabilities.metrics.Close(budget), capabilities.tracing.Close(budget))
 	}
 	return service, snapshot, capabilities, nil
 }
@@ -522,12 +526,17 @@ func (i *ownedInfrastructure) replacePersistence(next store.Store) {
 	i.persistence = next
 }
 
-func (i *ownedInfrastructure) release() error {
-	shutdownTimeout := 15 * time.Second
+// shutdownTimeout is the configured Server.ShutdownTimeout, or its default
+// when no configuration has been loaded.
+func (i *ownedInfrastructure) shutdownTimeout() time.Duration {
 	if i.configuration != nil {
-		shutdownTimeout = i.configuration.Get().Server.ShutdownTimeout.Duration
+		return i.configuration.Get().Server.ShutdownTimeout.Duration
 	}
-	stopCtx, cancelStop := context.WithTimeout(context.Background(), shutdownTimeout)
+	return 15 * time.Second
+}
+
+func (i *ownedInfrastructure) release() error {
+	stopCtx, cancelStop := context.WithTimeout(context.Background(), i.shutdownTimeout())
 	defer cancelStop()
 	var clusterErr error
 	if i.cluster != nil {
