@@ -1,13 +1,14 @@
 name: Publish documentation
 
+# The site documents the released server, so it deploys from server release
+# tags (the release workflow's server tag form) or by manual dispatch, never
+# from every push to main. CI's `make check` already builds and validates the
+# site on pull requests and main. A release published by the release job's
+# token cannot trigger workflows, so the tag push is the release signal.
 on:
   push:
-    branches: [main]
-    paths:
-      - 'docs/**'
-      - 'server/openapi.json'
-      - 'webapp/.nvmrc'
-      - '.github/workflows/docs-pages.yml'
+    tags:
+      - 'server/v*'
   workflow_dispatch:
 
 permissions:
@@ -38,10 +39,10 @@ jobs:
         with:
           persist-credentials: false
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        # No dependency cache: a published build must not restore state that
+        # another workflow run wrote.
         with:
           node-version-file: webapp/.nvmrc
-          cache: npm
-          cache-dependency-path: docs/site/package-lock.json
       - name: Install the locked documentation toolchain
         working-directory: docs/site
         run: npm ci --include=dev

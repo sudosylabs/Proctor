@@ -245,7 +245,8 @@ module when a change is not server-only. No module has been released yet.
   advisories; the documentation audit accepts only the two advisories with no
   compatible fix documented in `docs/site/README.md`.
 - CI: an opt-in GitHub Pages deployment for the documentation, gated on
-  `DOCS_PUBLISH_ENABLED` and `DOCS_SITE_URL`.
+  `DOCS_PUBLISH_ENABLED` and `DOCS_SITE_URL`. It runs on server release tags
+  and manual dispatch, not on every push to `main`.
 - Project: GOVERNANCE.md, MAINTAINERS.md and CODEOWNERS describe the
   single-maintainer decision, maintainer and release process.
 - Docs: operator guidance for backup, restore, upgrade and rollback.
