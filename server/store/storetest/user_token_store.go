@@ -144,7 +144,7 @@ func testUserEmailChangeUsesDatabaseClock(t *testing.T, ss store.Store) {
 		{name: "short token", token: time.Minute, warning: warningLifetime},
 		{name: "long token", token: 31 * 24 * time.Hour, warning: warningLifetime},
 		{name: "short warning", token: tokenLifetime, warning: time.Second},
-		{name: "long warning", token: tokenLifetime, warning: 31 * 24 * time.Hour},
+		{name: "long warning", token: tokenLifetime, warning: 7*24*time.Hour + time.Millisecond},
 		{name: "sub-millisecond", token: tokenLifetime + time.Nanosecond, warning: warningLifetime},
 	} {
 		t.Run(invalidLifetime.name, func(t *testing.T) {

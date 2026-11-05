@@ -37,7 +37,7 @@ const (
 	userEmailChangeTokenLifetimeMinimum   = 5 * time.Minute
 	userEmailChangeTokenLifetimeMaximum   = 30 * 24 * time.Hour
 	userEmailChangeWarningLifetimeMinimum = time.Minute
-	userEmailChangeWarningLifetimeMaximum = 30 * 24 * time.Hour
+	userEmailChangeWarningLifetimeMaximum = 7 * 24 * time.Hour
 )
 
 func validateUserEmailMail(userID model.UserID, occurrence *model.MailOccurrence, delivery *model.MailDelivery, job *model.Job, kind model.MailOccurrenceKind, key model.MailTemplateKey) (string, error) {

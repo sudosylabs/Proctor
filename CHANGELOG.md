@@ -203,8 +203,8 @@ module when a change is not server-only. No module has been released yet.
   (`Authentication.Password.HistoryCount`, default 5, 0 disables).
 - Server: when an account's email changes, the previous address receives a
   single-use undo link (`Authentication.AccountRecovery.EmailChangeUndoTTL`,
-  default 72h). Using it at `/account/undo-email-change` restores the address,
-  signs out every Session and is audited.
+  default 72h, at most 168h). Using it at `/account/undo-email-change`
+  restores the address, signs out every Session and is audited.
 - Server: `proctor config show` (`--json`) prints the effective configuration,
   file plus environment overrides, with every secret redacted, and names the
   environment variables that replaced a file value.
