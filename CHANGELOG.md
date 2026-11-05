@@ -226,6 +226,11 @@ module when a change is not server-only. No module has been released yet.
   OTLP/HTTP for HTTP routes (named by route template), store operations and
   Job executions. Trace context is continued only from trusted proxies. Log
   lines carry `request_id`, and `trace_id` and `span_id` when tracing is on.
+- Server: `Tracing.Headers` (or `PROCTOR_TRACING_HEADERS`, in the
+  `OTEL_EXPORTER_OTLP_HEADERS` format) sends authentication headers with each
+  trace export, so spans can go straight to hosted backends such as Honeycomb
+  or Grafana Cloud. Values are redacted from `proctor config show` and never
+  logged, and headers require an `https` endpoint beyond loopback.
 - Server: a second SIGTERM or SIGINT during the drain forces it to finish at
   once and `proctor serve` exits 1; a third exits immediately.
 - Server: systemd receives `STOPPING=1` at shutdown, `RELOADING=1` and

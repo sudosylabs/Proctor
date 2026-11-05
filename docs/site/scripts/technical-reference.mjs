@@ -11,7 +11,7 @@ const cliReferencePath = path.join(repositoryDirectory, 'docs/public/reference/c
 const cliSourceDirectory = path.join(repositoryDirectory, 'server/cmd/proctor/commands');
 
 const source = await readFile(environmentSourcePath, 'utf8');
-const matcher = /(stringList|string|duration|int64|int|float64|bool|scalar|console)EnvironmentOverride\(\s*"(PROCTOR_[A-Z0-9_]+)"/g;
+const matcher = /(stringList|headerMap|string|duration|int64|int|float64|bool|scalar|console)EnvironmentOverride\(\s*"(PROCTOR_[A-Z0-9_]+)"/g;
 const variables = [];
 const seen = new Set();
 
@@ -24,12 +24,13 @@ for (const match of source.matchAll(matcher)) {
   variables.push({name, parser});
 }
 
-if (variables.length !== 137) {
-  throw new Error(`expected 137 environment overrides, found ${variables.length}`);
+if (variables.length !== 138) {
+  throw new Error(`expected 138 environment overrides, found ${variables.length}`);
 }
 
 const typeLabel = {
   stringList: 'comma-separated strings',
+  headerMap: 'comma-separated `name=value` pairs with percent-encoded values',
   string: 'string',
   duration: 'Go duration',
   int64: 'integer',

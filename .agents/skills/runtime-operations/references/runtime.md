@@ -321,7 +321,9 @@ span producer and before `platform.Service`, flushing within
 whichever ends first. Request spans are renamed to the sealed route
 template once routed and end at a WebSocket hijack; store spans exist only
 inside a recording trace; each Job execution is a new root. Inbound W3C trace
-context is continued only from a trusted proxy. The logging core's context
+context is continued only from a trusted proxy. Exporter headers come only
+from `Tracing.Headers`, always passed to the exporter so the SDK never reads
+`OTEL_EXPORTER_OTLP_HEADERS`; their values are credentials. The logging core's context
 extractor adds `request_id`, `trace_id`, and `span_id` to context-carrying
 records without overriding explicit fields. The timer layer also reports
 operations at or above `Database.SlowOperationThreshold` to a slow-operation
