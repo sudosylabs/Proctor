@@ -300,10 +300,12 @@ The container scan workflow builds the runtime image with `make container`
 and runs `make container-scan` on pull requests that change the build,
 module, or packaged npm manifests, and weekly. The scan fails on any critical
 vulnerability and on a high vulnerability with a fixed version. The release
-job applies the same scan to each platform of the pushed image digest before
-anything is signed, so a failing scan leaves an unsigned image and a draft
-release. Trivy runs from an image pinned by version and digest in
-`build/make/config.mk` and receives only the saved image archive.
+job builds the multi-platform image into a local OCI archive and applies the
+same scan to each platform before it logs in to the registry. Only a passing
+archive is copied to GHCR, digest unchanged, and then signed, so a failing
+scan publishes no image and leaves a draft release. Trivy runs from an image
+pinned by version and digest in `build/make/config.mk` and receives only the
+saved image archive.
 
 ## Activating signed releases
 

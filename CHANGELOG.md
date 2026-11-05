@@ -236,7 +236,9 @@ module when a change is not server-only. No module has been released yet.
   and Mailpit. CI runs it after the hermetic gate, and releases wait for it.
 - Build: `make container-scan` scans the runtime image with a pinned Trivy and
   fails on critical or fixable high vulnerabilities. CI scans on relevant pull
-  requests and weekly, and releases scan each pushed platform before signing.
+  requests and weekly. Releases build the image locally, scan each platform,
+  and only then push the scanned archive, digest unchanged, and sign it, so a
+  failed scan publishes no image.
 - CI: CodeQL analyzes Go and TypeScript, pull requests that add high-severity
   dependency advisories fail, and the webapp's production npm dependencies are
   audited.
