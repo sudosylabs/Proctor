@@ -8,7 +8,7 @@
   "go.lintOnSave": "off",
   "go.toolsEnvVars": {
     "GOFLAGS": "-buildvcs=false -mod=readonly",
-    "GOTOOLCHAIN": "go1.25.13",
+    "GOTOOLCHAIN": "go1.26.10",
     "GOWORK": "${workspaceFolder}/go.work"
   },
   "go.toolsManagement.autoUpdate": false,

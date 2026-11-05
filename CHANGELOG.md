@@ -17,6 +17,11 @@ module when a change is not server-only. No module has been released yet.
 
 ### Changed
 
+- All modules: build with Go 1.26.10 (from 1.25.13), and move
+  `golang.org/x/net` to v0.60.0 in the server and `packages/vfs`, clearing the
+  known standard-library and `x/net` vulnerabilities (CVE-2026-78667,
+  CVE-2026-78669, CVE-2026-97031, CVE-2026-111943). Building any module now
+  requires Go 1.26.10 or newer.
 - Server: every route's public error list now matches what its operation can
   return, checked against the code by a static analysis. Around 200 routes
   dropped codes they could never return (shared academic families on Exam

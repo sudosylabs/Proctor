@@ -1,6 +1,6 @@
 module github.com/sudosylabs/proctor/packages/cache
 
-go 1.25.13
+go 1.26.10
 
 require (
 	github.com/redis/rueidis v1.0.77
