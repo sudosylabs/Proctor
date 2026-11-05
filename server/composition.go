@@ -224,7 +224,7 @@ func composeNode(ctx context.Context, input compositionInput) (*compositionResul
 
 func composeConsumers(
 	ctx context.Context,
-	applicationPlatform runtimePlatform,
+	applicationPlatform runtimeComponent,
 	snapshot config.Config,
 	capabilities constructionCapabilities,
 	input compositionInput,
@@ -375,7 +375,7 @@ func attachApplicationTelemetry(
 }
 
 // composeReadiness builds readiness over a live, bounded probe of the mandatory platform dependencies.
-func composeReadiness(applicationPlatform runtimePlatform) (*app.Health, error) {
+func composeReadiness(applicationPlatform runtimeComponent) (*app.Health, error) {
 	// Readiness requires both the lifecycle flag and a live, bounded probe of
 	// the mandatory platform dependencies (PostgreSQL, cache, cluster, VFS).
 	var dependencyProbe app.DependencyProbe
@@ -478,7 +478,7 @@ func composeRootTransport(
 // A later transport, such as the root HTTP transport that owns the API
 // transport, replaces the one it wraps.
 type compositionRelease struct {
-	platform        runtimePlatform
+	platform        runtimeComponent
 	shutdownTimeout time.Duration
 	metrics         runtimeMetrics
 	tracing         *tracing.Module

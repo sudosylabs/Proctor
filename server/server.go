@@ -100,20 +100,14 @@ func WithStoppingNotifier(notify StoppingNotifier) Option {
 	}
 }
 
-// runtimeComponent is the lifecycle shape of durable Jobs and the WebSocket
-// transport. Construction is inert; Start enters runtime work and Close drains
-// it until ctx, the remainder of the shared shutdown budget, ends. Jobs start
-// only after the authoritative store is ready and drain before transports and
-// infrastructure close, so handlers never outlive their VFS or persistence
-// dependencies while the budget lasts.
+// runtimeComponent is the lifecycle shape of Platform, durable Jobs, and the
+// WebSocket transport. Construction is inert; Start enters runtime work and
+// Close drains it until ctx, the remainder of the shared shutdown budget,
+// ends. Platform, the infrastructure owner, starts first and closes last.
+// Jobs start only after the authoritative store is ready and drain before
+// transports and infrastructure close, so handlers never outlive their VFS or
+// persistence dependencies while the budget lasts.
 type runtimeComponent interface {
-	Start(context.Context) error
-	Close(context.Context) error
-}
-
-// runtimePlatform is the infrastructure owner. It starts first and closes
-// last, within the remainder of the shutdown budget it is handed.
-type runtimePlatform interface {
 	Start(context.Context) error
 	Close(context.Context) error
 }
@@ -296,7 +290,7 @@ func canonicalPublicURLAuthority(publicURL *url.URL) string {
 }
 
 type runtimeComponents struct {
-	platform              runtimePlatform
+	platform              runtimeComponent
 	reconciler            runtimeReconciler
 	administratorRecovery runtimeAdministratorRecovery
 	settings              runtimeSettings
