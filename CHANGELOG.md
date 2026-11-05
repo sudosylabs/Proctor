@@ -21,7 +21,8 @@ module when a change is not server-only. No module has been released yet.
   `golang.org/x/net` to v0.60.0 in the server and `packages/vfs`, clearing the
   known standard-library and `x/net` vulnerabilities (CVE-2026-78667,
   CVE-2026-78669, CVE-2026-97031, CVE-2026-111943). Building any module now
-  requires Go 1.26.10 or newer.
+  requires Go 1.26.10 or newer. The server also moves `google.golang.org/grpc`
+  to v1.83.2 and `filippo.io/edwards25519` to v1.1.1 to clear their advisories.
 - Server: every route's public error list now matches what its operation can
   return, checked against the code by a static analysis. Around 200 routes
   dropped codes they could never return (shared academic families on Exam
@@ -256,7 +257,11 @@ module when a change is not server-only. No module has been released yet.
   dependency advisories fail, and the webapp's production npm dependencies and
   the documentation toolchain are audited. Both audits fail on high or critical
   advisories; the documentation audit accepts only the two advisories with no
-  compatible fix documented in `docs/site/README.md`.
+  compatible fix documented in `docs/site/README.md`. The documentation
+  toolchain takes joi 17.13.9 and follow-redirects 1.16.2 for two high
+  advisories although both releases are under the two-week dependency age; they
+  are patch releases used only to build the documentation, and the audit would
+  otherwise block every release.
 - CI: a DCO check fails a pull request when any of its non-merge commits
   lacks a `Signed-off-by` trailer matching the commit author
   (`build/scripts/check-dco`).
