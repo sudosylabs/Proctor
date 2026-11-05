@@ -292,7 +292,8 @@ func TestShutdownSlowDrainingStepCannotExtendTheSharedBudget(t *testing.T) {
 		t.Run(slow, func(t *testing.T) {
 			t.Parallel()
 
-			const budget = 200 * time.Millisecond
+			// The same budget, and so the same margins, as the drain test above.
+			const budget = 400 * time.Millisecond
 			events := &lifecycleEvents{}
 			observations := map[string]*budgetObservation{}
 			hooks := map[string]func(context.Context){}

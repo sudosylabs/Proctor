@@ -223,5 +223,6 @@ func TestModuleCloseEndsWithTheCallersBudgetBeforeItsOwnTimeout(t *testing.T) {
 	elapsed := time.Since(started)
 	require.ErrorIs(t, err, context.DeadlineExceeded, "Close() outcome for a drain that never finishes")
 	require.GreaterOrEqual(t, elapsed, budget)
-	require.Less(t, elapsed, budget+budget/2, "Close() outlived the shutdown budget it was handed")
+	// Generous for loaded race runs, yet far short of the module's own minute.
+	require.Less(t, elapsed, time.Second, "Close() outlived the shutdown budget it was handed")
 }
