@@ -28,9 +28,9 @@ require (
 	github.com/redis/rueidis v1.0.77
 	github.com/spf13/cobra v1.10.2
 	github.com/stretchr/testify v1.12.1
-	github.com/sudosylabs/proctor/packages/cache v0.0.0-20261023082742-d368d3acc2dd
-	github.com/sudosylabs/proctor/packages/mail v0.0.0-20261022033035-a106025c0be4
-	github.com/sudosylabs/proctor/packages/vfs v0.0.0-20261022053940-b441636c4aff
+	github.com/sudosylabs/proctor/packages/cache v0.0.0-20261105225246-102043a25f64
+	github.com/sudosylabs/proctor/packages/mail v0.0.0-20261105225246-102043a25f64
+	github.com/sudosylabs/proctor/packages/vfs v0.0.0-20261105225246-102043a25f64
 	go.opentelemetry.io/otel v1.46.0
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp v1.46.0
 	go.opentelemetry.io/otel/sdk v1.46.0
