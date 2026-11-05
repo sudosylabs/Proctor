@@ -31,8 +31,10 @@ pin() {
 	printf 'v0.0.0-%s-%s' "$stamp" "$(printf '%s' "$commit" | cut -c1-12)"
 }
 
+genproto='google.golang.org/genproto v0.0.0-20260819154853-08b0e4226688 // indirect'
+
 write_pins() {
-	printf 'module github.com/sudosylabs/proctor/server\n\nrequire (\n\t%s %s\n)\n' "$module" "$1" >"$repo/server/go.mod"
+	printf 'module github.com/sudosylabs/proctor/server\n\nrequire (\n\t%s %s\n\t%s\n)\n' "$module" "$1" "$genproto" >"$repo/server/go.mod"
 	printf 'go 1.25\n\nreplace (\n\t%s %s => ./packages/cache\n)\n' "$module" "$2" >"$repo/go.work"
 }
 
@@ -54,6 +56,16 @@ expect() {
 current=$(pin)
 write_pins "$current" "$current"
 expect pass 'the pin matches the module'
+
+genproto='google.golang.org/genproto/googleapis/rpc v0.0.0-20260819154853-08b0e4226688 // indirect'
+write_pins "$current" "$current"
+expect fail 'go mod tidy dropped the genproto requirement'
+if ! grep -Fq 'google.golang.org/genproto requirement' "$fixture/output"; then
+	printf 'check-module-pins: a missing genproto requirement was not reported\n' >&2
+	exit 1
+fi
+genproto='google.golang.org/genproto v0.0.0-20260819154853-08b0e4226688 // indirect'
+write_pins "$current" "$current"
 
 printf 'package cache // changed\n' >"$repo/packages/cache/cache.go"
 expect fail 'the module has uncommitted changes'

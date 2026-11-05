@@ -67,7 +67,7 @@ e2e: dev-tools webapp-build ## Run the browser end-to-end suite against one real
 independent-modules: ## Verify every Go module outside workspace assistance.
 	$(MAKE) -C "$(SERVER_DIR)" independent-modules
 
-module-pins-check: ## Verify the server pins each packages/* module at its current content.
+module-pins-check: ## Verify the server pins each packages/* module at its current content and keeps the genproto requirement.
 	@"$(ROOT_DIR)/build/scripts/check-module-pins" "$(ROOT_DIR)"
 
 ci: check integration independent-modules module-pins-check package-verify ## Run the complete CI-facing product gate.

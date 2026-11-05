@@ -46,6 +46,20 @@ suggest() {
 	printf '  (and update the matching go.work replace directive)\n' >&2
 }
 
+# go mod tidy drops the monolithic genproto requirement because no package
+# imports it, but without it go.work builds resolve google.golang.org/genproto
+# to an old version that also provides the googleapis/* packages and fail with
+# ambiguous imports.
+if ! awk '
+	$1 == "require" && $2 == "google.golang.org/genproto" { found = 1 }
+	$1 == "google.golang.org/genproto" { found = 1 }
+	END { exit !found }
+' "$go_mod"; then
+	fail "server/go.mod: missing the google.golang.org/genproto requirement (go mod tidy drops it)"
+	printf '  restore the line in the indirect require block, at the version of google.golang.org/genproto/googleapis/rpc:\n' >&2
+	printf '  google.golang.org/genproto <version> // indirect\n' >&2
+fi
+
 pins=$(awk -v prefix="$module_prefix" '
 	$1 == "require" && index($2, prefix) == 1 { print $2, $3; next }
 	index($1, prefix) == 1 { print $1, $2 }

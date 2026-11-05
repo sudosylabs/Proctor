@@ -148,7 +148,8 @@ module when a change is not server-only. No module has been released yet.
   matches a published one; `Dockerfile.runtime` is removed.
 - Build: `make module-pins-check`, run in CI, fails when `server/go.mod` pins a
   `packages/*` module at a commit whose content differs from the workspace
-  module.
+  module, or when `go mod tidy` has dropped the `google.golang.org/genproto`
+  requirement that keeps workspace builds free of ambiguous imports.
 - Build: the root `make check` verifies transactional-mail template freshness,
   and `make -C server integration-postgres` runs every PostgreSQL integration
   test in its packages instead of a fixed list.
