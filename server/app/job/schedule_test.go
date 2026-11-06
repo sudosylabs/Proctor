@@ -113,7 +113,7 @@ func TestEngineRetriesSameOccurrenceWakesLocallyAndStopsRecurrence(t *testing.T)
 	}
 	dailyTimer := <-clock.timers
 	require.Equal(t, 14*time.Hour+29*time.Minute+50*time.Second, dailyTimer.delay)
-	err = engine.Close()
+	err = engine.Close(context.Background())
 	require.NoError(t, err)
 	clock.advance(dailyTimer, nextDailyOccurrence(at))
 	select {
@@ -149,7 +149,7 @@ func TestEngineCopiesRecurrenceDefinitionsAtConstruction(t *testing.T) {
 		require.FailNow(t, "engine retained caller-owned recurrence slice")
 	default:
 	}
-	err = engine.Close()
+	err = engine.Close(context.Background())
 	require.NoError(t, err)
 }
 
@@ -176,14 +176,14 @@ func TestConcurrentEnginesAndRestartProposeTheSameOccurrence(t *testing.T) {
 		occurrence := <-proposer.calls
 		require.True(t, occurrence.Equal(at), "concurrent occurrence=%v", occurrence)
 	}
-	require.NoError(t, first.Close())
-	require.NoError(t, second.Close())
+	require.NoError(t, first.Close(context.Background()))
+	require.NoError(t, second.Close(context.Background()))
 
 	restarted := newEngine("node-a-restarted")
 	require.NoError(t, restarted.Start(context.Background()))
 	occurrence := <-proposer.calls
 	require.True(t, occurrence.Equal(at), "restart occurrence=%v", occurrence)
-	require.NoError(t, restarted.Close())
+	require.NoError(t, restarted.Close(context.Background()))
 }
 
 func TestNextDailyOccurrenceUsesUTCDayBoundary(t *testing.T) {

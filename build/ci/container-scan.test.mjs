@@ -38,9 +38,13 @@ test("the release and scheduled scans share the pinned make recipe", async () =>
   assert.match(container, /build\/ci\/container-scan\.mjs/);
   assert.match(scan, /make container\b/);
   assert.match(scan, /make container-scan\b/);
-  // The release scan inspects the pushed digest for each platform before any signature exists.
+  // The release scans each platform of the locally built image before any
+  // registry login, push, or signature exists.
   const scanAt = release.indexOf("PROCTOR_RUNTIME_IMAGE=\"$image\" container-scan");
-  assert.ok(scanAt > release.indexOf("Record the immutable image identity"));
+  assert.ok(scanAt > release.indexOf("outputs: type=oci,dest="));
+  assert.ok(scanAt < release.indexOf("docker/login-action@"));
+  assert.ok(scanAt < release.indexOf("docker://$RELEASE_IMAGE"));
   assert.ok(scanAt < release.indexOf("cosign sign-blob"));
-  assert.match(release, /linux\/amd64 linux\/arm64/);
+  assert.doesNotMatch(release, /push: true/);
+  assert.match(release, /for arch in amd64 arm64; do\n +image="proctor-release-scan:\$arch"/);
 });

@@ -291,19 +291,26 @@ cluster runs retain bounded service diagnostics for 7 days. Download these
 from the run's artifact panel. They may contain synthetic fixture data; treat
 them as internal diagnostics. Never expand uploads to the whole `.build`
 tree, which also contains development credentials and configuration. The
-separate vulnerability workflow runs `govulncheck` and an
-`npm audit --omit=dev` of the webapp lockfile, failing on moderate or higher
-advisories in the dependencies shipped to browsers. It runs on relevant
-changes, weekly, manually, and as a required release gate.
+separate vulnerability workflow runs `govulncheck` and `npm audit --omit=dev`
+of the webapp and documentation-site lockfiles. Both fail on high or critical
+advisories, matching the dependency review; the documentation audit accepts
+only the advisories listed in
+[`docs/site/README.md`](../docs/site/README.md#dependency-advisories). It runs
+on relevant changes, weekly, manually, and as a required release gate.
 
 The container scan workflow builds the runtime image with `make container`
 and runs `make container-scan` on pull requests that change the build,
 module, or packaged npm manifests, and weekly. The scan fails on any critical
 vulnerability and on a high vulnerability with a fixed version. The release
-job applies the same scan to each platform of the pushed image digest before
-anything is signed, so a failing scan leaves an unsigned image and a draft
-release. Trivy runs from an image pinned by version and digest in
-`build/make/config.mk` and receives only the saved image archive.
+job builds the multi-platform image into a local OCI archive and applies the
+same scan to each platform before it logs in to the registry. Only a passing
+archive is copied to GHCR, digest unchanged, and then signed, so a failing
+scan publishes no image and leaves a draft release. For a server release, the
+documentation site deploys only after the release is published, by the final
+`docs` job calling the `Publish documentation` workflow
+([`docs/README.md`](../docs/README.md#publishing)). Trivy runs from an image
+pinned by version and digest in `build/make/config.mk` and receives only the
+saved image archive.
 
 ## Activating signed releases
 

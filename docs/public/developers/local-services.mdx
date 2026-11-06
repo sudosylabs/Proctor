@@ -10,8 +10,8 @@ slug: /developers/local-services/
 
 `make run-server` starts one coherent local runtime. PostgreSQL is the durable
 authority; Redis accelerates and coordinates; MinIO stores managed bytes;
-Mailpit captures outbound mail; and the Prometheus, Grafana, Loki, and
-OpenTelemetry components make the node observable.
+Mailpit captures outbound mail; and the Prometheus, Grafana, Loki,
+OpenTelemetry, and Jaeger components make the node observable.
 
 The default lifecycle waits for every container listed here. A service may be
 optional in a production design, but it is not optional to the tracked
@@ -30,7 +30,9 @@ development command when that command configures Proctor to use it.
 | Prometheus | `http://127.0.0.1:19090` | Required by the tracked lifecycle | `build/observability/prometheus/` |
 | Grafana | `http://127.0.0.1:13000` | Required by the tracked lifecycle | `build/observability/grafana/` |
 | Loki | `http://127.0.0.1:13100` | Required by the tracked lifecycle | `build/observability/loki/` |
-| OpenTelemetry health | `http://127.0.0.1:13133` | Required log pipeline | `build/observability/otel/collector.yaml` |
+| OpenTelemetry health | `http://127.0.0.1:13133` | Required log and trace pipeline | `build/observability/otel/collector.yaml` |
+| OpenTelemetry OTLP/HTTP | `http://127.0.0.1:14318/v1/traces` | Trace receiver for the local server | `build/observability/otel/collector.yaml` |
+| Jaeger UI | `http://127.0.0.1:16686` | Required trace store, in memory | `build/compose/observability.yaml` |
 
 All published ports bind to loopback. These credentials, endpoints, anonymous
 dashboards, and insecure protocols are development choices; they are not a
@@ -63,7 +65,7 @@ docker compose \
 ```
 
 Replace `postgres` with `redis`, `minio`, `mailpit`, `prometheus`, `grafana`,
-`loki`, or `otel-collector`. Proctor's own foreground output is in terminal 1
+`loki`, `otel-collector`, or `jaeger`. Proctor's own foreground output is in terminal 1
 and `.build/dev/logs/local/server.log`.
 
 ## PostgreSQL: Durable Application Authority
@@ -284,8 +286,9 @@ cluster path fails.
 
 **Why it exists.** The Collector tails `.build/dev/logs/*/server.log`, parses
 JSON records, attaches the Proctor service and node identity, and exports them
-to Loki over OTLP HTTP. It does not receive application traces in the current
-development topology.
+to Loki over OTLP HTTP. It also receives the local server's and cluster
+nodes' spans over OTLP/HTTP, prints one line per span in its log, and forwards
+them to Jaeger.
 
 **Health and inspection.** Check the configured health extension:
 
@@ -308,6 +311,31 @@ unavailable.
 
 **Affected tests.** `make build-scripts-check` covers generated target and
 configuration scripts. Cluster failure capture includes the Collector logs.
+
+## Jaeger: Local Trace Store and UI
+
+**Why it exists.** Jaeger stores the spans the Collector forwards and lets you
+follow one request, store operation, or Job execution end to end. It runs the
+all-in-one image with its default in-memory store; only the UI is published.
+It is a development view, not a production trace backend or retention policy.
+
+**Health and inspection.** Open `http://127.0.0.1:16686`, choose the `proctor`
+service, and select **Find Traces**. A request's `trace_id` in
+`.build/dev/logs/local/server.log` finds its trace directly through the UI's
+trace ID search. The container health check queries Jaeger's own health
+extension inside the Compose network.
+
+**Logs and reset.** Inspect `jaeger` logs for storage or receiver errors.
+Traces live only in memory: `make dev-up`, `make dev-down`, and any container
+restart discard them.
+
+**Typical failure symptoms.** The `proctor` service is missing from the UI when
+tracing is disabled, the server cannot reach the Collector on port `14318`, or
+the Collector log reports export failures to `jaeger:4318`.
+
+**Affected tests.** `make dev-doctor` checks the container health. No test
+asserts trace content in Jaeger; the server's exporter tests cover what spans
+contain.
 
 ## Stop and Reset Without Losing the Wrong State
 

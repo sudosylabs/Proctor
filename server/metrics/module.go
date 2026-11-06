@@ -466,19 +466,23 @@ func (m *Module) SetReady(ready bool) {
 	}
 }
 
-func (m *Module) Close() error {
+// Close stops the metrics listener. The graceful drain ends when ctx, the
+// caller's shutdown budget, ends or after the configured shutdown timeout,
+// whichever comes first; connections that remain are then closed. Close is
+// idempotent, and every caller shares the first result.
+func (m *Module) Close(ctx context.Context) error {
 	if m == nil {
 		return nil
 	}
 	m.closeOnce.Do(func() {
-		m.closeErr = m.close()
+		m.closeErr = m.close(ctx)
 		close(m.closeDone)
 	})
 	<-m.closeDone
 	return m.closeErr
 }
 
-func (m *Module) close() error {
+func (m *Module) close(budget context.Context) error {
 	m.mu.Lock()
 	m.closed = true
 	server, listener, done := m.server, m.listener, m.done
@@ -487,7 +491,7 @@ func (m *Module) close() error {
 	if server == nil {
 		return nil
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), m.settings.ShutdownTimeout.Duration)
+	ctx, cancel := context.WithTimeout(budget, m.settings.ShutdownTimeout.Duration)
 	defer cancel()
 	shutdownErr := server.Shutdown(ctx)
 	var forceErr error

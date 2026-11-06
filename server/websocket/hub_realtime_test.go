@@ -74,7 +74,7 @@ func TestHubMetricsObserveBroadcastFanoutAndResumeOutcome(t *testing.T) {
 	recorder := &websocketMetricsFake{}
 	require.NoError(t, hub.AttachRecorder(recorder))
 	require.NoError(t, hub.Start(context.Background()))
-	defer func() { _ = hub.Close() }()
+	defer func() { _ = hub.Close(context.Background()) }()
 	principal := model.Principal{UserID: model.NewUserID(), SessionID: model.NewSessionID()}
 	connection, _ := hub.register(newRuntimeTestSocket(), principal, model.RequestMetadata{}, "missing-resume", 0, "")
 	require.NotNil(t, connection, "register returned nil")
@@ -92,7 +92,7 @@ func TestHubUnbindExamAttemptConnectionClearsOnlyExactBindingAndKeepsSocketOpen(
 
 	hub := newInternalTestHub(t)
 	require.NoError(t, hub.Start(context.Background()))
-	defer func() { _ = hub.Close() }()
+	defer func() { _ = hub.Close(context.Background()) }()
 	principal := model.Principal{UserID: model.NewUserID(), SessionID: model.NewSessionID()}
 	exactSocket, otherSocket := newRuntimeTestSocket(), newRuntimeTestSocket()
 	exact, _ := hub.register(exactSocket, principal, model.RequestMetadata{}, "", 0, "")

@@ -23,7 +23,8 @@ controls. Backup, restore, upgrade, and rollback are described in
 6. Start the matched payload, wait for readiness, then return it to service.
 
 Normal shutdown marks unready before HTTP drain and closes Jobs, WebSocket,
-transport, serving lease, metrics, and platform in reverse ownership order.
+transport, serving lease, metrics, tracing, and platform in reverse ownership
+order, all within one `Server.ShutdownTimeout` budget.
 
 ## Rotate Memberlist Keys
 

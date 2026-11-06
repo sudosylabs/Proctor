@@ -295,10 +295,10 @@ func validateAuthenticationAccountRecovery(recovery AccountRecovery, add func(st
 		)
 	}
 	if recovery.EmailChangeUndoTTL.Duration < time.Hour ||
-		recovery.EmailChangeUndoTTL.Duration > 30*24*time.Hour {
+		recovery.EmailChangeUndoTTL.Duration > 7*24*time.Hour {
 		add(
 			"authentication.account_recovery.email_change_undo_ttl",
-			"must be between 1h and 720h",
+			"must be between 1h and 168h",
 		)
 	}
 	validateAuthenticationRateLimit(

@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"net"
 	netmail "net/mail"
 	"net/url"
@@ -74,6 +75,7 @@ func Default() Config {
 		Tracing: Tracing{
 			EndpointURL:     "http://127.0.0.1:4318/v1/traces",
 			SampleRatio:     1,
+			Headers:         map[string]string{},
 			ExportTimeout:   Duration{Duration: 10 * time.Second},
 			ShutdownTimeout: Duration{Duration: 5 * time.Second},
 		},
@@ -161,6 +163,7 @@ func (c Config) Clone() Config {
 	cloned.Cluster.Memberlist.DecryptionKeys = cloneSlice(c.Cluster.Memberlist.DecryptionKeys)
 	cloned.Mail.SecretSealing.DecryptionKeys = cloneSlice(c.Mail.SecretSealing.DecryptionKeys)
 	cloned.Authentication.MFA.DecryptionKeys = cloneSlice(c.Authentication.MFA.DecryptionKeys)
+	cloned.Tracing.Headers = maps.Clone(c.Tracing.Headers)
 	if c.Authentication.External.Providers != nil {
 		cloned.Authentication.External.Providers = append(
 			make([]ExternalAuthenticationProvider, 0, len(c.Authentication.External.Providers)),
@@ -211,6 +214,9 @@ func (c Config) Redacted() Config {
 	}
 	redacted.Cache.Redis.Password = redactSecret(redacted.Cache.Redis.Password)
 	redacted.Metrics.BearerToken = redactSecret(redacted.Metrics.BearerToken)
+	for name, value := range redacted.Tracing.Headers {
+		redacted.Tracing.Headers[name] = redactSecret(value)
+	}
 	redacted.Cluster.Memberlist.EncryptionKey = redactSecret(redacted.Cluster.Memberlist.EncryptionKey)
 	for index := range redacted.Cluster.Memberlist.DecryptionKeys {
 		redacted.Cluster.Memberlist.DecryptionKeys[index] = redactSecret(

@@ -77,7 +77,7 @@ func TestMFARekeyJobResealsEveryLiveSecretAndProvesRetirement(t *testing.T) {
 		NodeID: "mfa-rekey-node", Diagnostics: &integrationJobDiagnostics{}, Policy: job.Policy{PollInterval: 5 * time.Millisecond}})
 	require.NoError(t, err)
 	require.NoError(t, node.Start(ctx))
-	defer func() { _ = node.Close() }()
+	defer func() { _ = node.Close(context.Background()) }()
 	waitForMailRekeyJob(t, persistence.Job(), rekeyJob.ID, func(job *model.Job, _ []model.JobAttempt) bool {
 		return job.Status == model.JobStatusSucceeded
 	})

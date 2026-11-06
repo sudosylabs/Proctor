@@ -148,7 +148,7 @@ func defaultConsumerConstructors(
 			return application.AttachRealtimeClusterFanout(fanout)
 		},
 		websocket: func(application *app.App, logger runtimeLogger, publicURL, nodeID string) (composedWebSocket, error) {
-			return websocket.NewHub(application, websocketLogger{log: logger}, publicURL, nodeID, localizer, snapshot.Server.ShutdownTimeout.Duration)
+			return websocket.NewHub(application, websocketLogger{log: logger}, publicURL, nodeID, localizer)
 		},
 		attachSink: func(application *app.App, sink realtime.Sink) error {
 			return application.AttachRealtimeSink(sink)
@@ -224,7 +224,7 @@ func composeNode(ctx context.Context, input compositionInput) (*compositionResul
 
 func composeConsumers(
 	ctx context.Context,
-	applicationPlatform runtimePlatform,
+	applicationPlatform runtimeComponent,
 	snapshot config.Config,
 	capabilities constructionCapabilities,
 	input compositionInput,
@@ -375,7 +375,7 @@ func attachApplicationTelemetry(
 }
 
 // composeReadiness builds readiness over a live, bounded probe of the mandatory platform dependencies.
-func composeReadiness(applicationPlatform runtimePlatform) (*app.Health, error) {
+func composeReadiness(applicationPlatform runtimeComponent) (*app.Health, error) {
 	// Readiness requires both the lifecycle flag and a live, bounded probe of
 	// the mandatory platform dependencies (PostgreSQL, cache, cluster, VFS).
 	var dependencyProbe app.DependencyProbe
@@ -478,37 +478,32 @@ func composeRootTransport(
 // A later transport, such as the root HTTP transport that owns the API
 // transport, replaces the one it wraps.
 type compositionRelease struct {
-	platform        runtimePlatform
+	platform        runtimeComponent
 	shutdownTimeout time.Duration
 	metrics         runtimeMetrics
 	tracing         *tracing.Module
 	transport       func() error
-	websocket       func() error
-}
-
-// closePlatform releases Platform under a fresh shutdown budget; a failed
-// composition has spent none of it.
-func (r compositionRelease) closePlatform() error {
-	ctx, cancel := context.WithTimeout(context.Background(), r.shutdownTimeout)
-	defer cancel()
-	return r.platform.Close(ctx)
+	websocket       func(context.Context) error
 }
 
 // fail joins cause with the release of every owner built so far, closing the
-// transport, the WebSocket hub, metrics, tracing, and Platform in that order.
+// transport, the WebSocket hub, metrics, tracing, and Platform in that order
+// under one fresh shutdown budget; a failed composition has spent none of it.
 func (r compositionRelease) fail(cause error) error {
+	budget, cancel := context.WithTimeout(context.Background(), r.shutdownTimeout)
+	defer cancel()
 	var transportErr, websocketErr, metricsErr, tracingErr error
 	if r.transport != nil {
 		transportErr = r.transport()
 	}
 	if r.websocket != nil {
-		websocketErr = r.websocket()
+		websocketErr = r.websocket(budget)
 	}
 	if r.metrics != nil {
-		metricsErr = r.metrics.Close()
+		metricsErr = r.metrics.Close(budget)
 	}
 	if r.tracing != nil {
-		tracingErr = r.tracing.Close(context.Background())
+		tracingErr = r.tracing.Close(budget)
 	}
-	return errors.Join(cause, transportErr, websocketErr, errors.Join(metricsErr, tracingErr, r.closePlatform()))
+	return errors.Join(cause, transportErr, websocketErr, errors.Join(metricsErr, tracingErr, r.platform.Close(budget)))
 }

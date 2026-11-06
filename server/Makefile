@@ -7,6 +7,9 @@
 
 SHELL := /bin/sh
 GO_TEST ?= go test
+# Extra flags for race-enabled runs; CI caps package parallelism here because
+# race-instrumented test binaries need several times the memory of plain ones.
+GO_TEST_RACE_FLAGS ?=
 COMPOSE := docker compose -f compose.yaml
 PROCTOR_POSTGRES_PORT ?= 15432
 PROCTOR_REDIS_PORT ?= 16379
@@ -56,7 +59,7 @@ test:
 	$(GO_TEST) -tags dev -run '^TestServiceEnvironment' .
 
 test-race:
-	$(GO_TEST) -race ./...
+	$(GO_TEST) -race $(GO_TEST_RACE_FLAGS) ./...
 
 vet:
 	go vet ./...
@@ -188,7 +191,7 @@ independent-modules:
 	for module in ../packages/cache ../packages/mail ../packages/vfs .; do \
 		(cd "$$module" && \
 			GOWORK=off $(GO_TEST) ./... && \
-			GOWORK=off $(GO_TEST) -race ./... && \
+			GOWORK=off $(GO_TEST) -race $(GO_TEST_RACE_FLAGS) ./... && \
 			GOWORK=off go vet ./... && \
 			GOWORK=off go build ./...); \
 	done

@@ -78,6 +78,13 @@ environment overrides are
 `PROCTOR_MAIL_SECRET_SEALING_DECRYPTION_KEYS`. Configuration display redacts
 every entry, and neither MFA nor Memberlist keys may substitute for it.
 
+OTLP exporter headers (`Tracing.Headers`) carry hosted-backend credentials.
+Every value is redacted in configuration display while names stay visible;
+validation messages and the `PROCTOR_TRACING_HEADERS` parse error never echo a
+name or value. That override uses the `OTEL_EXPORTER_OTLP_HEADERS` list format
+and replaces the whole map. Headers require an `https` endpoint unless the
+collector is on loopback.
+
 Memberlist gossip uses its own `Cluster.Memberlist` key ring. `EncryptionKey`
 is the primary key and `DecryptionKeys` contains at most eight distinct
 fallbacks for rolling rotation; entries decode from standard base64 to 16, 24,

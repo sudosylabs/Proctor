@@ -90,14 +90,14 @@ func TestRecurringMaintenanceUsesOnePermanentOccurrenceAcrossNodesAndRestart(t *
 		require.NoError(t, result.err)
 	}
 	waitForCleanupOccurrenceSucceeded(t, persistence, results[0].occurrence)
-	require.NoError(t, first.Close())
-	require.NoError(t, second.Close())
+	require.NoError(t, first.Close(context.Background()))
+	require.NoError(t, second.Close(context.Background()))
 
 	restarted := newRecurrenceIntegrationEngine(t, persistence, "node-a-restarted", proposer, occurrence)
 	require.NoError(t, restarted.Start(context.Background()))
 	restartResult := <-proposer.calls
 	require.NoError(t, restartResult.err)
-	require.NoError(t, restarted.Close())
+	require.NoError(t, restarted.Close(context.Background()))
 	assertOneCleanupOccurrence(t, persistence, results[0].occurrence)
 }
 
@@ -118,14 +118,14 @@ func TestRecurringMaintenanceRecoversTransientProposalFailureWithoutRepeatingCom
 	require.NoError(t, succeeded.err, "proposal results = %#v, %#v", failed, succeeded)
 	require.True(t, failed.occurrence.Equal(succeeded.occurrence), "proposal results = %#v, %#v", failed, succeeded)
 	waitForCleanupOccurrenceSucceeded(t, persistence, succeeded.occurrence)
-	require.NoError(t, engine.Close())
+	require.NoError(t, engine.Close(context.Background()))
 
 	restarted := newRecurrenceIntegrationEngine(t, persistence, "node-b", proposer, occurrence)
 	require.NoError(t, restarted.Start(context.Background()))
 	restartResult := <-proposer.calls
 	require.NoError(t, restartResult.err)
 	require.True(t, restartResult.occurrence.Equal(succeeded.occurrence))
-	require.NoError(t, restarted.Close())
+	require.NoError(t, restarted.Close(context.Background()))
 	assertOneCleanupOccurrence(t, persistence, succeeded.occurrence)
 }
 

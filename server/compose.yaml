@@ -61,7 +61,7 @@ services:
     cap_drop:
       - ALL
   minio:
-    image: ${PROCTOR_MINIO_IMAGE:-minio/minio:RELEASE.2025-09-07T16-13-09Z@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e}
+    image: ${PROCTOR_MINIO_IMAGE:-cgr.dev/chainguard/minio:latest@sha256:cee9a8e35885e93f14b3cb32960e5017aff74e2adfb52ba87c65003b0163886b}
     command:
       - server
       - /data
@@ -73,7 +73,7 @@ services:
     ports:
       - "127.0.0.1:${PROCTOR_MINIO_PORT:-19000}:9000"
     healthcheck:
-      test: ["CMD", "mc", "ready", "local"]
+      test: ["CMD", "mc", "--config-dir", "/tmp/.mc", "ready", "local"]
       interval: 1s
       timeout: 3s
       retries: 30

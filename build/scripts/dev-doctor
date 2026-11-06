@@ -69,7 +69,7 @@ else
 	fail_check 'Docker daemon is unavailable'
 fi
 
-for service in postgres redis minio mailpit prometheus grafana loki otel-collector; do
+for service in postgres redis minio mailpit prometheus grafana loki otel-collector jaeger; do
 	container_id=$("$docker_command" ps --all \
 		--filter "label=com.docker.compose.project=$project_name" \
 		--filter "label=com.docker.compose.service=$service" \

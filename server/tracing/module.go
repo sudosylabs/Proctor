@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"maps"
 	"net/http"
 	"strconv"
 	"sync"
@@ -69,6 +70,10 @@ func New(settings config.Tracing, identity Identity, errorLog *log.Logger) (*Mod
 	exporter, err := otlptracehttp.New(
 		context.Background(),
 		otlptracehttp.WithEndpointURL(settings.EndpointURL),
+		// Always set, even when empty, so configuration is the only header
+		// source: the SDK would otherwise read OTEL_EXPORTER_OTLP_HEADERS.
+		// Header values are credentials and never enter a log or span.
+		otlptracehttp.WithHeaders(maps.Clone(settings.Headers)),
 		otlptracehttp.WithTimeout(settings.ExportTimeout.Duration),
 	)
 	if err != nil {

@@ -100,27 +100,23 @@ func WithStoppingNotifier(notify StoppingNotifier) Option {
 	}
 }
 
-// runtimeComponent is the lifecycle shape of durable Jobs and the WebSocket
-// transport. Construction is inert; Start enters runtime work and Close drains
-// it within the component's own bound. Jobs start only after the
-// authoritative store is ready and drain before transports and infrastructure
-// close, so handlers never outlive their VFS or persistence dependencies.
+// runtimeComponent is the lifecycle shape of Platform, durable Jobs, and the
+// WebSocket transport. Construction is inert; Start enters runtime work and
+// Close drains it until ctx, the remainder of the shared shutdown budget,
+// ends. Platform, the infrastructure owner, starts first and closes last.
+// Jobs start only after the authoritative store is ready and drain before
+// transports and infrastructure close, so handlers never outlive their VFS or
+// persistence dependencies while the budget lasts.
 type runtimeComponent interface {
-	Start(context.Context) error
-	Close() error
-}
-
-// runtimePlatform is the infrastructure owner. It starts first and closes
-// last, within the remainder of the shutdown budget it is handed.
-type runtimePlatform interface {
 	Start(context.Context) error
 	Close(context.Context) error
 }
 
-// monitoredRuntimeComponent additionally reports asynchronous runtime
-// failures that stop the node, such as a lost serving lease.
+// monitoredRuntimeComponent is a started component that reports asynchronous
+// runtime failures that stop the node, such as a lost serving lease.
 type monitoredRuntimeComponent interface {
-	runtimeComponent
+	Start(context.Context) error
+	Close() error
 	Failures() <-chan error
 }
 
@@ -140,8 +136,11 @@ type runtimeTransport interface {
 	Close() error
 }
 
+// runtimeMetrics is the metrics listener. Close stops it within ctx, the
+// remainder of the shared shutdown budget.
 type runtimeMetrics interface {
-	monitoredRuntimeComponent
+	runtimeComponent
+	Failures() <-chan error
 	SetReady(bool)
 }
 
@@ -291,7 +290,7 @@ func canonicalPublicURLAuthority(publicURL *url.URL) string {
 }
 
 type runtimeComponents struct {
-	platform              runtimePlatform
+	platform              runtimeComponent
 	reconciler            runtimeReconciler
 	administratorRecovery runtimeAdministratorRecovery
 	settings              runtimeSettings

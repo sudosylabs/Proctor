@@ -17,6 +17,17 @@ module when a change is not server-only. No module has been released yet.
 
 ### Changed
 
+- Build: local, cluster, and S3 test stacks run MinIO from
+  `cgr.dev/chainguard/minio` (RELEASE.2026-10-23T20-06-51Z), pinned by digest,
+  because `minio/minio` is no longer published on Docker Hub.
+- All modules: build with Go 1.26.10 (from 1.25.13), and move
+  `golang.org/x/net` to v0.60.0 in the server and `packages/vfs`, clearing the
+  known standard-library and `x/net` vulnerabilities (CVE-2026-78667,
+  CVE-2026-78669, CVE-2026-97031, CVE-2026-111943). Building any module now
+  requires Go 1.26.10 or newer. The server also moves `google.golang.org/grpc`
+  to v1.83.2, `filippo.io/edwards25519` to v1.1.1, and
+  `github.com/go-jose/go-jose/v4` to v4.1.6 (CVE-2026-116587) to clear their
+  advisories.
 - Server: every route's public error list now matches what its operation can
   return, checked against the code by a static analysis. Around 200 routes
   dropped codes they could never return (shared academic families on Exam
@@ -143,14 +154,18 @@ module when a change is not server-only. No module has been released yet.
   matches a published one; `Dockerfile.runtime` is removed.
 - Build: `make module-pins-check`, run in CI, fails when `server/go.mod` pins a
   `packages/*` module at a commit whose content differs from the workspace
-  module.
+  module, or when `go mod tidy` has dropped the `google.golang.org/genproto`
+  requirement that keeps workspace builds free of ambiguous imports.
 - Build: the root `make check` verifies transactional-mail template freshness,
   and `make -C server integration-postgres` runs every PostgreSQL integration
   test in its packages instead of a fixed list.
 - Server: every shutdown path runs one ordered sequence (listener, HTTP, Jobs,
   WebSocket, transport, serving lease, metrics, tracing, Platform) under a
   single `Server.ShutdownTimeout` budget that starts with shutdown, instead of
-  up to three back-to-back timeouts.
+  separate back-to-back timeouts. The Job, WebSocket, and metrics drains now
+  take what remains of that budget too, so a slow step can no longer stretch
+  shutdown past it or past the supervisor's stop timeout;
+  `Metrics.ShutdownTimeout` only caps the metrics step within it.
 - Server: the longest production functions and files are split by
   responsibility, without behavior changes. An architecture test now fails on
   any production function over 120 lines, with a short allowlist that may only
@@ -197,8 +212,8 @@ module when a change is not server-only. No module has been released yet.
   (`Authentication.Password.HistoryCount`, default 5, 0 disables).
 - Server: when an account's email changes, the previous address receives a
   single-use undo link (`Authentication.AccountRecovery.EmailChangeUndoTTL`,
-  default 72h). Using it at `/account/undo-email-change` restores the address,
-  signs out every Session and is audited.
+  default 72h, at most 168h). Using it at `/account/undo-email-change`
+  restores the address, signs out every Session and is audited.
 - Server: `proctor config show` (`--json`) prints the effective configuration,
   file plus environment overrides, with every secret redacted, and names the
   environment variables that replaced a file value.
@@ -220,6 +235,11 @@ module when a change is not server-only. No module has been released yet.
   OTLP/HTTP for HTTP routes (named by route template), store operations and
   Job executions. Trace context is continued only from trusted proxies. Log
   lines carry `request_id`, and `trace_id` and `span_id` when tracing is on.
+- Server: `Tracing.Headers` (or `PROCTOR_TRACING_HEADERS`, in the
+  `OTEL_EXPORTER_OTLP_HEADERS` format) sends authentication headers with each
+  trace export, so spans can go straight to hosted backends such as Honeycomb
+  or Grafana Cloud. Values are redacted from `proctor config show` and never
+  logged, and headers require an `https` endpoint beyond loopback.
 - Server: a second SIGTERM or SIGINT during the drain forces it to finish at
   once and `proctor serve` exits 1; a third exits immediately.
 - Server: systemd receives `STOPPING=1` at shutdown, `RELOADING=1` and
@@ -229,14 +249,31 @@ module when a change is not server-only. No module has been released yet.
   sign-out, MFA enrollment and challenge, a mailed password reset and a mailed
   Invitation against one real `proctor serve` node with disposable PostgreSQL
   and Mailpit. CI runs it after the hermetic gate, and releases wait for it.
+- Build: the development stack runs Jaeger 2.22.0 (all-in-one, in-memory)
+  and the development collector forwards every span to it, so traces from
+  `make run` and the cluster stack can be browsed at `http://127.0.0.1:16686`
+  (`PROCTOR_JAEGER_UI_PORT`, `PROCTOR_JAEGER_IMAGE`).
 - Build: `make container-scan` scans the runtime image with a pinned Trivy and
   fails on critical or fixable high vulnerabilities. CI scans on relevant pull
-  requests and weekly, and releases scan each pushed platform before signing.
+  requests and weekly. Releases build the image locally, scan each platform,
+  and only then push the scanned archive, digest unchanged, and sign it, so a
+  failed scan publishes no image.
 - CI: CodeQL analyzes Go and TypeScript, pull requests that add high-severity
-  dependency advisories fail, and the webapp's production npm dependencies are
-  audited.
+  dependency advisories fail, and the webapp's production npm dependencies and
+  the documentation toolchain are audited. Both audits fail on high or critical
+  advisories; the documentation audit accepts only the two advisories with no
+  compatible fix documented in `docs/site/README.md`. The documentation
+  toolchain takes joi 17.13.9 and follow-redirects 1.16.2 for two high
+  advisories although both releases are under the two-week dependency age; they
+  are patch releases used only to build the documentation, and the audit would
+  otherwise block every release.
+- CI: a DCO check fails a pull request when any of its non-merge commits
+  lacks a `Signed-off-by` trailer matching the commit author
+  (`build/scripts/check-dco`). Pull requests opened by Dependabot are exempt.
 - CI: an opt-in GitHub Pages deployment for the documentation, gated on
-  `DOCS_PUBLISH_ENABLED` and `DOCS_SITE_URL`.
+  `DOCS_PUBLISH_ENABLED` and `DOCS_SITE_URL`. It runs as the last stage of a
+  server release, only after the release is scanned, signed and published, and
+  on manual dispatch; not on every push to `main`.
 - Project: GOVERNANCE.md, MAINTAINERS.md and CODEOWNERS describe the
   single-maintainer decision, maintainer and release process.
 - Docs: operator guidance for backup, restore, upgrade and rollback.

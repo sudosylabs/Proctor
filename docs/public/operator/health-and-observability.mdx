@@ -126,6 +126,28 @@ Proctor exports OTLP over HTTP with protobuf encoding rather than gRPC: it
 needs no long-lived HTTP/2 client stream, passes ordinary HTTP proxies and TLS
 termination, and keeps the gRPC transport out of the server.
 
+To export directly to a hosted backend that authenticates OTLP requests, such
+as Honeycomb or Grafana Cloud, set its `https` traces URL in
+`Tracing.EndpointURL` and its credential in `Tracing.Headers`:
+
+```json
+"Tracing": {
+  "Enabled": true,
+  "EndpointURL": "https://api.honeycomb.io/v1/traces",
+  "Headers": {"x-honeycomb-team": "<API key>"}
+}
+```
+
+Header values are secrets. `proctor config show` prints each header name with
+a `[redacted]` value, and values are never logged or recorded in spans. Prefer supplying them through `PROCTOR_TRACING_HEADERS`,
+which uses the standard `OTEL_EXPORTER_OTLP_HEADERS` list format
+(`name=value` pairs separated by commas, values percent-encoded) and replaces
+the configured headers as a whole. Proctor itself ignores
+`OTEL_EXPORTER_OTLP_HEADERS` and `OTEL_EXPORTER_OTLP_TRACES_HEADERS`, so
+configuration remains the only header source. Headers require an `https`
+endpoint unless the collector is on loopback. A collector on the node or
+private network can instead hold the backend credential itself.
+
 Each node records:
 
 | Span | Name | Attributes |
@@ -155,7 +177,8 @@ The tracked development OpenTelemetry, Prometheus, Grafana, and Loki stack is a
 local verification environment. It is not a production retention, sampling, or
 alerting policy. `make run` and the cluster stack enable tracing and send spans
 to the development collector, which prints one line per span in its log
-(`make dev-logs`); it does not store traces.
+(`make dev-logs`) and forwards every span to a local, in-memory Jaeger. Open
+the Jaeger UI at `http://127.0.0.1:16686` and choose the `proctor` service.
 
 ## Diagnose a Not-ready Node
 

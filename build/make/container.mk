@@ -35,8 +35,8 @@ container: webapp-build ## Build the immutable non-root runtime image from a Lin
 container-load: container ## Compatibility alias for local image builds.
 
 # The scan saves one platform of a local image, built by `make container` or
-# pulled by the release job, and gives Trivy only that archive: no registry
-# credential or Docker socket reaches the scanner.
+# loaded from the release job's unpublished OCI archive, and gives Trivy only
+# that archive: no registry credential or Docker socket reaches the scanner.
 CONTAINER_SCAN_DIR := $(BUILD_DIR)/container-scan
 CONTAINER_SCAN_CACHE_DIR := $(BUILD_DIR)/trivy-cache
 

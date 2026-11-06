@@ -15,6 +15,7 @@ build-scripts-check:
 	@"$(ROOT_DIR)/build/scripts/test-check-tools" "$(ROOT_DIR)/build/scripts/check-tools"
 	@"$(ROOT_DIR)/build/scripts/test-check-go-tools" "$(ROOT_DIR)/build/scripts/check-go-tools"
 	@"$(ROOT_DIR)/build/scripts/test-check-module-pins" "$(ROOT_DIR)/build/scripts/check-module-pins"
+	@"$(ROOT_DIR)/build/scripts/test-check-dco" "$(ROOT_DIR)/build/scripts/check-dco"
 	@"$(ROOT_DIR)/build/scripts/test-go-quality" "$(ROOT_DIR)/build/scripts/go-quality"
 	@"$(ROOT_DIR)/build/scripts/test-repository-toolchain" "$(ROOT_DIR)"
 	@"$(ROOT_DIR)/build/scripts/test-dev-doctor" "$(ROOT_DIR)/build/scripts/dev-doctor"
@@ -66,7 +67,7 @@ e2e: dev-tools webapp-build ## Run the browser end-to-end suite against one real
 independent-modules: ## Verify every Go module outside workspace assistance.
 	$(MAKE) -C "$(SERVER_DIR)" independent-modules
 
-module-pins-check: ## Verify the server pins each packages/* module at its current content.
+module-pins-check: ## Verify the server pins each packages/* module at its current content and keeps the genproto requirement.
 	@"$(ROOT_DIR)/build/scripts/check-module-pins" "$(ROOT_DIR)"
 
 ci: check integration independent-modules module-pins-check package-verify ## Run the complete CI-facing product gate.

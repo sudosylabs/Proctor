@@ -51,7 +51,7 @@ func (t compositionTransport) Close() error                                 { re
 type compositionWebSocket struct{ closer *compositionCloser }
 
 func (w compositionWebSocket) Start(context.Context) error { return nil }
-func (w compositionWebSocket) Close() error                { return w.closer.close() }
+func (w compositionWebSocket) Close(context.Context) error { return w.closer.close() }
 func (compositionWebSocket) Accept(http.ResponseWriter, *http.Request, model.Principal, model.RequestMetadata, string, int64, bool) error {
 	return nil
 }
@@ -71,7 +71,7 @@ func (compositionFanout) Broadcast(context.Context, string, []byte) error { retu
 type compositionJobs struct{}
 
 func (compositionJobs) Start(context.Context) error { return nil }
-func (compositionJobs) Close() error                { return nil }
+func (compositionJobs) Close(context.Context) error { return nil }
 
 func TestConsumerConstructionFailuresUnwindExactlyOnce(t *testing.T) {
 	t.Parallel()

@@ -74,14 +74,13 @@ const (
 // Construction is inert: Start owns the replay reaper; Close is idempotent and
 // drains connections when the hub was started.
 type Hub struct {
-	application     Application
-	logger          Logger
-	localizer       Localizer
-	publicOrigin    string
-	nodeID          string
-	hashSeed        maphash.Seed
-	recorder        Recorder
-	shutdownTimeout time.Duration
+	application  Application
+	logger       Logger
+	localizer    Localizer
+	publicOrigin string
+	nodeID       string
+	hashSeed     maphash.Seed
+	recorder     Recorder
 
 	mu        sync.RWMutex
 	state     hubState
@@ -145,14 +144,13 @@ type Application interface {
 }
 
 // NewHub constructs an inert hub. Call Start before Accept; Close drains its
-// connections and background work within the supplied shutdown timeout.
+// connections and background work within the shutdown budget it is handed.
 func NewHub(
 	application Application,
 	logger Logger,
 	publicURL string,
 	nodeID string,
 	localizer Localizer,
-	shutdownTimeout time.Duration,
 ) (*Hub, error) {
 	if application == nil {
 		return nil, errors.New("WebSocket application is required")
@@ -160,24 +158,20 @@ func NewHub(
 	if logger == nil {
 		return nil, errors.New("WebSocket logger is required")
 	}
-	if shutdownTimeout <= 0 {
-		return nil, errors.New("WebSocket shutdown timeout must be positive")
-	}
 	publicOrigin, err := weborigin.FromPublicURL(publicURL)
 	if err != nil {
 		return nil, errors.New("WebSocket public URL is invalid")
 	}
 	shardCount := max(runtime.NumCPU(), 1)
 	hub := &Hub{
-		application:     application,
-		logger:          logger,
-		localizer:       localizer,
-		publicOrigin:    publicOrigin,
-		nodeID:          nodeID,
-		hashSeed:        maphash.MakeSeed(),
-		state:           hubCreated,
-		shards:          make([]*shard, shardCount),
-		shutdownTimeout: shutdownTimeout,
+		application:  application,
+		logger:       logger,
+		localizer:    localizer,
+		publicOrigin: publicOrigin,
+		nodeID:       nodeID,
+		hashSeed:     maphash.MakeSeed(),
+		state:        hubCreated,
+		shards:       make([]*shard, shardCount),
 	}
 	for index := range hub.shards {
 		hub.shards[index] = &shard{
@@ -623,18 +617,17 @@ func (h *Hub) closeMatching(
 }
 
 // Close stops admission, closes sockets, and waits for active connection work,
-// including durable Attempt Connection finalization, within one deadline.
-// Deadline exhaustion cancels finalization and returns an error retained for
+// including durable Attempt Connection finalization, until ctx, the caller's
+// shutdown budget, ends. Its deadline bounds every connection's finalization.
+// An ended ctx cancels finalization and returns an error retained for
 // concurrent and repeated callers. Closing a never-started hub succeeds.
-func (h *Hub) Close() error {
-	h.closeOnce.Do(func() { h.closeErr = h.shutdown() })
+func (h *Hub) Close(ctx context.Context) error {
+	h.closeOnce.Do(func() { h.closeErr = h.shutdown(ctx) })
 	return h.closeErr
 }
 
-func (h *Hub) shutdown() error {
-	ctx, cancel := context.WithTimeout(context.Background(), h.shutdownTimeout)
-	defer cancel()
-	deadline, _ := ctx.Deadline()
+func (h *Hub) shutdown(ctx context.Context) error {
+	deadline, bounded := ctx.Deadline()
 	shutdownError := func() error {
 		if err := ctx.Err(); err != nil {
 			return err
@@ -642,7 +635,7 @@ func (h *Hub) shutdown() error {
 		// A connection's deadline timer can finish its work before this
 		// context's timer is scheduled. The shared wall-clock deadline still
 		// bounds a successful drain under that scheduling order.
-		if !time.Now().Before(deadline) {
+		if bounded && !time.Now().Before(deadline) {
 			return context.DeadlineExceeded
 		}
 		return nil
@@ -677,7 +670,10 @@ func (h *Hub) shutdown() error {
 		}
 		// Every close frame shares the same short deadline. A slow peer cannot
 		// spend another full write budget for each connection in the Hub.
-		controlDeadline := minTime(deadline, time.Now().Add(shutdownControlWait))
+		controlDeadline := time.Now().Add(shutdownControlWait)
+		if bounded {
+			controlDeadline = minTime(deadline, controlDeadline)
+		}
 		for _, connection := range connections {
 			connection.closeWithDeadline(CloseServer, localizedCloseReason(connection.localizer, connection.locale, websocketCloseMessages["server_shutdown"]), false, controlDeadline)
 			connection.closeTransport()

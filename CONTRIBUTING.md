@@ -51,7 +51,7 @@ and product checks.
 
 Every commit must be signed off under the
 [Developer Certificate of Origin 1.1](https://developercertificate.org/). Add
-the certification using Git's `--signoff` option:
+the certification using Git's `--signoff` (`-s`) option:
 
 ```sh
 git commit --signoff
@@ -61,6 +61,14 @@ The resulting `Signed-off-by` trailer certifies that you have the right to
 submit the contribution under the applicable license. It is not a copyright
 assignment. Use your own identity; do not add another person's sign-off without
 their authorization.
+
+The DCO pull request check requires every non-merge commit in a pull request
+to carry a `Signed-off-by` trailer whose name and email match the commit's
+author exactly, so configure `user.name` and `user.email` before committing.
+To sign off commits already on your branch, run
+`git rebase --signoff <base>` and force-push the branch. Run the same check
+locally with `build/scripts/check-dco <base> HEAD`. Dependency updates opened
+by Dependabot are exempt; a maintainer reviews them instead.
 
 ## Licensing, Copyright, and Upstream Work
 

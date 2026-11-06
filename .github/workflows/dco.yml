@@ -1,0 +1,33 @@
+name: DCO
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: proctor-dco-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  sign-off:
+    name: Developer Certificate of Origin sign-off
+    # Dependabot signs off as support@github.com, never its author address, and
+    # cannot certify the DCO; GitHub sets the pull request author, so this skip
+    # cannot be claimed by a commit.
+    if: github.event.pull_request.user.login != 'dependabot[bot]'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      # Only the commits the pull request adds over its base are checked.
+      - name: Require a sign-off matching the author on every pull request commit
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: build/scripts/check-dco "$BASE_SHA" "$HEAD_SHA"

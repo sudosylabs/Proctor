@@ -178,6 +178,51 @@ func TestDisabledModuleOwnsNoListener(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, module.Start(context.Background()))
 	require.Nil(t, module.listener, "disabled metrics module opened a listener")
-	require.NoError(t, module.Close())
-	require.NoError(t, module.Close())
+	require.NoError(t, module.Close(context.Background()))
+	require.NoError(t, module.Close(context.Background()))
+}
+
+func TestModuleCloseEndsWithTheCallersBudgetBeforeItsOwnTimeout(t *testing.T) {
+	t.Parallel()
+
+	settings := config.Default().Metrics
+	settings.Enabled = true
+	settings.ListenAddress = "127.0.0.1:0"
+	// The module's own bound would allow a far longer drain than the budget.
+	settings.ShutdownTimeout = config.Duration{Duration: time.Minute}
+	module, err := New(settings, BuildInfo{}, Sources{})
+	require.NoError(t, err)
+	entered, release := make(chan struct{}), make(chan struct{})
+	t.Cleanup(func() { close(release) })
+	// A scrape that never finishes keeps the graceful drain waiting.
+	module.handler = http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		close(entered)
+		<-release
+	})
+	require.NoError(t, module.Start(context.Background()))
+	go func() {
+		request, requestErr := http.NewRequestWithContext(context.Background(), http.MethodGet, "http://"+module.listener.Addr().String()+"/metrics", nil)
+		if requestErr != nil {
+			return
+		}
+		if response, scrapeErr := http.DefaultClient.Do(request); scrapeErr == nil {
+			_ = response.Body.Close()
+		}
+	}()
+	select {
+	case <-entered:
+	case <-time.After(5 * time.Second):
+		require.FailNow(t, "scrape did not reach the metrics handler")
+	}
+
+	const budget = 100 * time.Millisecond
+	ctx, cancel := context.WithTimeout(context.Background(), budget)
+	defer cancel()
+	started := time.Now()
+	err = module.Close(ctx)
+	elapsed := time.Since(started)
+	require.ErrorIs(t, err, context.DeadlineExceeded, "Close() outcome for a drain that never finishes")
+	require.GreaterOrEqual(t, elapsed, budget)
+	// Generous for loaded race runs, yet far short of the module's own minute.
+	require.Less(t, elapsed, time.Second, "Close() outlived the shutdown budget it was handed")
 }

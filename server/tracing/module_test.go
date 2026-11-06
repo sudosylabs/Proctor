@@ -10,6 +10,7 @@ package tracing
 import (
 	"context"
 	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -187,4 +188,36 @@ func TestEnabledModuleConstructsAnExporterWithoutConnecting(t *testing.T) {
 	require.True(t, module.Enabled())
 	require.NoError(t, module.Close(context.Background()), "closing with no buffered spans needs no collector")
 	require.NoError(t, module.Close(context.Background()))
+}
+
+func TestExporterSendsOnlyConfiguredHeaders(t *testing.T) {
+	// The SDK would otherwise read this standard variable; configuration must
+	// remain the only header source.
+	t.Setenv("OTEL_EXPORTER_OTLP_HEADERS", "x-ambient=ambient-value")
+	t.Setenv("OTEL_EXPORTER_OTLP_TRACES_HEADERS", "x-ambient=ambient-value")
+
+	received := make(chan http.Header, 4)
+	collector := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		received <- request.Header.Clone()
+		writer.Header().Set("Content-Type", "application/x-protobuf")
+	}))
+	t.Cleanup(collector.Close)
+
+	settings := config.Default().Tracing
+	settings.Enabled = true
+	settings.EndpointURL = collector.URL + "/v1/traces"
+	settings.Headers = map[string]string{"x-honeycomb-team": "team-key"}
+	module, err := New(settings, Identity{Version: "test", NodeID: "node-a"}, nil)
+	require.NoError(t, err)
+	_, end := module.StartJobExecution(context.Background(), "test.job")
+	end("succeeded", false)
+	require.NoError(t, module.Close(context.Background()))
+
+	select {
+	case header := <-received:
+		require.Equal(t, "team-key", header.Get("X-Honeycomb-Team"))
+		require.Empty(t, header.Get("X-Ambient"), "the exporter read OTEL_EXPORTER_OTLP_HEADERS")
+	default:
+		require.FailNow(t, "no export reached the collector")
+	}
 }

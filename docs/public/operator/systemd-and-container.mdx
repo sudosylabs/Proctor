@@ -85,13 +85,17 @@ not active-active infrastructure.
 ## Shutdown
 
 Send SIGTERM or use the runtime's normal stop command. Proctor first becomes
-unready, drains HTTP under the configured timeout, stops Jobs and WebSocket,
-closes transport, withdraws the serving lease, closes metrics, then closes
-shared infrastructure. The tracked systemd/container stop windows are longer
-than the application drain budget.
+unready, drains HTTP, stops Jobs and WebSocket, closes transport, withdraws the
+serving lease, closes metrics, flushes traces, then closes shared
+infrastructure. One `Server.ShutdownTimeout` budget, measured from when
+shutdown starts, bounds that whole sequence: every step that waits gets only
+what remains of it, so a slow step shortens later steps instead of extending
+shutdown. Keep `TimeoutStopSec` and the container stop window longer than
+`Server.ShutdownTimeout` plus the logging flush (`Log.ShutdownTimeout`); the
+tracked units already are.
 
 A second SIGTERM or SIGINT during the drain forces the stop: remaining HTTP
-connections close at once, Jobs and WebSocket close within their own bounds,
-and the process exits with status 1 so the supervisor records an incomplete
+connections close at once, the shutdown budget ends, so Jobs, WebSocket, and
+metrics stop waiting for in-flight work, and the process exits with status 1 so the supervisor records an incomplete
 drain. A third signal exits immediately without further cleanup; the serving
 and discovery leases then expire on their own.

@@ -39,8 +39,11 @@ processors:
 exporters:
   otlp_http/loki:
     endpoint: http://loki:3100/otlp
-  # The development stack has no trace store; received spans are summarized in
-  # the collector's own log (`make dev-logs`), one line per span.
+  # Received spans are stored in the development Jaeger (UI on
+  # http://127.0.0.1:16686) and summarized in the collector's own log
+  # (`make dev-logs`), one line per span.
+  otlp_http/jaeger:
+    endpoint: http://jaeger:4318
   debug/traces:
     verbosity: normal
 
@@ -54,4 +57,4 @@ service:
     traces:
       receivers: [otlp]
       processors: [batch]
-      exporters: [debug/traces]
+      exporters: [otlp_http/jaeger, debug/traces]

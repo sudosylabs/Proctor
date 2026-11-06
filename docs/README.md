@@ -17,11 +17,15 @@ workspace.
 
 ## Publishing
 
-The `Publish documentation` workflow builds the site on every push to `main`
-that changes documentation, the OpenAPI artifact, or the workflow, and on manual
-dispatch. It deploys to GitHub Pages only after maintainers opt in; until then
-each run is a build check that publishes nothing. The site URL otherwise stays
-the `https://docs.proctor.invalid` placeholder.
+The `Publish documentation` workflow builds the site as the final stage of a
+server release: the release workflow calls it only after its publish job has
+scanned, pushed, signed and published a `server/v*` release, so a failed
+release deploys nothing. Maintainers can also run it by manual dispatch to
+redeploy without a release. It does not run on pushes to `main`, where CI's
+`make check` already builds and validates the site. It deploys to GitHub Pages
+only after maintainers opt in; until then each run is a build check that
+publishes nothing. The site URL otherwise stays the
+`https://docs.proctor.invalid` placeholder.
 
 To activate publication:
 
@@ -29,8 +33,9 @@ To activate publication:
    readable by anyone even when the repository is private, unless the
    organization's plan provides access-controlled Pages.
 2. In the repository's Pages settings, select **GitHub Actions** as the source.
-   Restrict the `github-pages` environment to the `main` branch, and add
-   required reviewers if each deployment should be approved.
+   Restrict the `github-pages` environment's deployment branches and tags to
+   the `main` branch (for manual runs) and `server/v*` tags (for release
+   runs), and add required reviewers if each deployment should be approved.
 3. Choose the public origin. For a custom domain, configure it in the Pages
    settings and its DNS first.
 4. Set repository variable `DOCS_SITE_URL` to that HTTPS origin with no path
@@ -39,7 +44,10 @@ To activate publication:
    `DOCS_BASE_URL` to that path with a trailing slash, such as `/Proctor/`;
    it defaults to `/`.
 5. Set repository variable `DOCS_PUBLISH_ENABLED` to `true` and run the
-   workflow manually once to confirm the deployment.
+   workflow manually once to confirm the deployment. Release-driven
+   deployment also needs signed releases activated (see
+   [`build/README.md`](../build/README.md#activating-signed-releases)), since
+   it waits for the release to publish.
 
 Removing either variable, or setting `DOCS_PUBLISH_ENABLED` to anything else,
 stops deployment without affecting the build. The workflow refuses to publish

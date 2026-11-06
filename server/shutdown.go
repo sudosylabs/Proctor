@@ -58,10 +58,10 @@ func (s *Server) shutdown(plan stopPlan, endRun context.CancelFunc) error {
 // owner in reverse dependency order: the Server-owned listener, HTTP serving,
 // Jobs, WebSocket, the HTTP transport, the serving lease, metrics, tracing,
 // and Platform. One budget of Server.ShutdownTimeout, starting now, bounds
-// the HTTP drain and Serve exit and is handed on to the tracing flush and
-// Platform; Jobs, WebSocket, and metrics close within their own bounds. The serving lease keeps
-// renewing until its turn, after HTTP has stopped, so this node never serves
-// without a proven lease.
+// the whole sequence: every step that waits draws its deadline from what
+// remains of it, so a slow step shortens the later ones rather than extending
+// shutdown. The serving lease keeps renewing until its turn, after HTTP has
+// stopped, so this node never serves without a proven lease.
 func (s *Server) runShutdown(plan stopPlan, endRun context.CancelFunc) error {
 	running := endRun != nil
 	s.beginStopping(running)
@@ -77,11 +77,11 @@ func (s *Server) runShutdown(plan stopPlan, endRun context.CancelFunc) error {
 			}
 			return nil
 		},
-		closing(s.components.jobs),
-		closing(s.components.websocket),
+		draining(s.components.jobs),
+		draining(s.components.websocket),
 		closing(s.components.transport),
 		closing(s.components.servingLease),
-		closing(s.components.metrics),
+		draining(s.components.metrics),
 		// Tracing closes after every span producer so their final spans are
 		// flushed, and before Platform so the exporter never outlives logging.
 		func(ctx context.Context) error {
@@ -110,6 +110,18 @@ func (s *Server) runShutdown(plan stopPlan, endRun context.CancelFunc) error {
 	return result
 }
 
+// draining closes a component that waits for its work to end, within the
+// remainder of the shutdown budget.
+func draining(component interface{ Close(context.Context) error }) func(context.Context) error {
+	return func(budget context.Context) error {
+		if component == nil {
+			return nil
+		}
+		return component.Close(budget)
+	}
+}
+
+// closing closes a component whose Close does not wait on the budget.
 func closing(component interface{ Close() error }) func(context.Context) error {
 	return func(context.Context) error {
 		if component == nil {
@@ -158,9 +170,10 @@ func (s *Server) shutdownBudget() (context.Context, context.CancelFunc) {
 
 // ForceStop demands an immediate stop: a running node begins shutting down,
 // and a graceful drain already in progress ends at once by closing the
-// connections that remain. Run and Close then report ErrShutdownForced.
-// Jobs and WebSocket still close within their own bounds. ForceStop is safe
-// to call concurrently and more than once.
+// connections that remain. The shutdown budget ends with it, so Jobs,
+// WebSocket, metrics, tracing, and Platform stop waiting for their work.
+// Run and Close then report ErrShutdownForced. ForceStop is safe to call
+// concurrently and more than once.
 func (s *Server) ForceStop() {
 	s.forceOnce.Do(func() { close(s.forcedSignal()) })
 	s.lifecycleMu.Lock()

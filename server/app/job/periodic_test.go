@@ -145,7 +145,7 @@ func TestEngineOwnsPeriodicTaskLifecycleAndCopiesDefinitions(t *testing.T) {
 	}
 	timer := waitPeriodicTimer(t, clock.timers)
 	require.Equal(t, 2*time.Second, timer.delay, "periodic timer delay")
-	err = engine.Close()
+	err = engine.Close(context.Background())
 	require.NoError(t, err)
 	clock.advance(timer, clock.Now().Add(2*time.Second))
 	select {

@@ -9,6 +9,7 @@ package config
 
 import (
 	"fmt"
+	"maps"
 	"strconv"
 	"time"
 )
@@ -134,6 +135,29 @@ func stringListEnvironmentOverride(
 	}
 }
 
+// headerMapEnvironmentOverride replaces a header map from the
+// OTEL_EXPORTER_OTLP_HEADERS list format. Its parse error never repeats the
+// value, which carries credentials.
+func headerMapEnvironmentOverride(
+	key string,
+	field func(*Config) *map[string]string,
+) environmentOverride {
+	return environmentOverride{
+		key: key,
+		apply: func(cfg *Config, value string) error {
+			headers, err := parseTracingHeaders(value)
+			if err != nil {
+				return fmt.Errorf("parse environment %s: %w", key, err)
+			}
+			*field(cfg) = headers
+			return nil
+		},
+		restore: func(candidate *Config, persisted Config) {
+			*field(candidate) = maps.Clone(*field(&persisted))
+		},
+	}
+}
+
 func consoleEnvironmentOverride(
 	key string,
 	field func(*LogTarget) *string,
@@ -208,6 +232,9 @@ var environmentOverrideCatalog = []environmentOverride{
 	}),
 	float64EnvironmentOverride("PROCTOR_TRACING_SAMPLE_RATIO", func(cfg *Config) *float64 {
 		return &cfg.Tracing.SampleRatio
+	}),
+	headerMapEnvironmentOverride("PROCTOR_TRACING_HEADERS", func(cfg *Config) *map[string]string {
+		return &cfg.Tracing.Headers
 	}),
 	durationEnvironmentOverride("PROCTOR_TRACING_EXPORT_TIMEOUT", func(cfg *Config) *Duration {
 		return &cfg.Tracing.ExportTimeout

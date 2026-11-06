@@ -81,7 +81,7 @@ services:
       - proctor-dev
 
   minio:
-    image: ${PROCTOR_MINIO_IMAGE:-minio/minio:RELEASE.2025-09-07T16-13-09Z@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e}
+    image: ${PROCTOR_MINIO_IMAGE:-cgr.dev/chainguard/minio:latest@sha256:cee9a8e35885e93f14b3cb32960e5017aff74e2adfb52ba87c65003b0163886b}
     command: [server, /data, --console-address, ":9001"]
     environment:
       MINIO_ROOT_USER: proctorminio
@@ -95,7 +95,7 @@ services:
       volume-init:
         condition: service_completed_successfully
     healthcheck:
-      test: [CMD, mc, ready, local]
+      test: [CMD, mc, --config-dir, /tmp/.mc, ready, local]
       interval: 2s
       timeout: 3s
       retries: 30
@@ -110,12 +110,12 @@ services:
       - proctor-dev
 
   minio-init:
-    image: ${PROCTOR_MINIO_IMAGE:-minio/minio:RELEASE.2025-09-07T16-13-09Z@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e}
+    image: ${PROCTOR_MINIO_IMAGE:-cgr.dev/chainguard/minio:latest@sha256:cee9a8e35885e93f14b3cb32960e5017aff74e2adfb52ba87c65003b0163886b}
     entrypoint: [/bin/sh, -ec]
     command:
       - |
-        mc alias set local http://minio:9000 proctorminio proctorminio-secret
-        mc mb --ignore-existing local/proctor-dev
+        mc --config-dir /tmp/.mc alias set local http://minio:9000 proctorminio proctorminio-secret
+        mc --config-dir /tmp/.mc mb --ignore-existing local/proctor-dev
     depends_on:
       minio:
         condition: service_healthy

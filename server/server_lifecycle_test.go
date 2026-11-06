@@ -85,6 +85,8 @@ type lifecycleWebSocket struct {
 	closeErr   error
 	events     *lifecycleEvents
 	afterStart func()
+	// onClose, when set, runs with the shutdown budget Close is handed.
+	onClose func(context.Context)
 }
 
 type lifecycleJobs struct {
@@ -92,6 +94,8 @@ type lifecycleJobs struct {
 	closeErr   error
 	events     *lifecycleEvents
 	afterStart func()
+	// onClose, when set, runs with the shutdown budget Close is handed.
+	onClose func(context.Context)
 }
 
 type lifecycleServingNodeLease struct {
@@ -109,6 +113,8 @@ type lifecycleMetrics struct {
 	failureSources []<-chan error
 	failureCalls   atomic.Int64
 	ready          atomic.Bool
+	// onClose, when set, runs with the shutdown budget Close is handed.
+	onClose func(context.Context)
 }
 
 func (m *lifecycleMetrics) Start(context.Context) error {
@@ -127,8 +133,11 @@ func (m *lifecycleMetrics) Failures() <-chan error {
 	return m.failureSources[index]
 }
 func (m *lifecycleMetrics) SetReady(ready bool) { m.ready.Store(ready) }
-func (m *lifecycleMetrics) Close() error {
+func (m *lifecycleMetrics) Close(ctx context.Context) error {
 	m.events.record("metrics-close")
+	if m.onClose != nil {
+		m.onClose(ctx)
+	}
 	return m.closeErr
 }
 
@@ -174,8 +183,11 @@ func (j *lifecycleJobs) Start(context.Context) error {
 	return j.startErr
 }
 
-func (j *lifecycleJobs) Close() error {
+func (j *lifecycleJobs) Close(ctx context.Context) error {
 	j.events.record("jobs-close")
+	if j.onClose != nil {
+		j.onClose(ctx)
+	}
 	return j.closeErr
 }
 
@@ -187,8 +199,11 @@ func (w *lifecycleWebSocket) Start(context.Context) error {
 	return w.startErr
 }
 
-func (w *lifecycleWebSocket) Close() error {
+func (w *lifecycleWebSocket) Close(ctx context.Context) error {
 	w.events.record("websocket-close")
+	if w.onClose != nil {
+		w.onClose(ctx)
+	}
 	return w.closeErr
 }
 

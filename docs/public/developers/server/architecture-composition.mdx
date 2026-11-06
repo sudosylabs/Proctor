@@ -139,10 +139,12 @@ listener → HTTP drain → Jobs → WebSocket → HTTP transport → serving le
 ```
 
 One budget of `Server.ShutdownTimeout`, measured from the moment shutdown
-starts, bounds the HTTP drain and the wait for serving to end; the tracing
-flush and then Platform, for the cluster's graceful leave, receive what
-remains of it. Jobs, WebSocket,
-and metrics close within their own bounds. The run reports why it stopped and
+starts, bounds the whole sequence. Every step that waits (the HTTP drain and
+serving exit, the Job and WebSocket drains, the metrics listener, the tracing
+flush, and Platform's cluster leave) derives its deadline from what remains of
+that budget, never from a fresh timer; metrics and tracing may only shorten it
+with their own cap. A slow step therefore shortens the steps after it instead
+of extending shutdown. The run reports why it stopped and
 whether HTTP must drain or close at once; the sequence decides nothing else.
 
 Only stages that successfully started need active drain behavior, but every

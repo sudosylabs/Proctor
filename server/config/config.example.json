@@ -46,6 +46,7 @@
     "Enabled": false,
     "EndpointURL": "http://127.0.0.1:4318/v1/traces",
     "SampleRatio": 1,
+    "Headers": {},
     "ExportTimeout": "10s",
     "ShutdownTimeout": "5s"
   },
