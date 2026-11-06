@@ -17,6 +17,9 @@ module when a change is not server-only. No module has been released yet.
 
 ### Changed
 
+- Build: local, cluster, and S3 test stacks run MinIO from
+  `cgr.dev/chainguard/minio` (RELEASE.2026-10-23T20-06-51Z), pinned by digest,
+  because `minio/minio` is no longer published on Docker Hub.
 - All modules: build with Go 1.26.10 (from 1.25.13), and move
   `golang.org/x/net` to v0.60.0 in the server and `packages/vfs`, clearing the
   known standard-library and `x/net` vulnerabilities (CVE-2026-78667,

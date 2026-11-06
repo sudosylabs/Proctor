@@ -111,7 +111,9 @@ PROCTOR_GID ?= $(shell id -g 2>/dev/null || printf 1000)
 
 PROCTOR_POSTGRES_IMAGE ?= postgres:16.6-alpine3.20@sha256:1e59919c179e296eaf3cc701f4d50bab5c393d7ed9746c188c9d519489c998dc
 PROCTOR_REDIS_IMAGE ?= redis:7.2.15-alpine3.21@sha256:05a97a479bc73de66f087dc05b569010772880f778cc8671fa6b8aadee32e5c6
-PROCTOR_MINIO_IMAGE ?= minio/minio:RELEASE.2025-09-07T16-13-09Z@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e
+# MinIO no longer publishes images; Chainguard's free tier serves only a daily
+# `latest`, so the digest (MinIO RELEASE.2026-10-23T20-06-51Z) is the version.
+PROCTOR_MINIO_IMAGE ?= cgr.dev/chainguard/minio:latest@sha256:cee9a8e35885e93f14b3cb32960e5017aff74e2adfb52ba87c65003b0163886b
 PROCTOR_MAILPIT_IMAGE ?= axllent/mailpit:v1.30.5@sha256:b868afa176bfd6cce2323ea316cd99ccad77915e51e595748f6d786700ecf109
 PROCTOR_PROMETHEUS_IMAGE ?= prom/prometheus:v3.5.0@sha256:63805ebb8d2b3920190daf1cb14a60871b16fd38bed42b857a3182bc621f4996
 PROCTOR_GRAFANA_IMAGE ?= grafana/grafana:12.1.1@sha256:a1701c2180249361737a99a01bc770db39381640e4d631825d38ff4535efa47d
