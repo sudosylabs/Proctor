@@ -25,12 +25,12 @@ require (
 	github.com/nicksnyder/go-i18n/v2 v2.6.1
 	github.com/pdfcpu/pdfcpu v0.15.0
 	github.com/prometheus/client_golang v1.24.1
-	github.com/redis/rueidis v1.0.77
+	github.com/redis/rueidis v1.0.79
 	github.com/spf13/cobra v1.10.2
 	github.com/stretchr/testify v1.12.1
-	github.com/sudosylabs/proctor/packages/cache v0.0.0-20261105225246-102043a25f64
+	github.com/sudosylabs/proctor/packages/cache v0.0.0-20261106012608-7ca07fe32e5d
 	github.com/sudosylabs/proctor/packages/mail v0.0.0-20261105225246-102043a25f64
-	github.com/sudosylabs/proctor/packages/vfs v0.0.0-20261105225246-102043a25f64
+	github.com/sudosylabs/proctor/packages/vfs v0.0.0-20261106012608-7ca07fe32e5d
 	go.opentelemetry.io/otel v1.46.0
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp v1.46.0
 	go.opentelemetry.io/otel/sdk v1.46.0
@@ -42,7 +42,7 @@ require (
 	golang.org/x/oauth2 v0.36.0
 	golang.org/x/sys v0.48.0
 	golang.org/x/text v0.42.0
-	golang.org/x/tools v0.49.0
+	golang.org/x/tools v0.50.0
 	google.golang.org/protobuf v1.36.12
 	gopkg.in/yaml.v3 v3.0.1
 )
@@ -80,13 +80,13 @@ require (
 	github.com/klauspost/crc32 v1.3.0 // indirect
 	github.com/lann/builder v0.0.0-20180802200727-47ae307949d0 // indirect
 	github.com/lann/ps v0.0.0-20150810152359-62de8c46ede0 // indirect
-	github.com/mattn/go-colorable v0.1.14 // indirect
-	github.com/mattn/go-isatty v0.0.20 // indirect
+	github.com/mattn/go-colorable v0.1.15 // indirect
+	github.com/mattn/go-isatty v0.0.22 // indirect
 	github.com/mattn/go-runewidth v0.0.27 // indirect
 	github.com/miekg/dns v1.1.72 // indirect
 	github.com/minio/crc64nvme v1.1.1 // indirect
 	github.com/minio/md5-simd v1.1.2 // indirect
-	github.com/minio/minio-go/v7 v7.3.0 // indirect
+	github.com/minio/minio-go/v7 v7.4.1 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/oasdiff/yaml v0.1.1 // indirect
 	github.com/oasdiff/yaml3 v0.0.14 // indirect
