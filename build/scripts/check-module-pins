@@ -103,9 +103,19 @@ printf '%s\n' "$pins" | {
 		status=0
 		ancestry=$(git -C "$root" merge-base --is-ancestor "$commit" HEAD 2>&1) || status=$?
 		if [ "$status" -eq 1 ]; then
-			fail "$module $version: commit $revision is not an ancestor of HEAD $(git -C "$root" rev-parse --short HEAD) (was history rewritten?)"
-			suggest "$directory" "$module"
-			continue
+			# Hosted pull request runs have answered 1 for a pin that is an
+			# ancestor on GitHub and in any fresh clone; confirm with a full
+			# walk, which uses no generation or date cutoffs.
+			if git -C "$root" rev-list HEAD | grep -qx "$commit"; then
+				printf '%s %s: merge-base denied an ancestor that rev-list reaches (%s, commit-graph: %s); accepting it\n' \
+					"$module" "$version" "$(git --version)" \
+					"$(ls "$(git -C "$root" rev-parse --git-common-dir)/objects/info" 2>/dev/null | tr '\n' ' ')" >&2
+				status=0
+			else
+				fail "$module $version: commit $revision is not an ancestor of HEAD $(git -C "$root" rev-parse --short HEAD) (shallow=$(git -C "$root" rev-parse --is-shallow-repository); was history rewritten?)"
+				suggest "$directory" "$module"
+				continue
+			fi
 		fi
 		if [ "$status" -ne 0 ]; then
 			fail "$module $version: git could not compare commit $revision with HEAD (exit $status, shallow=$(git -C "$root" rev-parse --is-shallow-repository 2>&1)): $ancestry"
