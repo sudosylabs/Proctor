@@ -98,9 +98,17 @@ printf '%s\n' "$pins" | {
 			fail "$module $version: commit $revision is not in local history (fetch full history)"
 			continue
 		fi
-		if ! git -C "$root" merge-base --is-ancestor "$commit" HEAD; then
-			fail "$module $version: commit $revision is not an ancestor of HEAD (was history rewritten?)"
+		# merge-base exits 1 only for a non-ancestor; any other status is a
+		# git failure and must not be reported as rewritten history.
+		status=0
+		ancestry=$(git -C "$root" merge-base --is-ancestor "$commit" HEAD 2>&1) || status=$?
+		if [ "$status" -eq 1 ]; then
+			fail "$module $version: commit $revision is not an ancestor of HEAD $(git -C "$root" rev-parse --short HEAD) (was history rewritten?)"
 			suggest "$directory" "$module"
+			continue
+		fi
+		if [ "$status" -ne 0 ]; then
+			fail "$module $version: git could not compare commit $revision with HEAD (exit $status, shallow=$(git -C "$root" rev-parse --is-shallow-repository 2>&1)): $ancestry"
 			continue
 		fi
 		if [ -n "$stamp" ]; then
