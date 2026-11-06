@@ -34,10 +34,10 @@ for production-only installs.
 
 The tool manifests at `build/tools/go.mod` and `build/tools/gopls/go.mod` are
 the version authority for external Go tools. `gopls` has an isolated tool graph
-because its Go-1.25-compatible release and the pinned linter require different
-revisions of `golang.org/x/tools`. The profile and trace viewers are built from
-the standard command sources in the exact Go toolchain selected by `go.work`.
-All of these binaries install into the same `.build/bin` directory.
+because its newest Go-1.26-compatible release and the pinned linter require
+different revisions of `golang.org/x/tools`. The profile and trace viewers are
+built from the standard command sources in the exact Go toolchain selected by
+`go.work`. All of these binaries install into the same `.build/bin` directory.
 
 Use `make tools` when only the Go binaries are missing. Do not install an
 unversioned global `golangci-lint`, `gopls`, `govulncheck`, `goimports`, or

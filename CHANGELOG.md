@@ -17,6 +17,8 @@ module when a change is not server-only. No module has been released yet.
 
 ### Changed
 
+- Build: the isolated `gopls` tool moves to v0.23.0, the newest release that
+  supports Go 1.26, picking up MCP go-sdk v1.6.0 and clearing its advisories.
 - Build: local, cluster, and S3 test stacks run MinIO from
   `cgr.dev/chainguard/minio` (RELEASE.2026-10-23T20-06-51Z), pinned by digest,
   because `minio/minio` is no longer published on Docker Hub.

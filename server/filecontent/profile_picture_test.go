@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"image"
 	"image/color"
+	"image/gif"
 	"image/jpeg"
 	"image/png"
 	"io"
@@ -25,6 +26,7 @@ import (
 
 	"github.com/HugoSmits86/nativewebp"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/image/tiff"
 	"golang.org/x/image/webp"
 
 	"github.com/sudosylabs/proctor/packages/vfs"
@@ -150,6 +152,25 @@ func TestContentAcceptsSupportedProfilePictureFormatsAndRejectsOversizedDimensio
 			require.NoError(t, err)
 			_, err = content.NormalizeAndStoreProfilePicture(context.Background(), model.NewFileRevisionID(), bytes.NewReader(input.Bytes()), int64(input.Len()), time.Unix(1, 0))
 			require.NoError(t, err)
+		})
+	}
+
+	// imaging decodes TIFF and GIF too, and panics on crafted TIFF
+	// (CVE-2023-36308); only the formats above may reach it.
+	for _, test := range []struct {
+		name   string
+		encode func(*bytes.Buffer) error
+	}{
+		{name: "tiff", encode: func(output *bytes.Buffer) error { return tiff.Encode(output, source, nil) }},
+		{name: "gif", encode: func(output *bytes.Buffer) error { return gif.Encode(output, source, nil) }},
+	} {
+		t.Run("rejects "+test.name, func(t *testing.T) {
+			var input bytes.Buffer
+			require.NoError(t, test.encode(&input))
+			content, err := filecontent.New(memory.New(), filecontent.Policy{MaximumConcurrentOperations: 2}, nil)
+			require.NoError(t, err)
+			_, err = content.NormalizeAndStoreProfilePicture(context.Background(), model.NewFileRevisionID(), bytes.NewReader(input.Bytes()), int64(input.Len()), time.Unix(1, 0))
+			require.ErrorIs(t, err, app.ErrInvalidProfilePicture)
 		})
 	}
 
