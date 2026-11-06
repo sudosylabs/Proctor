@@ -281,31 +281,29 @@ func digestAuthenticationAttempt(
 	intent authenticationAttemptIntent,
 	limit authenticationAttemptLimit,
 ) string {
-	hash := sha256.New()
-	writeAuthenticationAttemptDigestPart(hash, []byte{byte(intent.purpose)})
-	writeAuthenticationAttemptDigestPart(hash, []byte{byte(limit.dimension)})
-	writeAuthenticationAttemptDigestPart(hash, []byte(intent.qualifier))
+	// Hashing one assembled buffer keeps the login identity out of io.Writer
+	// calls, which static analysis cannot tell apart from log writers.
+	input := appendAuthenticationAttemptDigestPart(nil, []byte{byte(intent.purpose)})
+	input = appendAuthenticationAttemptDigestPart(input, []byte{byte(limit.dimension)})
+	input = appendAuthenticationAttemptDigestPart(input, []byte(intent.qualifier))
 	switch limit.dimension {
 	case authenticationAttemptDimensionIdentitySource:
-		writeAuthenticationAttemptDigestPart(hash, []byte(normalizeLoginIdentity(limit.identity)))
-		writeAuthenticationAttemptDigestPart(hash, []byte(normalizeLoginSource(limit.source)))
+		input = appendAuthenticationAttemptDigestPart(input, []byte(normalizeLoginIdentity(limit.identity)))
+		input = appendAuthenticationAttemptDigestPart(input, []byte(normalizeLoginSource(limit.source)))
 	case authenticationAttemptDimensionIdentity, authenticationAttemptDimensionAccountFailure:
-		writeAuthenticationAttemptDigestPart(hash, []byte(normalizeLoginIdentity(limit.identity)))
+		input = appendAuthenticationAttemptDigestPart(input, []byte(normalizeLoginIdentity(limit.identity)))
 	case authenticationAttemptDimensionSource:
-		writeAuthenticationAttemptDigestPart(hash, []byte(normalizeLoginSource(limit.source)))
+		input = appendAuthenticationAttemptDigestPart(input, []byte(normalizeLoginSource(limit.source)))
 	}
-	return hex.EncodeToString(hash.Sum(nil))
+	sum := sha256.Sum256(input)
+	return hex.EncodeToString(sum[:])
 }
 
-type authenticationAttemptDigestWriter interface {
-	Write([]byte) (int, error)
-}
-
-func writeAuthenticationAttemptDigestPart(writer authenticationAttemptDigestWriter, value []byte) {
-	var size [4]byte
-	binary.BigEndian.PutUint32(size[:], uint32(len(value)))
-	_, _ = writer.Write(size[:])
-	_, _ = writer.Write(value)
+// appendAuthenticationAttemptDigestPart length-prefixes value so adjacent
+// parts cannot run together.
+func appendAuthenticationAttemptDigestPart(input, value []byte) []byte {
+	input = binary.BigEndian.AppendUint32(input, uint32(len(value))) // #nosec G115 -- parts are bounded login fields, far below 4 GiB
+	return append(input, value...)
 }
 
 func normalizeLoginIdentity(identity string) string {
