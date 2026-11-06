@@ -13,6 +13,10 @@ concurrency:
 jobs:
   sign-off:
     name: Developer Certificate of Origin sign-off
+    # Dependabot signs off as support@github.com, never its author address, and
+    # cannot certify the DCO; GitHub sets the pull request author, so this skip
+    # cannot be claimed by a commit.
+    if: github.event.pull_request.user.login != 'dependabot[bot]'
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:

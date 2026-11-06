@@ -269,7 +269,7 @@ module when a change is not server-only. No module has been released yet.
   otherwise block every release.
 - CI: a DCO check fails a pull request when any of its non-merge commits
   lacks a `Signed-off-by` trailer matching the commit author
-  (`build/scripts/check-dco`).
+  (`build/scripts/check-dco`). Pull requests opened by Dependabot are exempt.
 - CI: an opt-in GitHub Pages deployment for the documentation, gated on
   `DOCS_PUBLISH_ENABLED` and `DOCS_SITE_URL`. It runs as the last stage of a
   server release, only after the release is scanned, signed and published, and

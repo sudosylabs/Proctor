@@ -67,7 +67,8 @@ to carry a `Signed-off-by` trailer whose name and email match the commit's
 author exactly, so configure `user.name` and `user.email` before committing.
 To sign off commits already on your branch, run
 `git rebase --signoff <base>` and force-push the branch. Run the same check
-locally with `build/scripts/check-dco <base> HEAD`.
+locally with `build/scripts/check-dco <base> HEAD`. Dependency updates opened
+by Dependabot are exempt; a maintainer reviews them instead.
 
 ## Licensing, Copyright, and Upstream Work
 
