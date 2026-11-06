@@ -580,9 +580,11 @@ func TestEngineShutdownEndsWithTheCallersBudget(t *testing.T) {
 		<-blocked
 	}()
 	const budget = 50 * time.Millisecond
+	// Start the clock before the deadline so a slow host cannot make Close()
+	// look early.
+	started := time.Now()
 	ctx, cancel := context.WithTimeout(context.Background(), budget)
 	defer cancel()
-	started := time.Now()
 	err = runner.Close(ctx)
 	elapsed := time.Since(started)
 	require.ErrorIs(t, err, context.DeadlineExceeded, "Close() outcome for a worker that never returns")

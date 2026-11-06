@@ -216,9 +216,11 @@ func TestModuleCloseEndsWithTheCallersBudgetBeforeItsOwnTimeout(t *testing.T) {
 	}
 
 	const budget = 100 * time.Millisecond
+	// Start the clock before the deadline so a slow host cannot make Close()
+	// look early.
+	started := time.Now()
 	ctx, cancel := context.WithTimeout(context.Background(), budget)
 	defer cancel()
-	started := time.Now()
 	err = module.Close(ctx)
 	elapsed := time.Since(started)
 	require.ErrorIs(t, err, context.DeadlineExceeded, "Close() outcome for a drain that never finishes")

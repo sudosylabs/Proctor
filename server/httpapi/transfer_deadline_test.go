@@ -70,7 +70,9 @@ func TestTransferRoutesOutliveServerTimeouts(t *testing.T) {
 	t.Parallel()
 
 	const serverTimeout = 300 * time.Millisecond
-	const uploadLimit = minimumTransferBytesPerSecond
+	// Two seconds of transfer allowance keep the upload's margin over the
+	// writer's pause wide enough for loaded race runs.
+	const uploadLimit = 2 * minimumTransferBytesPerSecond
 	downloadBody := bytes.Repeat([]byte("a"), 4096)
 
 	authenticator := classRouteAuthenticator{principal: model.Principal{
