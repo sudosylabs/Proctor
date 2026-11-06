@@ -95,10 +95,21 @@ jobs:
       - name: Install matching browsers and Linux dependencies
         working-directory: webapp
         run: npx --no-install playwright install --with-deps chromium firefox webkit
+      # The runner was stopped mid race suite with no failing test; record its
+      # headroom so another stop can be told apart from a test failure.
+      - name: Report runner resources
+        run: |
+          nproc
+          free -m
+          df -h "$GITHUB_WORKSPACE" /tmp
       - name: Run product gate
+        env:
+          GO_TEST_RACE_FLAGS: -p 2
         run: make check
       - name: Verify independent modules
         if: ${{ !cancelled() }}
+        env:
+          GO_TEST_RACE_FLAGS: -p 2
         run: make independent-modules
       - name: Verify internal module pins
         if: ${{ !cancelled() }}
